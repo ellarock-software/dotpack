@@ -37,8 +37,8 @@ func TestParseSkill_TracerBulletFixture(t *testing.T) {
 		t.Errorf("Body should contain sentinel string; got %q", skill.Body)
 	}
 
-	if len(skill.Extensions) != 0 {
-		t.Errorf("Extensions: got %v, want empty (fixture has only universal-core fields)", skill.Extensions)
+	if len(skill.Extensions()) != 0 {
+		t.Errorf("Extensions: got %v, want empty (fixture has only universal-core fields)", skill.Extensions())
 	}
 }
 
@@ -67,9 +67,9 @@ func TestParseSkill_CollectsUnknownFieldsAsExtensions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseSkill: %v", err)
 	}
-	got, ok := skill.Extensions["allowed-tools"]
+	got, ok := skill.Extensions()["allowed-tools"]
 	if !ok {
-		t.Fatalf("Extensions[allowed-tools] missing; Extensions=%v", skill.Extensions)
+		t.Fatalf("Extensions[allowed-tools] missing; Extensions=%v", skill.Extensions())
 	}
 	tools, ok := got.([]any)
 	if !ok {

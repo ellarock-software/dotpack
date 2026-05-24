@@ -87,9 +87,9 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 	if err != nil {
 		var le *orchestrator.LossyError
 		if errors.As(err, &le) {
-			// Make the lossy message ergonomic for CLI users — list
-			// fields and the --allow-lossy override on its own line.
-			return fmt.Errorf("%s\n(pass --allow-lossy if you accept the listed fields being dropped)", le)
+			// LossyError.Error() already renders per-field reasons +
+			// the --allow-lossy hint (see orchestrator.go); return as-is.
+			return le
 		}
 		return err
 	}

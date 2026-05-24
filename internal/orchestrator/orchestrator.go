@@ -65,13 +65,31 @@ type LossyError struct {
 	Reasons []adapter.LossyReason
 }
 
+// Error renders the lossy reasons with the diagnostic data the §8
+// algorithm collected (concept + supporting hosts), so the user knows
+// WHY each field was rejected and WHERE it would have worked — not
+// just a bare field-name list. Format example:
+//
+//	install would be lossy on gemini:
+//	  - allowed-tools (concept: claude_skill_runtime_overrides; native on: claude-code)
+//	  - my_typo_field (unknown field — no schema entry claims it)
+//	pass --allow-lossy to proceed
 func (e *LossyError) Error() string {
-	parts := make([]string, 0, len(e.Reasons))
+	lines := make([]string, 0, len(e.Reasons)+2)
+	lines = append(lines, fmt.Sprintf("install would be lossy on %s:", e.Host))
 	for _, r := range e.Reasons {
-		parts = append(parts, r.FieldPath)
+		switch {
+		case r.CanonicalConcept == "":
+			lines = append(lines, fmt.Sprintf("  - %s (unknown field — no schema entry claims it)", r.FieldPath))
+		case len(r.SupportedHosts) == 0:
+			lines = append(lines, fmt.Sprintf("  - %s (concept: %s; no host natively supports it)", r.FieldPath, r.CanonicalConcept))
+		default:
+			lines = append(lines, fmt.Sprintf("  - %s (concept: %s; native on: %s)",
+				r.FieldPath, r.CanonicalConcept, strings.Join(r.SupportedHosts, ", ")))
+		}
 	}
-	return fmt.Sprintf("install would be lossy on %s (fields: %s); pass --allow-lossy to proceed",
-		e.Host, strings.Join(parts, ", "))
+	lines = append(lines, "pass --allow-lossy to proceed")
+	return strings.Join(lines, "\n")
 }
 
 // Install runs the adapter's Plan against the resource, applies file
@@ -85,7 +103,7 @@ func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts In
 		return InstallResult{}, fmt.Errorf("plan: %w", err)
 	}
 
-	reasons, err := lossyReasons(o.adapter.HostID(), r)
+	reasons, err := schema.LossyExtensions(r.Kind(), o.adapter.HostID(), r.Extensions())
 	if err != nil {
 		return InstallResult{}, fmt.Errorf("lossy check: %w", err)
 	}
@@ -105,21 +123,6 @@ func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts In
 	}
 
 	return InstallResult{Plan: plan, Record: rec, LossyReasons: reasons}, nil
-}
-
-// lossyReasons runs the ADR-0016 §8 algorithm against a resource's
-// per-kind Extensions. Per-kind dispatch is explicit (typed structs
-// not generic walker, per ADR-0016 §3) so the orchestrator never has
-// to reflect.
-func lossyReasons(hostID string, r resource.Resource) ([]adapter.LossyReason, error) {
-	switch v := r.(type) {
-	case *resource.Skill:
-		return schema.LossyExtensions(resource.KindSkill, hostID, v.Extensions)
-	default:
-		// Kinds without an Extensions field can't be lossy in the §8
-		// sense yet. Add their cases as their per-kind work lands.
-		return nil, nil
-	}
 }
 
 // writeAtomic ensures parent dirs exist, writes the file to a tmp path

@@ -43,14 +43,26 @@ ecosystem_notes:
     frontmatter. Treated as authorial intent, not schema.
 deliberately_excluded:
   # Per ADR-0016 §8, each deliberately_excluded entry declares a
-  # canonical_concept slug + an aliases [{host, field_name}, ...] array.
-  # The orchestrator's per-instance lossy detection consumes these:
-  # if a resource's Extensions carry a field listed in `aliases[].field_name`,
-  # the install is lossy on any host NOT present in `aliases[].host`.
-  # Entries with an empty aliases array are pass-through metadata — no
-  # host parses them natively, so they're never lossy (just preserved).
+  # canonical_concept slug plus the frontmatter field name(s) that
+  # encode it on disk. Two binding mechanisms — pick the one that
+  # matches the concept's nature, not both:
+  #
+  #   aliases: [{host, field_name}, ...]   — for concepts at least one
+  #     host natively parses. The per-instance lossy check uses this:
+  #     if Extensions carry a field listed in aliases[].field_name and
+  #     the target host is NOT in aliases[].host, the install is lossy.
+  #
+  #   field_names: [name, ...]             — for pass-through metadata
+  #     concepts (lossy_when_dropped: false) that no host parses
+  #     natively. Lets the schema bind the on-disk key to its concept
+  #     without inventing a fake "host". The lossy check matches by
+  #     this list and short-circuits on lossy_when_dropped: false.
+  #
+  # Entries without either binding cannot be matched by the lossy
+  # check at all — the field surfaces as "unknown" → lossy by default.
 
   - canonical_concept: discovery_keywords
+    field_names: [keywords]
     aliases: []
     lossy_when_dropped: false       # No host parses; dropping is a no-op.
     appeared_in: 1/10 (daymade/qa-expert only)
@@ -66,6 +78,7 @@ deliberately_excluded:
       lossy_when_dropped to true.
 
   - canonical_concept: metadata_bucket
+    field_names: [metadata]
     aliases: []
     lossy_when_dropped: false       # No host parses; dropping is a no-op.
     appeared_in: 1/10 (openai/gh-address-comments only)

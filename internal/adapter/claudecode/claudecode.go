@@ -122,8 +122,14 @@ func skillTarget(d dirs.Dirs, scope adapter.Scope, name string) (string, error) 
 // approach is used to keep output stable for diffing and cache_key
 // reproducibility.
 func encodeSkill(s *resource.Skill) ([]byte, error) {
-	if len(s.Raw) > 0 && canPassThrough(s) {
-		return s.Raw, nil
+	if len(s.Raw) > 0 {
+		pass, err := canPassThrough(s)
+		if err != nil {
+			return nil, fmt.Errorf("claude-code: schema unavailable for pass-through check: %w", err)
+		}
+		if pass {
+			return s.Raw, nil
+		}
 	}
 	return reencodeSkill(s)
 }
@@ -132,25 +138,25 @@ func encodeSkill(s *resource.Skill) ([]byte, error) {
 // drop nothing of semantic value on claude-code. True iff every
 // extension key resolves (via the schema) to either a claude-code-
 // supported concept or pass-through metadata.
-func canPassThrough(s *resource.Skill) bool {
-	if len(s.Extensions) == 0 {
-		return true
+//
+// Schema-load failure here is propagated to the caller, not swallowed
+// — see encodeSkill. The embedded YAML cannot fail in production, but
+// if it ever does, the install must fail loudly rather than silently
+// re-encoding with an unknown-to-us extension set.
+func canPassThrough(s *resource.Skill) (bool, error) {
+	if len(s.Extensions()) == 0 {
+		return true, nil
 	}
 	sc, err := schema.Load(resource.KindSkill)
 	if err != nil {
-		// Schema load fail is an unrecoverable bug at this point
-		// (embedded files), but fail safe to re-encode rather than
-		// pretending we know the answer. Re-encode without extensions
-		// is conservative and gives the orchestrator a chance to fail
-		// loudly via §8.
-		return false
+		return false, err
 	}
-	for k := range s.Extensions {
+	for k := range s.Extensions() {
 		if !claudeKeeps(sc, k) {
-			return false
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }
 
 // claudeKeeps reports whether claude-code's emit should retain the
@@ -176,11 +182,16 @@ func reencodeSkill(s *resource.Skill) ([]byte, error) {
 	// yaml.Marshal on a map iterates in random order, so we build the
 	// frontmatter as an explicit MappingNode with controlled ordering.
 	front := []*yaml.Node{}
+	var encodeErr error
 	addScalar := func(key string, val any) {
 		front = append(front, &yaml.Node{Kind: yaml.ScalarNode, Value: key})
 		valNode := &yaml.Node{}
 		if err := valNode.Encode(val); err != nil {
-			valNode = &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", val)}
+			// Fail loudly: a Sprintf fallback would silently emit
+			// non-YAML (e.g. Go's map[k:v] syntax) and break the file
+			// for any parser including Claude Code's loader.
+			encodeErr = fmt.Errorf("encode key %q: %w", key, err)
+			return
 		}
 		front = append(front, valNode)
 	}
@@ -190,22 +201,31 @@ func reencodeSkill(s *resource.Skill) ([]byte, error) {
 		addScalar("license", s.License)
 	}
 
-	if len(s.Extensions) > 0 {
-		var sc *schema.Schema
-		if loaded, err := schema.Load(resource.KindSkill); err == nil {
-			sc = loaded
+	if len(s.Extensions()) > 0 {
+		// Re-encode must consult the schema — without it we cannot
+		// answer "should this key be kept or dropped on claude-code?"
+		// and emitting unknown keys silently is the failure mode §8
+		// exists to prevent. If schema.Load fails, error out rather
+		// than guessing.
+		sc, err := schema.Load(resource.KindSkill)
+		if err != nil {
+			return nil, fmt.Errorf("claude-code: schema unavailable for re-encode: %w", err)
 		}
-		keys := make([]string, 0, len(s.Extensions))
-		for k := range s.Extensions {
+		keys := make([]string, 0, len(s.Extensions()))
+		for k := range s.Extensions() {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if sc != nil && !claudeKeeps(sc, k) {
+			if !claudeKeeps(sc, k) {
 				continue
 			}
-			addScalar(k, s.Extensions[k])
+			addScalar(k, s.Extensions()[k])
 		}
+	}
+
+	if encodeErr != nil {
+		return nil, encodeErr
 	}
 
 	mapNode := yaml.Node{Kind: yaml.MappingNode, Content: front}

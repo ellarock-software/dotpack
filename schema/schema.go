@@ -20,11 +20,20 @@ type Schema struct {
 }
 
 // Concept mirrors one entry under `deliberately_excluded:`. Each entry
-// declares a canonical_concept slug, host aliases that natively support
-// it, and a lossy_when_dropped flag (default true — see IsLossyWhenDropped).
+// declares a canonical_concept slug, the on-disk frontmatter field
+// name(s) that encode it (via Aliases for hosted concepts and/or
+// FieldNames for pass-through), and a lossy_when_dropped flag (default
+// true — see IsLossyWhenDropped).
 type Concept struct {
 	CanonicalConcept string  `yaml:"canonical_concept"`
 	Aliases          []Alias `yaml:"aliases"`
+
+	// FieldNames binds on-disk frontmatter keys to concepts that no
+	// host parses natively — pass-through metadata buckets, discovery
+	// keywords, etc. The Aliases-only path would force such concepts
+	// to invent a fake host entry; FieldNames keeps the binding clean.
+	// LookupExtension checks this list in addition to Aliases[].FieldName.
+	FieldNames []string `yaml:"field_names"`
 
 	// LossyWhenDropped is *bool so we can distinguish absent (→ default
 	// true per ADR-0016 §8) from explicit false (pass-through metadata).
@@ -90,16 +99,22 @@ func (c *Concept) SupportingHosts() []string {
 	return out
 }
 
-// LookupExtension finds the concept whose aliases include the given
-// frontmatter field name. Returns nil if no concept matches (the field
-// is not in any deliberately_excluded entry — treated as unknown by
-// the orchestrator's §8 algorithm).
+// LookupExtension finds the concept that binds the given on-disk
+// frontmatter key, checking both Aliases[].FieldName (hosted concepts)
+// and FieldNames (pass-through metadata bindings). Returns nil if no
+// concept matches — the field is unknown and the orchestrator's §8
+// algorithm classifies it lossy by default.
 //
-// fieldName is the on-disk key (e.g. "allowed-tools"), NOT the
-// canonical_concept slug. These are different namespaces.
+// fieldName is the on-disk key (e.g. "allowed-tools", "keywords"),
+// NOT the canonical_concept slug. These are different namespaces.
 func (s *Schema) LookupExtension(fieldName string) *Concept {
 	for i := range s.DeliberatelyExcluded {
 		c := &s.DeliberatelyExcluded[i]
+		for _, name := range c.FieldNames {
+			if name == fieldName {
+				return c
+			}
+		}
 		for _, a := range c.Aliases {
 			if a.FieldName == fieldName {
 				return c

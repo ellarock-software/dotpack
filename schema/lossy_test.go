@@ -3,9 +3,16 @@ package schema_test
 import (
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/ellarock/dotpack/internal/resource"
 	"github.com/ellarock/dotpack/schema"
 )
+
+// yamlUnmarshal is a thin alias kept for clarity in tests that build
+// synthetic Schema values bypassing the embed.FS (e.g. ADR-0017
+// Scenario B coverage where no production entry yet uses the field).
+func yamlUnmarshal(data []byte, out any) error { return yaml.Unmarshal(data, out) }
 
 func TestLossyExtensions_EmptyExtensions_NoReasons(t *testing.T) {
 	// Trivial baseline — a skill with no extensions never goes lossy.
@@ -55,23 +62,60 @@ func TestLossyExtensions_AllowedToolsOnGemini_Lossy(t *testing.T) {
 	}
 }
 
-func TestLossyExtensions_PassThroughMetadata_BindingDeferred(t *testing.T) {
-	// ADR-0016 §8 specifies a pass-through skip for concepts with
-	// lossy_when_dropped: false. The current schema's pass-through
-	// concepts (discovery_keywords, metadata_bucket) declare empty
-	// aliases — so there is no field_name → concept binding for them.
-	// Until the schema gains a concept-level field_names mechanism
-	// (slice-3 work), pass-through fields fall through to the unknown
-	// branch and surface as lossy. Loud + recoverable per ADR-0016's
-	// failure-mode-safety argument; pin the current behavior so a
-	// future schema/code change is forced to deliberately update both.
-	got, err := schema.LossyExtensions(resource.KindSkill, "claude-code",
-		map[string]any{"keywords": []any{"tag1"}})
-	if err != nil {
-		t.Fatalf("LossyExtensions: %v", err)
+func TestLossyExtensions_PassThroughMetadata_NeverLossy(t *testing.T) {
+	// ADR-0016 §8 pass-through skip: concepts with lossy_when_dropped:
+	// false (discovery_keywords, metadata_bucket) are never lossy on
+	// any host, because dropping them changes nothing observable.
+	// The schema binds the on-disk field names via Concept.FieldNames
+	// (separate from aliases[].host, which is for hosted concepts).
+	for _, host := range []string{"claude-code", "gemini", "codex", "made-up-host"} {
+		got, err := schema.LossyExtensions(resource.KindSkill, host,
+			map[string]any{"keywords": []any{"tag1"}})
+		if err != nil {
+			t.Fatalf("LossyExtensions(keywords) on %s: %v", host, err)
+		}
+		if len(got) != 0 {
+			t.Errorf("host=%s keywords: expected no lossy (pass-through); got %+v", host, got)
+		}
+		got2, err := schema.LossyExtensions(resource.KindSkill, host,
+			map[string]any{"metadata": map[string]any{"short-description": "x"}})
+		if err != nil {
+			t.Fatalf("LossyExtensions(metadata) on %s: %v", host, err)
+		}
+		if len(got2) != 0 {
+			t.Errorf("host=%s metadata: expected no lossy (pass-through); got %+v", host, got2)
+		}
 	}
-	if len(got) != 1 || got[0].FieldPath != "keywords" || got[0].CanonicalConcept != "" {
-		t.Errorf("expected `keywords` to surface as unknown (deferred); got %+v", got)
+}
+
+func TestConcept_CanonicalisesTo_RoundTripsThroughLoad(t *testing.T) {
+	// ADR-0017 Scenario B anchor: the schema parser must preserve
+	// `canonicalises_to:` on Concept even when no current schema entry
+	// uses it. Without this, a future schema author who adds Scenario B
+	// would have their annotation silently dropped on parse.
+	//
+	// No production schema entry carries the field today, so this test
+	// loads a synthetic Schema via YAML unmarshal (bypassing the
+	// embed.FS) and asserts the field survives. If someone strips
+	// CanonicalisesTo from the Concept struct as "unused", this fails.
+	src := []byte(`kind: skill
+deliberately_excluded:
+  - canonical_concept: synthetic_scenario_b
+    aliases:
+      - host: future-host
+        field_name: futureName
+    canonicalises_to: url
+`)
+	var s schema.Schema
+	if err := yamlUnmarshal(src, &s); err != nil {
+		t.Fatalf("unmarshal synthetic schema: %v", err)
+	}
+	if len(s.DeliberatelyExcluded) != 1 {
+		t.Fatalf("expected 1 concept; got %d", len(s.DeliberatelyExcluded))
+	}
+	if s.DeliberatelyExcluded[0].CanonicalisesTo != "url" {
+		t.Errorf("CanonicalisesTo: got %q, want %q (Scenario B annotation must survive parse)",
+			s.DeliberatelyExcluded[0].CanonicalisesTo, "url")
 	}
 }
 

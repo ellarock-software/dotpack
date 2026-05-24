@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ellarock/dotpack/internal/adapter"
@@ -85,10 +86,8 @@ func TestInstall_UnknownExtensionRefusedWithoutAllowLossy(t *testing.T) {
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
 	orch := orchestrator.New(d, a, mf)
 
-	skill := &resource.Skill{
-		Name: "y", Description: "d", Body: "b",
-		Extensions: map[string]any{"made_up_field": "foo"},
-	}
+	skill := (&resource.Skill{Name: "y", Description: "d", Body: "b"}).
+		WithExtensions(map[string]any{"made_up_field": "foo"})
 	_, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
 	if err == nil {
 		t.Fatal("expected lossy refusal, got nil")
@@ -111,16 +110,42 @@ func TestInstall_UnknownExtensionProceedsWithAllowLossy(t *testing.T) {
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
 	orch := orchestrator.New(d, a, mf)
 
-	skill := &resource.Skill{
-		Name: "z", Description: "d", Body: "b",
-		Extensions: map[string]any{"made_up_field": "foo"},
-	}
+	skill := (&resource.Skill{Name: "z", Description: "d", Body: "b"}).
+		WithExtensions(map[string]any{"made_up_field": "foo"})
 	res, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f", AllowLossy: true})
 	if err != nil {
 		t.Fatalf("Install with AllowLossy: %v", err)
 	}
 	if len(res.LossyReasons) == 0 || res.LossyReasons[0].FieldPath != "made_up_field" {
 		t.Errorf("res.LossyReasons: got %+v, want one entry for made_up_field", res.LossyReasons)
+	}
+}
+
+func TestLossyError_Error_RendersConceptAndSupportedHosts(t *testing.T) {
+	// Hostile-review #3: LossyError used to print only field names,
+	// throwing away CanonicalConcept + SupportedHosts that §8 had
+	// collected. The new formatter surfaces both so users know WHY
+	// each field was rejected and WHERE it would have worked.
+	le := &orchestrator.LossyError{
+		Host: "gemini",
+		Reasons: []adapter.LossyReason{
+			{FieldPath: "allowed-tools", CanonicalConcept: "claude_skill_runtime_overrides", SupportedHosts: []string{"claude-code"}},
+			{FieldPath: "my_typo", CanonicalConcept: "", SupportedHosts: nil},
+		},
+	}
+	msg := le.Error()
+	for _, want := range []string{
+		"gemini",
+		"allowed-tools",
+		"claude_skill_runtime_overrides",
+		"claude-code",
+		"my_typo",
+		"unknown field",
+		"--allow-lossy",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("LossyError.Error() missing %q. Full message:\n%s", want, msg)
+		}
 	}
 }
 

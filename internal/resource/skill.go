@@ -12,21 +12,47 @@ import (
 
 // Skill mirrors schema/skill.yaml's universal core (name, description,
 // license) plus a Body (the markdown body of SKILL.md that the host
-// loads on trigger) and Extensions (host-specific frontmatter fields
-// the per-instance lossy check inspects).
+// loads on trigger) and host-specific frontmatter fields the per-instance
+// lossy check inspects (access via Extensions()).
 //
 // Raw is the original SKILL.md bytes the parser was given, kept so
 // adapters can satisfy ADR-0008's "byte-identical to the cache copy"
 // guarantee without re-encoding. ParseSkill always populates it;
 // translator-produced Skills (where there is no source file) leave it
 // nil and the adapter falls back to re-encoding the universal core.
+//
+// Invariant: when Raw is non-empty, Raw and the extension map are
+// consistent — the map reflects every non-universal-core frontmatter
+// key in Raw. Code that mutates extensions without rewriting Raw
+// breaks the ADR-0008 byte-pass-through guarantee (canPassThrough
+// would emit Raw bytes that no longer match the in-memory extension
+// set). Mutators (WithExtensions etc.) drop Raw to preserve this.
 type Skill struct {
 	Name        string
 	Description string
 	License     string
 	Body        string
-	Extensions  map[string]any
 	Raw         []byte
+	extensions  map[string]any
+}
+
+// Extensions returns the skill's host-extension frontmatter fields.
+// Required by the resource.Resource interface; the orchestrator's
+// schema-driven §8 lossy detection walks this map without per-kind
+// type switching (so a newly-added kind cannot silently bypass §8 —
+// missing Extensions() is a compile error).
+//
+// Returns nil when the source SKILL.md had only universal-core fields.
+func (s *Skill) Extensions() map[string]any { return s.extensions }
+
+// WithExtensions sets the extension map and returns the receiver for
+// chaining. Used by tests and translator code; drops Raw so the
+// Raw/extensions invariant on Skill is preserved (any future
+// byte-pass-through emit will go through the re-encode path).
+func (s *Skill) WithExtensions(m map[string]any) *Skill {
+	s.extensions = m
+	s.Raw = nil
+	return s
 }
 
 // ParseSkill parses SKILL.md bytes (YAML frontmatter delimited by `---`
@@ -55,10 +81,10 @@ func ParseSkill(raw []byte) (*Skill, error) {
 		case "license":
 			skill.License, _ = val.(string)
 		default:
-			if skill.Extensions == nil {
-				skill.Extensions = map[string]any{}
+			if skill.extensions == nil {
+				skill.extensions = map[string]any{}
 			}
-			skill.Extensions[key] = val
+			skill.extensions[key] = val
 		}
 	}
 	return skill, nil
