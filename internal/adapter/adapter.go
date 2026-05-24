@@ -78,9 +78,19 @@ type LossyReason struct {
 // schema after Plan returns, against the resource's Extensions and the
 // adapter's HostID. Keeping a plan.Lossy field invited adapters to
 // restate schema knowledge in code, which §8 explicitly supersedes.
+//
+// TargetDir is the directory the orchestrator may reclaim with a
+// single os.Remove on uninstall once empty. Adapters MUST leave it
+// empty for kinds whose files live in a shared dir (agents/, hooks/,
+// etc.) where dotpack does not own the directory. Skill installs set
+// it to <root>/skills/<name>/; agent installs leave it empty because
+// <root>/agents/ holds sibling agents and possibly user-authored
+// content. Persisted into manifest.Record.TargetDir for the symmetric
+// uninstall behaviour.
 type InstallPlan struct {
 	Files      []FileWrite
 	MergedKeys []MergedKeyWrite
+	TargetDir  string
 }
 
 // Adapter is the host-side abstraction per ADR-0016 §2. Implementations

@@ -30,6 +30,23 @@ type Resource interface {
 	Extensions() map[string]any
 }
 
+// Named is the optional interface for kinds whose identity is a `name:`
+// field in their canonical form (skill, agent, command). Kinds with
+// non-name identifiers (memory by filename + scope, mcp-server by the
+// outer JSON-object key) compose their identifier elsewhere and do not
+// implement Named — the orchestrator's buildRecord type-asserts and
+// will need an alternate ID-derivation path when those kinds land.
+//
+// The method is ResourceName, not Name, to avoid the Go field/method
+// name clash on existing struct fields named Name. Keeps construction
+// ergonomic (`&Skill{Name: "x"}` continues to work).
+type Named interface {
+	ResourceName() string
+}
+
 // Kind returns KindSkill so *Skill satisfies the Resource interface.
 // Extensions() lives in skill.go alongside its backing field.
 func (s *Skill) Kind() Kind { return KindSkill }
+
+// ResourceName returns the skill's name field (Named interface).
+func (s *Skill) ResourceName() string { return s.Name }

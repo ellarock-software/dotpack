@@ -1,6 +1,9 @@
 // Package claudecode is the claude-code Adapter implementation for
-// ADR-0016. Slice 1 supports skill only; agent / command / memory /
-// hook / mcp-server are added as their per-kind tests come online.
+// ADR-0016. Skill + agent are Native; command / memory / hook /
+// mcp-server are added as their per-kind work lands. Skills nest
+// under <root>/skills/<name>/SKILL.md (dotpack owns the per-name dir);
+// agents are flat <root>/agents/<name>.md (dotpack does not own the
+// shared agents/ dir).
 package claudecode
 
 import (
@@ -9,6 +12,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -42,12 +46,13 @@ func New(d dirs.Dirs) *Adapter {
 func (*Adapter) HostID() string { return hostID }
 
 // Capabilities returns the per-kind ratings from ADR-0007's matrix.
-// Slice 1 declares only skill; other kinds default to Unsupported
+// Skill + agent are Native; other kinds default to Unsupported
 // (zero-value of CapabilityLevel) and will be promoted as their
 // per-kind work lands.
 func (*Adapter) Capabilities() adapter.KindCapabilityMatrix {
 	return adapter.KindCapabilityMatrix{
 		resource.KindSkill: adapter.Native,
+		resource.KindAgent: adapter.Native,
 	}
 }
 
@@ -57,6 +62,8 @@ func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.Instal
 	switch v := r.(type) {
 	case *resource.Skill:
 		return a.planSkill(v, scope)
+	case *resource.Agent:
+		return a.planAgent(v, scope)
 	default:
 		return adapter.InstallPlan{}, fmt.Errorf("claude-code: kind %q not yet supported", r.Kind())
 	}
@@ -83,6 +90,11 @@ func (a *Adapter) planSkill(s *resource.Skill, scope adapter.Scope) (adapter.Ins
 			Content: content,
 			Mode:    fs.FileMode(0o644),
 		}},
+		// Skills own their per-name subdirectory: <root>/skills/<name>/
+		// holds SKILL.md plus optional scripts/, references/, assets/.
+		// orchestrator.Uninstall reclaims the dir with one os.Remove
+		// when it becomes empty.
+		TargetDir: filepath.Dir(target),
 	}, nil
 }
 
@@ -144,24 +156,154 @@ func encodeSkill(s *resource.Skill) ([]byte, error) {
 	return reencodeSkill(s)
 }
 
+// planAgent produces the install plan for one agent. Per ADR-0010 the
+// target is <root>/agents/<name>.md — a FLAT file in the agents/ dir,
+// NOT a per-name subdirectory (skills nest, agents don't). TargetDir
+// is intentionally empty: agents/ is a shared directory holding
+// sibling agents (other dotpack installs + user-authored agents)
+// which orchestrator.Uninstall must NOT reclaim.
+//
+// Always re-encodes, never byte-pass-through. The schema accepts tools
+// in two shapes (comma-separated string per Claude convention, YAML
+// array per Gemini convention) and ParseAgent normalises to []string.
+// Pass-through would ship the source's shape unchanged, which on a
+// Gemini-shaped source landing on claude-code is unverified to load
+// — install would succeed silently with no tools at runtime. Cost: one
+// kind loses ADR-0008's byte-pass-through guarantee. Trade: tools is
+// always in the host's preferred form.
+func (a *Adapter) planAgent(ag *resource.Agent, scope adapter.Scope) (adapter.InstallPlan, error) {
+	target, err := agentTarget(a.dirs, scope, ag.Name)
+	if err != nil {
+		return adapter.InstallPlan{}, err
+	}
+	content, err := reencodeAgent(ag)
+	if err != nil {
+		return adapter.InstallPlan{}, fmt.Errorf("claude-code: encode agent %q: %w", ag.Name, err)
+	}
+	return adapter.InstallPlan{
+		Files: []adapter.FileWrite{{
+			Path:    target,
+			Content: content,
+			Mode:    fs.FileMode(0o644),
+		}},
+		// TargetDir intentionally empty — agents/ is shared. See type
+		// docstring on adapter.InstallPlan.TargetDir.
+	}, nil
+}
+
+// agentTarget computes the on-disk path for an agent at the given scope.
+// Symmetric with skillTarget: user scope → ClaudeHome/agents/<name>.md;
+// project scope → ProjectHome/.claude/agents/<name>.md; both absolute.
+func agentTarget(d dirs.Dirs, scope adapter.Scope, name string) (string, error) {
+	switch scope {
+	case adapter.ScopeUser:
+		if d.ClaudeHome == "" {
+			return "", fmt.Errorf("claude-code: user scope requires dirs.ClaudeHome to be set")
+		}
+		return filepath.Join(d.ClaudeHome, "agents", name+".md"), nil
+	case adapter.ScopeProject:
+		if d.ProjectHome == "" {
+			return "", fmt.Errorf("claude-code: project scope requires dirs.ProjectHome to be set")
+		}
+		return filepath.Join(d.ProjectHome, ".claude", "agents", name+".md"), nil
+	default:
+		return "", fmt.Errorf("claude-code: unknown scope %q", scope)
+	}
+}
+
+// reencodeAgent emits the agent's frontmatter (name, description,
+// optional model, optional tools) and body. Tools is always written as
+// a comma-separated string (5/5 corpus presence; Claude's convention).
+// Retained extensions are sorted for deterministic output, same as
+// reencodeSkill — diffability and cache-key stability are universal
+// requirements of the re-encode path.
+func reencodeAgent(ag *resource.Agent) ([]byte, error) {
+	front := []*yaml.Node{}
+	var encodeErr error
+	addScalar := func(key string, val any) {
+		// Encode value FIRST. Appending the key before encoding leaves
+		// the front[] slice with a dangling key on encode failure, which
+		// the marshalled YAML would render as a malformed mapping if the
+		// encodeErr guard at the end ever gets bypassed. Pair atomicity
+		// here means the partial state can't escape regardless of what
+		// future code does at the return path.
+		valNode := &yaml.Node{}
+		if err := valNode.Encode(val); err != nil {
+			encodeErr = fmt.Errorf("encode key %q: %w", key, err)
+			return
+		}
+		front = append(front, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, valNode)
+	}
+
+	addScalar("name", ag.Name)
+	addScalar("description", ag.Description)
+	if ag.Model != "" {
+		addScalar("model", ag.Model)
+	}
+	if len(ag.Tools) > 0 {
+		addScalar("tools", strings.Join(ag.Tools, ", "))
+	}
+
+	if len(ag.Extensions()) > 0 {
+		sc, err := schema.Load(resource.KindAgent)
+		if err != nil {
+			return nil, fmt.Errorf("claude-code: schema unavailable for re-encode: %w", err)
+		}
+		keys := make([]string, 0, len(ag.Extensions()))
+		for k := range ag.Extensions() {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if !claudeKeeps(sc, k) {
+				continue
+			}
+			addScalar(k, ag.Extensions()[k])
+		}
+	}
+
+	if encodeErr != nil {
+		return nil, encodeErr
+	}
+
+	mapNode := yaml.Node{Kind: yaml.MappingNode, Content: front}
+	frontBytes, err := yaml.Marshal(&mapNode)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	buf.WriteString("---\n")
+	buf.Write(frontBytes)
+	buf.WriteString("---\n")
+	buf.WriteString(ag.Body)
+	return buf.Bytes(), nil
+}
+
 // canPassThrough reports whether emitting Raw bytes verbatim would
 // drop nothing of semantic value on claude-code. True iff every
 // extension key resolves (via the schema) to either a claude-code-
 // supported concept or pass-through metadata.
 //
-// Schema-load failure here is propagated to the caller, not swallowed
-// — see encodeSkill. The embedded YAML cannot fail in production, but
-// if it ever does, the install must fail loudly rather than silently
-// re-encoding with an unknown-to-us extension set.
-func canPassThrough(s *resource.Skill) (bool, error) {
-	if len(s.Extensions()) == 0 {
+// Generic over Resource: uses r.Kind() to select the schema and
+// r.Extensions() to enumerate keys. Kept here (rather than promoting
+// to the orchestrator) because the "should this be kept?" decision is
+// adapter-side — the orchestrator's §8 algorithm only answers "is this
+// lossy?" which is a complementary question with a different default.
+//
+// Schema-load failure here is propagated to the caller, not swallowed.
+// The embedded YAML cannot fail in production, but if it ever does,
+// the install must fail loudly rather than silently re-encoding with
+// an unknown-to-us extension set.
+func canPassThrough(r resource.Resource) (bool, error) {
+	ext := r.Extensions()
+	if len(ext) == 0 {
 		return true, nil
 	}
-	sc, err := schema.Load(resource.KindSkill)
+	sc, err := schema.Load(r.Kind())
 	if err != nil {
 		return false, err
 	}
-	for k := range s.Extensions() {
+	for k := range ext {
 		if !claudeKeeps(sc, k) {
 			return false, nil
 		}
@@ -194,16 +336,18 @@ func reencodeSkill(s *resource.Skill) ([]byte, error) {
 	front := []*yaml.Node{}
 	var encodeErr error
 	addScalar := func(key string, val any) {
-		front = append(front, &yaml.Node{Kind: yaml.ScalarNode, Value: key})
+		// Encode value FIRST, then append key+value as a pair. Appending
+		// the key before encoding leaves front[] with a dangling key on
+		// failure — a malformed mapping if the encodeErr guard ever gets
+		// bypassed. Fail loudly: a Sprintf fallback would silently emit
+		// non-YAML (e.g. Go's map[k:v] syntax) and break the file for
+		// any parser including Claude Code's loader.
 		valNode := &yaml.Node{}
 		if err := valNode.Encode(val); err != nil {
-			// Fail loudly: a Sprintf fallback would silently emit
-			// non-YAML (e.g. Go's map[k:v] syntax) and break the file
-			// for any parser including Claude Code's loader.
 			encodeErr = fmt.Errorf("encode key %q: %w", key, err)
 			return
 		}
-		front = append(front, valNode)
+		front = append(front, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, valNode)
 	}
 	addScalar("name", s.Name)
 	addScalar("description", s.Description)

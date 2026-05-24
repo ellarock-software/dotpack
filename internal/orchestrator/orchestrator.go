@@ -156,7 +156,10 @@ func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts In
 		return InstallResult{}, &LossyError{Host: o.adapter.HostID(), Reasons: reasons}
 	}
 
-	rec := buildRecord(o.adapter.HostID(), r, scope, plan, opts, o.now())
+	rec, err := buildRecord(o.adapter.HostID(), r, scope, plan, opts, o.now())
+	if err != nil {
+		return InstallResult{}, err
+	}
 
 	if !opts.Force {
 		collisions, err := preflightCollisions(o.manifest, rec.ID, plan.Files)
@@ -249,6 +252,32 @@ func (o *Orchestrator) Uninstall(id string) (UninstallResult, error) {
 		}
 	}
 	if !found {
+		// Helpful when the user composed the ID from short-name + flag
+		// defaults: list any records sharing the trailing short-name so
+		// "did you mean --kind agent?" is one glance away. Pre-agent
+		// this footgun didn't exist; once agent kind shipped, a default
+		// --kind=skill misroutes silently otherwise.
+		short := id
+		if i := strings.LastIndex(id, ":"); i >= 0 {
+			short = id[i+1:]
+		}
+		var hints []string
+		for _, r := range m.Installs {
+			if r.ID == id {
+				continue
+			}
+			rs := r.ID
+			if i := strings.LastIndex(rs, ":"); i >= 0 {
+				rs = rs[i+1:]
+			}
+			if rs == short {
+				hints = append(hints, r.ID)
+			}
+		}
+		if len(hints) > 0 {
+			return UninstallResult{}, fmt.Errorf("no install with ID %q; did you mean one of: %s",
+				id, strings.Join(hints, ", "))
+		}
 		return UninstallResult{}, fmt.Errorf("no install with ID %q", id)
 	}
 
@@ -386,18 +415,29 @@ func writeAtomic(fw adapter.FileWrite) error {
 
 // buildRecord composes a manifest.Record from the install context. ID
 // is host:kind:name, suitable as a uniqueness key within one host.
-func buildRecord(host string, r resource.Resource, scope adapter.Scope, plan adapter.InstallPlan, opts InstallOptions, when time.Time) manifest.Record {
-	name := resourceName(r)
+//
+// TargetDir comes from plan.TargetDir, NOT a filepath.Dir(plan.Files[0])
+// heuristic. The heuristic was skill-shaped: for nested layouts
+// (<root>/skills/<name>/SKILL.md) it correctly named the owned dir, but
+// for flat layouts (<root>/agents/<name>.md) it pointed at the SHARED
+// agents/ dir — uninstall would then try to reclaim a directory holding
+// sibling agents and user-authored content. Adapters now declare
+// TargetDir explicitly (empty = none owned), per the type docstring on
+// adapter.InstallPlan.TargetDir.
+//
+// Returns an error when the Resource has no ID-derivation path wired up
+// (see resourceName). The caller is Install, which propagates so the
+// CLI prints a useful message instead of a Go runtime panic backtrace.
+func buildRecord(host string, r resource.Resource, scope adapter.Scope, plan adapter.InstallPlan, opts InstallOptions, when time.Time) (manifest.Record, error) {
+	name, err := resourceName(r)
+	if err != nil {
+		return manifest.Record{}, err
+	}
 	files := make([]string, 0, len(plan.Files))
 	for _, f := range plan.Files {
 		files = append(files, f.Path)
 	}
 	sort.Strings(files)
-
-	var targetDir string
-	if len(plan.Files) > 0 {
-		targetDir = filepath.Dir(plan.Files[0].Path)
-	}
 
 	return manifest.Record{
 		ID:          fmt.Sprintf("%s:%s:%s", host, r.Kind(), name),
@@ -405,23 +445,30 @@ func buildRecord(host string, r resource.Resource, scope adapter.Scope, plan ada
 		Kind:        string(r.Kind()),
 		Agent:       host,
 		Scope:       string(scope),
-		TargetDir:   targetDir,
+		TargetDir:   plan.TargetDir,
 		Files:       files,
 		CacheKey:    cacheKey(plan),
 		InstalledAt: when.Format(time.RFC3339),
-	}
+	}, nil
 }
 
-// resourceName extracts the human-readable name field from a Resource.
-// Per-kind for now; a Named interface would generalise once a second
-// kind needs this.
-func resourceName(r resource.Resource) string {
-	switch v := r.(type) {
-	case *resource.Skill:
-		return v.Name
-	default:
-		return ""
+// resourceName extracts the human-readable name field from a Resource
+// via the resource.Named interface. Returns an error (not panic) when
+// the resource does not implement Named so the CLI can surface a
+// useful message rather than a Go stack trace.
+//
+// Kinds whose identity is NOT a name field (memory by filename + scope,
+// mcp-server by JSON-object key) will need an alternate ID-derivation
+// path in this function when they land — composing the ID from their
+// own typed fields rather than asserting Named.
+func resourceName(r resource.Resource) (string, error) {
+	n, ok := r.(resource.Named)
+	if !ok {
+		return "", fmt.Errorf("orchestrator: kind %q has no ID-derivation path; "+
+			"the resource type does not implement resource.Named and resourceName "+
+			"has no alternate branch wired up for this kind", r.Kind())
 	}
+	return n.ResourceName(), nil
 }
 
 // cacheKey hashes the install plan's file contents to give the manifest

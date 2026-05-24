@@ -111,15 +111,22 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 }
 
 // resolveKind picks the resource Kind from --kind (when set) or infers
-// from the source filename. Slice 1 supports skill only — other kinds
-// land as their parsers / validators / adapter paths come online.
+// from the source filename. skill + agent supported; the other four
+// kinds (command, memory, hook, mcp-server) land as their per-kind work
+// comes online. Inference only fires for skill (SKILL.md is the
+// canonical filename across all hosts); agent has no canonical filename
+// (<agent-name>.md collides with anything else), so explicit --kind
+// agent is required — inferring "any .md → agent" would treat a
+// mis-named SKILL.md as an agent.
 func resolveKind(explicit, sourcePath string) (resource.Kind, error) {
 	if explicit != "" {
 		switch resource.Kind(explicit) {
 		case resource.KindSkill:
 			return resource.KindSkill, nil
-		case resource.KindAgent, resource.KindCommand, resource.KindMemory, resource.KindHook, resource.KindMCPServer:
-			return "", fmt.Errorf("kind %q not yet supported in this slice (skill only)", explicit)
+		case resource.KindAgent:
+			return resource.KindAgent, nil
+		case resource.KindCommand, resource.KindMemory, resource.KindHook, resource.KindMCPServer:
+			return "", fmt.Errorf("kind %q not yet supported", explicit)
 		default:
 			return "", fmt.Errorf("unknown kind %q", explicit)
 		}
@@ -142,16 +149,32 @@ func loadResource(kind resource.Kind, source string) (resource.Resource, error) 
 			return nil, err
 		}
 		if errs := validator.ValidateSkill(skill); len(errs) > 0 {
-			msgs := make([]string, 0, len(errs))
-			for _, e := range errs {
-				msgs = append(msgs, e.Error())
-			}
-			return nil, fmt.Errorf("validation: %s", strings.Join(msgs, "; "))
+			return nil, validationError(errs)
 		}
 		return skill, nil
+	case resource.KindAgent:
+		agent, err := resource.ParseAgent(raw)
+		if err != nil {
+			return nil, err
+		}
+		if errs := validator.ValidateAgent(agent); len(errs) > 0 {
+			return nil, validationError(errs)
+		}
+		return agent, nil
 	default:
 		return nil, fmt.Errorf("kind %q not supported", kind)
 	}
+}
+
+// validationError formats a slice of validator errors as a single
+// "validation: <msg1>; <msg2>" error so the CLI surfaces all field
+// problems in one shot.
+func validationError(errs []validator.ValidationError) error {
+	msgs := make([]string, 0, len(errs))
+	for _, e := range errs {
+		msgs = append(msgs, e.Error())
+	}
+	return fmt.Errorf("validation: %s", strings.Join(msgs, "; "))
 }
 
 func buildAdapter(name string, d dirs.Dirs) (adapter.Adapter, error) {
