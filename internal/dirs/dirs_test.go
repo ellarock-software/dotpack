@@ -100,6 +100,81 @@ func TestFromEnv_ProjectHome_NonexistentEnvErrors(t *testing.T) {
 	}
 }
 
+func TestFromEnv_ClaudeHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
+	// Slice 3 hostile-review (#5): the relative-env fix on
+	// DOTPACK_PROJECT_HOME (commit 42ec230 #1) never propagated to its
+	// siblings. A relative DOTPACK_CLAUDE_HOME silently breaks across
+	// chdir — install writes to ./skills/foo, then `dotpack list` from
+	// a different CWD looks at a different path. Symmetric fix:
+	// filepath.Abs at FromEnv. Existence not required here (install
+	// MkdirAll's the tree on first use).
+	wantParent := t.TempDir()
+	rel := "claude-cfg"
+	t.Chdir(wantParent)
+	t.Setenv("DOTPACK_CLAUDE_HOME", rel)
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.ClaudeHome) {
+		t.Errorf("ClaudeHome must be absolute after FromEnv normalises env input; got %q", d.ClaudeHome)
+	}
+	wantAbs := filepath.Join(wantParent, rel)
+	if filepath.Clean(d.ClaudeHome) != filepath.Clean(wantAbs) {
+		t.Errorf("ClaudeHome: got %q, want %q (relative env resolved against CWD)", d.ClaudeHome, wantAbs)
+	}
+}
+
+func TestFromEnv_DotpackHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
+	// Same class as the ClaudeHome relative-env fix: a relative
+	// DOTPACK_DOTPACK_HOME silently breaks list/uninstall after chdir,
+	// because the manifest file path is composed at command-invocation
+	// time (not install time). Slice 3's `dotpack list` is the first
+	// caller where this actively bites.
+	wantParent := t.TempDir()
+	rel := "dotpack-state"
+	t.Chdir(wantParent)
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_DOTPACK_HOME", rel)
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.DotpackHome) {
+		t.Errorf("DotpackHome must be absolute after FromEnv normalises env input; got %q", d.DotpackHome)
+	}
+	wantAbs := filepath.Join(wantParent, rel)
+	if filepath.Clean(d.DotpackHome) != filepath.Clean(wantAbs) {
+		t.Errorf("DotpackHome: got %q, want %q (relative env resolved against CWD)", d.DotpackHome, wantAbs)
+	}
+}
+
+func TestFromEnv_ClaudeHome_NonexistentEnvDoesNotError(t *testing.T) {
+	// Unlike DOTPACK_PROJECT_HOME (which MUST exist — we read from it),
+	// ClaudeHome / DotpackHome are dotpack-managed write targets. Install
+	// MkdirAll's the tree on first use, so FromEnv must tolerate a path
+	// that doesn't exist yet — otherwise first-install on a fresh box
+	// fails with "no such file" before it ever gets to do the mkdir.
+	// Normalise to absolute, don't stat.
+	parent := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", filepath.Join(parent, "does-not-exist-yet"))
+	t.Setenv("DOTPACK_DOTPACK_HOME", filepath.Join(parent, "also-not-yet"))
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.ClaudeHome) {
+		t.Errorf("ClaudeHome must be absolute; got %q", d.ClaudeHome)
+	}
+	if !filepath.IsAbs(d.DotpackHome) {
+		t.Errorf("DotpackHome must be absolute; got %q", d.DotpackHome)
+	}
+}
+
 func TestFromEnv_ProjectHome_FileInsteadOfDirErrors(t *testing.T) {
 	// Hostile-review #4 (partner case): if the path EXISTS but is a
 	// regular file (not a directory), FromEnv must still refuse rather

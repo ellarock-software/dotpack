@@ -1,7 +1,7 @@
 // Package manifest persists install provenance to ~/.dotpack/installs.yaml,
 // the source of truth for uninstall / list / reconcile per ADR-0008.
-// Slice 1 supports Load + Upsert; remove and reconcile arrive when their
-// CLI subcommands do.
+// Load + Upsert + Remove ship with their CLI subcommands (install /
+// uninstall / list); reconcile lands when its slice does.
 package manifest
 
 import (
@@ -101,6 +101,38 @@ func (s *Store) Upsert(rec Record) error {
 	}
 	m.Installs = append(m.Installs, rec)
 	return s.save(m)
+}
+
+// Remove loads the current manifest, deletes the record whose ID matches
+// id (preserving the slot order of the surviving records), and writes
+// the result back atomically. The manifest file itself is not deleted
+// even when its Installs slice becomes empty — subsequent Load calls
+// see an empty manifest cleanly rather than the "missing file" fallback.
+//
+// Errors loudly when id is not present: the CLI surfaces this as
+// "no such install" so typos and concurrent uninstalls are visible
+// rather than silently no-ops. Empty ID is rejected for the same
+// reason Upsert rejects it (symmetry against any future code path
+// that produces an empty ID — manifest must not address rows by "").
+//
+// Concurrency: NOT process-safe, same caveat as Upsert. Two concurrent
+// `dotpack uninstall` invocations can lose work; file-lock is a slice-3
+// concern when the feature surfaces.
+func (s *Store) Remove(id string) error {
+	if id == "" {
+		return fmt.Errorf("manifest: Remove with empty ID is rejected (would address unidentifiable records)")
+	}
+	m, err := s.Load()
+	if err != nil {
+		return err
+	}
+	for i := range m.Installs {
+		if m.Installs[i].ID == id {
+			m.Installs = append(m.Installs[:i], m.Installs[i+1:]...)
+			return s.save(m)
+		}
+	}
+	return fmt.Errorf("manifest: no install with ID %q", id)
 }
 
 // save serialises m and writes it atomically over s.path.

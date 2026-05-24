@@ -142,6 +142,276 @@ func TestInstall_InfersSkillKindFromFilename(t *testing.T) {
 	}
 }
 
+func TestUninstall_EndToEnd_RemovesFileAndManifestRecord(t *testing.T) {
+	// Slice 3 #5 happy path via the CLI: install → uninstall by full
+	// ID → SKILL.md gone, install record gone. Mirrors install's
+	// end-to-end test in shape.
+	claudeHome := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+
+	install := NewRootCmd()
+	install.SetOut(io_DiscardWriter())
+	install.SetErr(io_DiscardWriter())
+	install.SetArgs([]string{"install", src, "--agent", "claude-code", "--scope", "user"})
+	if err := install.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	installedFile := filepath.Join(claudeHome, "skills", "dotpack-tracer-bullet", "SKILL.md")
+	if _, err := os.Stat(installedFile); err != nil {
+		t.Fatalf("pre-condition: installed file missing: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	uninstall := NewRootCmd()
+	uninstall.SetOut(&stdout)
+	uninstall.SetErr(&stdout)
+	uninstall.SetArgs([]string{"uninstall", "claude-code:skill:dotpack-tracer-bullet"})
+	if err := uninstall.Execute(); err != nil {
+		t.Fatalf("uninstall: %v\n%s", err, stdout.String())
+	}
+
+	if _, err := os.Stat(installedFile); !os.IsNotExist(err) {
+		t.Errorf("file should be gone after uninstall; stat: %v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "Uninstalled claude-code:skill:dotpack-tracer-bullet") {
+		t.Errorf("expected success message naming the install; got %q", got)
+	}
+	if !strings.Contains(got, installedFile) {
+		t.Errorf("uninstall output should list the removed path %q; got %q", installedFile, got)
+	}
+}
+
+func TestUninstall_ByName_DefaultsAgentAndKind(t *testing.T) {
+	// Ergonomic shortcut: `dotpack uninstall <name>` composes
+	// `<agent>:<kind>:<name>` from the --agent / --kind defaults so the
+	// user doesn't have to type the full ID. Mirrors `dotpack install
+	// SKILL.md` defaulting --agent=claude-code and inferring --kind=skill.
+	claudeHome := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+
+	install := NewRootCmd()
+	install.SetOut(io_DiscardWriter())
+	install.SetErr(io_DiscardWriter())
+	install.SetArgs([]string{"install", src})
+	if err := install.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	uninstall := NewRootCmd()
+	uninstall.SetOut(io_DiscardWriter())
+	uninstall.SetErr(io_DiscardWriter())
+	uninstall.SetArgs([]string{"uninstall", "dotpack-tracer-bullet", "--kind", "skill"})
+	if err := uninstall.Execute(); err != nil {
+		t.Fatalf("uninstall by short name: %v", err)
+	}
+
+	target := filepath.Join(claudeHome, "skills", "dotpack-tracer-bullet", "SKILL.md")
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Errorf("file should be gone after short-name uninstall; stat: %v", err)
+	}
+}
+
+func TestUninstall_FullIDBypassesAgentFlag(t *testing.T) {
+	// Hostile-review #1: resolveUninstallID's docstring promises that a
+	// handle containing ":" is treated as a full ID verbatim — the user
+	// is being explicit, so a typo'd or skewed --agent flag must not
+	// silently reshape the lookup. But runUninstall used to call
+	// buildAdapter(agentName) unconditionally, which errored on any
+	// --agent value that isn't claude-code regardless of what's in the
+	// ID. Once #7 (gemini adapter) lands this would break copy-paste-
+	// the-ID workflows on day one. The fix: when the handle is a full
+	// ID, the host segment IS the source of truth — --agent is ignored.
+	claudeHome := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+
+	install := NewRootCmd()
+	install.SetOut(io_DiscardWriter())
+	install.SetErr(io_DiscardWriter())
+	install.SetArgs([]string{"install", src})
+	if err := install.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	uninstall := NewRootCmd()
+	uninstall.SetOut(io_DiscardWriter())
+	uninstall.SetErr(io_DiscardWriter())
+	// --agent set to a value the install command would refuse, but the
+	// handle is a full ID — uninstall MUST honour the ID and ignore
+	// --agent. Otherwise pasting an ID with a non-default host fails.
+	uninstall.SetArgs([]string{"uninstall", "claude-code:skill:dotpack-tracer-bullet", "--agent", "gemini"})
+	if err := uninstall.Execute(); err != nil {
+		t.Fatalf("uninstall by full ID with mismatched --agent should succeed; got %v", err)
+	}
+
+	target := filepath.Join(claudeHome, "skills", "dotpack-tracer-bullet", "SKILL.md")
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Errorf("file should be gone after full-ID uninstall; stat: %v", err)
+	}
+}
+
+func TestUninstall_OutputDistinguishesRemovedFromMissing(t *testing.T) {
+	// Hostile-review #3: the CLI used to print "removed X" for every
+	// path in rec.Files, even when X was already missing — silently
+	// lying about what dotpack actually did. The honest output:
+	//   - "removed <path>" for files dotpack deleted
+	//   - "skipped <path> (already gone)" for files that were missing
+	//   - "removed directory <targetDir>" / "kept directory <td> (not empty)"
+	claudeHome := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+
+	install := NewRootCmd()
+	install.SetOut(io_DiscardWriter())
+	install.SetErr(io_DiscardWriter())
+	install.SetArgs([]string{"install", src})
+	if err := install.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	installedFile := filepath.Join(claudeHome, "skills", "dotpack-tracer-bullet", "SKILL.md")
+	// Delete the installed file behind dotpack's back to exercise the
+	// "missing" branch.
+	if err := os.Remove(installedFile); err != nil {
+		t.Fatalf("setup remove file: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	uninstall := NewRootCmd()
+	uninstall.SetOut(&stdout)
+	uninstall.SetErr(&stdout)
+	uninstall.SetArgs([]string{"uninstall", "dotpack-tracer-bullet"})
+	if err := uninstall.Execute(); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	got := stdout.String()
+	if strings.Contains(got, "removed "+installedFile) {
+		t.Errorf("output should NOT claim 'removed' for a file that was already gone; got %q", got)
+	}
+	if !strings.Contains(got, "skipped "+installedFile+" (already gone)") {
+		t.Errorf("output should show 'skipped (already gone)' for the missing file; got %q", got)
+	}
+}
+
+func TestUninstall_OutputReportsKeptDirectoryWhenNotEmpty(t *testing.T) {
+	// Companion to TargetDirRemoved: when a sibling file kept the dir
+	// non-empty, the CLI must say so rather than silently leaving the
+	// dir on disk with no indication.
+	claudeHome := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+
+	install := NewRootCmd()
+	install.SetOut(io_DiscardWriter())
+	install.SetErr(io_DiscardWriter())
+	install.SetArgs([]string{"install", src})
+	if err := install.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	targetDir := filepath.Join(claudeHome, "skills", "dotpack-tracer-bullet")
+	if err := os.WriteFile(filepath.Join(targetDir, "NOTES.md"), []byte("user"), 0o644); err != nil {
+		t.Fatalf("setup stray: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	uninstall := NewRootCmd()
+	uninstall.SetOut(&stdout)
+	uninstall.SetErr(&stdout)
+	uninstall.SetArgs([]string{"uninstall", "dotpack-tracer-bullet"})
+	if err := uninstall.Execute(); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "kept directory "+targetDir+" (not empty)") {
+		t.Errorf("expected 'kept directory ... (not empty)'; got %q", got)
+	}
+}
+
+func TestUninstall_UnknownID_Errors(t *testing.T) {
+	// Loud error when the user asks to uninstall something that isn't
+	// in the manifest — exit non-zero with a message naming the
+	// missing ID. Silent "ok, did nothing" would mask typos.
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	cmd := NewRootCmd()
+	cmd.SetOut(io_DiscardWriter())
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{"uninstall", "claude-code:skill:nope"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown ID, got nil")
+	}
+	if !strings.Contains(err.Error(), "nope") {
+		t.Errorf("error should name the missing ID; got %v", err)
+	}
+}
+
+func TestList_NoInstalls_RendersEmpty(t *testing.T) {
+	// Fresh system: manifest doesn't exist yet. `dotpack list` prints
+	// a friendly empty marker rather than erroring.
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"list"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list on empty: %v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(strings.ToLower(got), "no installs") {
+		t.Errorf("expected 'no installs' marker; got %q", got)
+	}
+}
+
+func TestList_AfterInstall_ShowsRecord(t *testing.T) {
+	// One install → one line in list. Output includes the full ID (the
+	// unambiguous uninstall handle, per advisor #5) and the scope.
+	claudeHome := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+
+	install := NewRootCmd()
+	install.SetOut(io_DiscardWriter())
+	install.SetErr(io_DiscardWriter())
+	install.SetArgs([]string{"install", src})
+	if err := install.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	list := NewRootCmd()
+	list.SetOut(&stdout)
+	list.SetErr(&stdout)
+	list.SetArgs([]string{"list"})
+	if err := list.Execute(); err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{"claude-code:skill:dotpack-tracer-bullet", "user"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("list output missing %q; full output:\n%s", want, got)
+		}
+	}
+}
+
 // io_DiscardWriter is a tiny helper to silence cobra output in tests
 // that only check the error. Avoids pulling in io.Discard imports.
 type discardWriter struct{}

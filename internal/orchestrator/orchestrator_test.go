@@ -360,6 +360,346 @@ func TestCollisionError_Error_RendersPathsAndForceHint(t *testing.T) {
 	}
 }
 
+func TestUninstall_RemovesFilesAndManifestRecord(t *testing.T) {
+	// Slice 3 #5 happy path: Install → Uninstall by record ID. After
+	// Uninstall, the on-disk file is gone, its parent (TargetDir) is
+	// gone, and the manifest record is gone. Mirrors install's
+	// happy-path test in shape so the symmetry is obvious.
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	a := claudecode.New(d)
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, a, mf)
+
+	skill := &resource.Skill{Name: "remove-me", Description: "d", Body: "b\n"}
+	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	filePath := installed.Plan.Files[0].Path
+	targetDir := installed.Record.TargetDir
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("pre-condition: installed file missing: %v", err)
+	}
+
+	res, err := orch.Uninstall(installed.Record.ID)
+	if err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if res.Record.ID != installed.Record.ID {
+		t.Errorf("UninstallResult.Record.ID: got %q, want %q", res.Record.ID, installed.Record.ID)
+	}
+	if len(res.RemovedPaths) != 1 || res.RemovedPaths[0] != filePath {
+		t.Errorf("UninstallResult.RemovedPaths: got %v, want [%q]", res.RemovedPaths, filePath)
+	}
+
+	if _, err := os.Stat(filePath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("installed file should be gone; stat err: %v", err)
+	}
+	if _, err := os.Stat(targetDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("TargetDir should be removed when empty after uninstall; stat err: %v", err)
+	}
+
+	m, err := mf.Load()
+	if err != nil {
+		t.Fatalf("Load manifest: %v", err)
+	}
+	if len(m.Installs) != 0 {
+		t.Errorf("manifest len after uninstall: got %d, want 0", len(m.Installs))
+	}
+}
+
+func TestUninstall_NoSuchID_Errors(t *testing.T) {
+	// Uninstalling an ID the manifest doesn't know is a loud error —
+	// the user expects feedback that the typo / wrong scope / already-
+	// uninstalled state was noticed. Silent no-op hides bugs.
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	a := claudecode.New(d)
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, a, mf)
+
+	_, err := orch.Uninstall("claude-code:skill:never-installed")
+	if err == nil {
+		t.Fatal("expected error on unknown ID, got nil")
+	}
+	if !strings.Contains(err.Error(), "never-installed") {
+		t.Errorf("error should name the missing install; got %v", err)
+	}
+}
+
+func TestUninstall_MissingFile_NotAnError(t *testing.T) {
+	// Idempotency / partial-uninstall recovery: if a prior uninstall
+	// crashed after removing the file but before updating the manifest,
+	// the user MUST be able to re-run uninstall to finish the job.
+	// Likewise if the user deleted the file by hand, uninstall should
+	// still clear the manifest record.
+	//
+	// Output honesty (hostile-review #3 of slice 3): the missing path
+	// is reported under MissingPaths — NOT RemovedPaths — so the CLI
+	// can render "skipped (already gone)" rather than dishonestly
+	// claiming dotpack removed something that wasn't there.
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	a := claudecode.New(d)
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, a, mf)
+
+	skill := &resource.Skill{Name: "vanished", Description: "d", Body: "b"}
+	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	gonePath := installed.Plan.Files[0].Path
+	if err := os.Remove(gonePath); err != nil {
+		t.Fatalf("setup: remove installed file: %v", err)
+	}
+
+	res, err := orch.Uninstall(installed.Record.ID)
+	if err != nil {
+		t.Fatalf("Uninstall over already-missing file: %v", err)
+	}
+	if len(res.RemovedPaths) != 0 {
+		t.Errorf("RemovedPaths should be empty when the file was already gone; got %v", res.RemovedPaths)
+	}
+	if len(res.MissingPaths) != 1 || res.MissingPaths[0] != gonePath {
+		t.Errorf("MissingPaths should list the already-gone path; got %v", res.MissingPaths)
+	}
+	m, err := mf.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(m.Installs) != 0 {
+		t.Errorf("manifest should be empty after uninstall; got %d records", len(m.Installs))
+	}
+}
+
+func TestUninstall_HappyPath_TracksRemovedPathsAndTargetDirRemoved(t *testing.T) {
+	// Output-honesty companion to TestUninstall_RemovesFilesAndManifestRecord:
+	// pins the per-path outcome bookkeeping. Happy path → RemovedPaths
+	// lists the file, MissingPaths is empty, TargetDirRemoved is true
+	// (the dir was empty after the file went, so os.Remove succeeded).
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	a := claudecode.New(d)
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, a, mf)
+
+	skill := &resource.Skill{Name: "happy", Description: "d", Body: "b\n"}
+	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	res, err := orch.Uninstall(installed.Record.ID)
+	if err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if len(res.RemovedPaths) != 1 || res.RemovedPaths[0] != installed.Plan.Files[0].Path {
+		t.Errorf("RemovedPaths: got %v, want [%q]", res.RemovedPaths, installed.Plan.Files[0].Path)
+	}
+	if len(res.MissingPaths) != 0 {
+		t.Errorf("MissingPaths should be empty on the happy path; got %v", res.MissingPaths)
+	}
+	if !res.TargetDirRemoved {
+		t.Error("TargetDirRemoved should be true when the empty parent was cleaned up")
+	}
+}
+
+func TestUninstall_TargetDirKept_WhenSiblingFileSurvives(t *testing.T) {
+	// Output-honesty companion to TestUninstall_DoesNotRemoveTargetDirWithUnrelatedFile:
+	// pins TargetDirRemoved=false when a sibling file kept the dir
+	// non-empty. CLI surfaces this so the user knows the dir is still
+	// on disk and why.
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	a := claudecode.New(d)
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, a, mf)
+
+	skill := &resource.Skill{Name: "shared", Description: "d", Body: "b"}
+	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	stray := filepath.Join(installed.Record.TargetDir, "NOTES.md")
+	if err := os.WriteFile(stray, []byte("note"), 0o644); err != nil {
+		t.Fatalf("setup WriteFile: %v", err)
+	}
+
+	res, err := orch.Uninstall(installed.Record.ID)
+	if err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if res.TargetDirRemoved {
+		t.Error("TargetDirRemoved should be false when a sibling file blocks the cleanup")
+	}
+}
+
+func TestUninstall_DoesNotRemoveTargetDirWithUnrelatedFile(t *testing.T) {
+	// Advisor #2: empty-dir cleanup is os.Remove(TargetDir) once, NOT
+	// RemoveAll. If the user dropped a sibling file in the same target
+	// dir (a README.md beside SKILL.md, or a custom file added under
+	// the install path), uninstall must NOT touch it. os.Remove fails
+	// on non-empty (ENOTEMPTY) — we swallow that. The directory must
+	// remain.
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	a := claudecode.New(d)
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, a, mf)
+
+	skill := &resource.Skill{Name: "shared-dir", Description: "d", Body: "b"}
+	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	stray := filepath.Join(installed.Record.TargetDir, "README.md")
+	if err := os.WriteFile(stray, []byte("user note"), 0o644); err != nil {
+		t.Fatalf("setup: WriteFile stray: %v", err)
+	}
+
+	if _, err := orch.Uninstall(installed.Record.ID); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+
+	if _, err := os.Stat(stray); err != nil {
+		t.Errorf("stray file should survive uninstall; stat: %v", err)
+	}
+	if _, err := os.Stat(installed.Record.TargetDir); err != nil {
+		t.Errorf("non-empty TargetDir should survive uninstall; stat: %v", err)
+	}
+}
+
+func TestUninstall_ProjectScope_CrossCWD(t *testing.T) {
+	// Slice 2 #2 motivation pinned: the whole point of absolute paths
+	// in the manifest is that uninstall from a DIFFERENT CWD resolves
+	// the right files. Install with ProjectHome=X, then chdir to a
+	// new CWD before calling Uninstall — must still find and remove
+	// the file rooted at X.
+	projectHome := t.TempDir()
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir(), ProjectHome: projectHome}
+	a := claudecode.New(d)
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, a, mf)
+
+	skill := &resource.Skill{Name: "cross-cwd", Description: "d", Body: "b"}
+	installed, err := orch.Install(skill, adapter.ScopeProject, orchestrator.InstallOptions{Source: "f"})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	expectedPath := installed.Plan.Files[0].Path
+	if !filepath.IsAbs(expectedPath) {
+		t.Fatalf("pre-condition: project-scope path must be absolute; got %q", expectedPath)
+	}
+
+	// Simulate `cd` to an unrelated dir. Uninstall must resolve the
+	// absolute path from the manifest, not from CWD.
+	cwdSaver, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwdSaver) })
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+
+	if _, err := orch.Uninstall(installed.Record.ID); err != nil {
+		t.Fatalf("Uninstall from different CWD: %v", err)
+	}
+	if _, err := os.Stat(expectedPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("file at absolute manifest path should be removed; stat: %v", err)
+	}
+}
+
+func TestList_ReturnsManifestRecordsInOrder(t *testing.T) {
+	// List is a thin wrapper around manifest.Load — its contract is
+	// "return the records in slot order". Install A, B, C → List
+	// returns [A, B, C] in that order. The CLI is responsible for
+	// formatting; the orchestrator returns raw records.
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	a := claudecode.New(d)
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, a, mf)
+
+	for _, name := range []string{"alpha", "bravo", "charlie"} {
+		skill := &resource.Skill{Name: name, Description: "d", Body: "b"}
+		if _, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"}); err != nil {
+			t.Fatalf("Install %q: %v", name, err)
+		}
+	}
+
+	got, err := orch.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("List len: got %d, want 3", len(got))
+	}
+	for i, want := range []string{"alpha", "bravo", "charlie"} {
+		wantID := "claude-code:skill:" + want
+		if got[i].ID != wantID {
+			t.Errorf("List[%d].ID: got %q, want %q", i, got[i].ID, wantID)
+		}
+	}
+}
+
+func TestList_NilAdapter_OK(t *testing.T) {
+	// Hostile-review #4 of slice 3: List doesn't touch the adapter,
+	// so the CLI's `dotpack list` constructs the orchestrator with
+	// adapter=nil. Pin this contract so a future change that adds
+	// adapter traversal to List fails loudly here rather than silently
+	// nil-derefing when a user runs `dotpack list` in production.
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, nil, mf)
+
+	got, err := orch.List()
+	if err != nil {
+		t.Fatalf("List with nil adapter: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("List: got %d, want 0", len(got))
+	}
+}
+
+func TestUninstall_NilAdapter_OK(t *testing.T) {
+	// Same contract as TestList_NilAdapter_OK: Uninstall must NOT
+	// traverse the adapter (the manifest carries absolute paths;
+	// host identity is encoded in the ID). The CLI's `dotpack uninstall`
+	// constructs the orchestrator with adapter=nil so a full-ID handle
+	// can target a host the local --agent flag doesn't recognise.
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+
+	// Seed a record via a real adapter so the manifest has something
+	// to uninstall, then re-construct the orchestrator with nil adapter
+	// for the uninstall call.
+	seed := orchestrator.New(d, claudecode.New(d), mf)
+	skill := &resource.Skill{Name: "no-adapter", Description: "d", Body: "b"}
+	installed, err := seed.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
+	if err != nil {
+		t.Fatalf("seed Install: %v", err)
+	}
+
+	orch := orchestrator.New(d, nil, mf)
+	if _, err := orch.Uninstall(installed.Record.ID); err != nil {
+		t.Fatalf("Uninstall with nil adapter: %v", err)
+	}
+}
+
+func TestList_EmptyManifest_ReturnsEmpty(t *testing.T) {
+	// No installs yet (or manifest file absent) → List returns an empty
+	// slice, NOT an error. The CLI prints "no installs" or similar.
+	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
+	a := claudecode.New(d)
+	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+	orch := orchestrator.New(d, a, mf)
+
+	got, err := orch.List()
+	if err != nil {
+		t.Fatalf("List on empty manifest: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("List on empty manifest: got %d, want 0", len(got))
+	}
+}
+
 func TestInstall_NativeExtensionOnClaudeCode_NotLossy_BytesPreserved(t *testing.T) {
 	// ADR-0016 §8 + schema/skill.yaml: `allowed-tools` is one alias of
 	// canonical_concept `claude_skill_runtime_overrides` with host

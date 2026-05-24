@@ -12,5 +12,7 @@ func NewRootCmd() *cobra.Command {
 	}
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newInstallCmd())
+	root.AddCommand(newUninstallCmd())
+	root.AddCommand(newListCmd())
 	return root
 }

@@ -39,15 +39,32 @@ type Dirs struct {
 // with PATH-like things). Returns an error if HOME cannot be resolved AND
 // no overrides are set.
 //
-// ProjectHome rules (slice 2 task #2 hardening, post hostile-review):
-//   - DOTPACK_PROJECT_HOME, when set, is normalised to an absolute path
-//     (filepath.Abs against CWD) and MUST exist as a directory. Relative
-//     or nonexistent values silently defeated the "manifest paths are
-//     absolute" invariant when accepted verbatim.
-//   - When unset, falls back to os.Getwd(). Getwd failure is tolerated
-//     here (ProjectHome left empty) so user-scope installs from a
-//     deleted CWD still succeed; ScopeProject installs error at the
-//     adapter when they actually need the value.
+// All three env vars, when set, are normalised to absolute paths
+// (filepath.Abs against CWD at FromEnv time). A relative env value
+// silently breaks across chdir — install would write into one tree,
+// `dotpack list` from a different CWD would look at a different tree.
+// Slice 2 task #2 fixed this for DOTPACK_PROJECT_HOME (commit 42ec230);
+// slice 3 task #5 extends it to ClaudeHome / DotpackHome, where `list`
+// and `uninstall` are the first features to actively bite the relative
+// case (slice 1's install ran once per CWD-session, so the bug stayed
+// latent).
+//
+// Existence rules diverge by role:
+//   - DOTPACK_PROJECT_HOME MUST exist as a directory — we READ from it
+//     (project-scope installs are anchored there). Relative or
+//     nonexistent values silently defeated the "manifest paths are
+//     absolute" invariant when accepted verbatim. CWD-fallback path is
+//     exempt: Getwd by definition returns an existing directory.
+//   - DOTPACK_CLAUDE_HOME / DOTPACK_DOTPACK_HOME are dotpack-managed
+//     WRITE targets; install MkdirAll's their trees on first use, so
+//     FromEnv must tolerate a not-yet-existing path. Normalise to
+//     absolute, do not stat.
+//
+// ProjectHome CWD fallback (hostile-review #5 from 42ec230): when unset,
+// falls back to os.Getwd(). Getwd failure is tolerated here (ProjectHome
+// left empty) so user-scope installs from a deleted CWD still succeed;
+// ScopeProject installs error at the adapter when they actually need
+// the value.
 func FromEnv() (Dirs, error) {
 	d := Dirs{
 		ClaudeHome:  os.Getenv("DOTPACK_CLAUDE_HOME"),
@@ -66,6 +83,19 @@ func FromEnv() (Dirs, error) {
 		if d.DotpackHome == "" {
 			d.DotpackHome = filepath.Join(home, ".dotpack")
 		}
+	}
+
+	// Normalise write-target env vars to absolute. No existence
+	// requirement — install creates these on first use.
+	if abs, err := filepath.Abs(d.ClaudeHome); err == nil {
+		d.ClaudeHome = abs
+	} else {
+		return Dirs{}, fmt.Errorf("DOTPACK_CLAUDE_HOME=%q: resolve abs: %w", d.ClaudeHome, err)
+	}
+	if abs, err := filepath.Abs(d.DotpackHome); err == nil {
+		d.DotpackHome = abs
+	} else {
+		return Dirs{}, fmt.Errorf("DOTPACK_DOTPACK_HOME=%q: resolve abs: %w", d.DotpackHome, err)
 	}
 
 	if d.ProjectHome != "" {

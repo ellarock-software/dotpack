@@ -33,7 +33,16 @@ type Orchestrator struct {
 	now      func() time.Time // injected for deterministic tests if needed
 }
 
-// New constructs an Orchestrator.
+// New constructs an Orchestrator. The Adapter may be nil for read-only
+// operations (List, Uninstall) — the manifest carries absolute paths
+// and the host identity is encoded in the ID, so neither call traverses
+// the adapter. Install / re-install paths DO require a non-nil adapter;
+// passing nil there will panic at the adapter.Plan call site.
+//
+// The List and Uninstall test cases pin this contract
+// (TestList_NilAdapter_OK, TestUninstall_NilAdapter_OK) so a future
+// change that adds adapter traversal to either path fails loudly
+// rather than silently nil-derefing in production.
 func New(d dirs.Dirs, a adapter.Adapter, m *manifest.Store) *Orchestrator {
 	return &Orchestrator{dirs: d, adapter: a, manifest: m, now: func() time.Time { return time.Now().UTC() }}
 }
@@ -162,8 +171,9 @@ func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts In
 	// Partial-write orphan handling deferred: if file K of N fails
 	// mid-loop, files 1..K-1 are on disk with no manifest record.
 	// Pre-flight on re-install will (correctly) flag them as collisions
-	// so the user can recover via --force, but actively cleaning up
-	// the orphans here is #5's job (uninstall semantics).
+	// so the user can recover via --force. Uninstall (#5) does NOT
+	// close this gap — there's no ID to look up for record-less files.
+	// A future `dotpack prune` / `reconcile` subcommand is the owner.
 	for _, fw := range plan.Files {
 		if err := writeAtomic(fw); err != nil {
 			return InstallResult{}, fmt.Errorf("apply file %s: %w", fw.Path, err)
@@ -175,6 +185,119 @@ func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts In
 	}
 
 	return InstallResult{Plan: plan, Record: rec, LossyReasons: reasons}, nil
+}
+
+// UninstallResult is what Uninstall returns on success. Per-path
+// outcome is tracked truthfully (hostile-review #3 of slice 3 — the
+// CLI used to print "removed X" even when X was already gone, which
+// lied to the user about what dotpack actually did):
+//
+//   - RemovedPaths: files the orchestrator actually deleted from disk.
+//   - MissingPaths: files the manifest knew about but were already
+//     gone at uninstall time (manual rm, prior crashed uninstall, etc.)
+//     — reported so the CLI can render "skipped (already gone)".
+//   - TargetDirRemoved: true when the install's TargetDir was cleaned
+//     up because it became empty; false when a sibling file kept it
+//     non-empty (or it was empty in the record, etc.) so the CLI can
+//     say "kept directory <path>".
+type UninstallResult struct {
+	Record           manifest.Record
+	RemovedPaths     []string
+	MissingPaths     []string
+	TargetDirRemoved bool
+}
+
+// Uninstall is the inverse of Install: remove the files this install
+// owns from disk, drop any TargetDir that became empty as a result,
+// and remove the manifest record. Lookup is by ID (host:kind:name).
+//
+// Ordering: filesystem first, then manifest. A crash between the two
+// leaves files gone with the record still present — a subsequent
+// `dotpack uninstall <id>` is then a clean idempotent retry over the
+// missing files (os.Remove returns fs.ErrNotExist, which we treat as
+// "already done"). The reverse order would orphan files with no
+// manifest handle, which `dotpack uninstall` could not address.
+//
+// Empty-dir cleanup boundary (advisor #2): we call os.Remove on
+// rec.TargetDir exactly once. Non-empty → ENOTEMPTY → silently
+// preserved. Never walk up past TargetDir; never RemoveAll. The user's
+// sibling files (README.md beside SKILL.md, etc.) survive.
+//
+// Drift on uninstall is intentional (advisor #6): if the user edited
+// the on-disk bytes, uninstall still removes the file. Intent is clear
+// from "uninstall"; this is not symmetric with install's collision
+// protection.
+//
+// Orphan cleanup gap (advisor #4 + writeAtomic TODO): a partial
+// install (file K of N written, then crash before manifest.Upsert)
+// leaves files with no record. Uninstall-by-ID can NOT clean those up
+// — there's no ID to look up. A future `dotpack prune` or `reconcile`
+// subcommand is the owner. The TODO comment at the install loop has
+// been updated to reflect that #5 does NOT close this gap.
+func (o *Orchestrator) Uninstall(id string) (UninstallResult, error) {
+	m, err := o.manifest.Load()
+	if err != nil {
+		return UninstallResult{}, fmt.Errorf("load manifest: %w", err)
+	}
+	var rec manifest.Record
+	found := false
+	for _, r := range m.Installs {
+		if r.ID == id {
+			rec = r
+			found = true
+			break
+		}
+	}
+	if !found {
+		return UninstallResult{}, fmt.Errorf("no install with ID %q", id)
+	}
+
+	var removed, missing []string
+	for _, p := range rec.Files {
+		err := os.Remove(p)
+		switch {
+		case err == nil:
+			removed = append(removed, p)
+		case os.IsNotExist(err):
+			missing = append(missing, p)
+		default:
+			return UninstallResult{}, fmt.Errorf("remove %s: %w", p, err)
+		}
+	}
+
+	// Best-effort empty-dir cleanup. ENOTEMPTY → silently preserved
+	// (user has sibling files we don't own). Any other error (perm,
+	// etc.) is also tolerated — but we report dirRemoved=false so the
+	// CLI doesn't lie about whether dotpack cleaned the dir up.
+	dirRemoved := false
+	if rec.TargetDir != "" {
+		if err := os.Remove(rec.TargetDir); err == nil {
+			dirRemoved = true
+		}
+	}
+
+	if err := o.manifest.Remove(id); err != nil {
+		return UninstallResult{}, fmt.Errorf("remove manifest record: %w", err)
+	}
+
+	return UninstallResult{
+		Record:           rec,
+		RemovedPaths:     removed,
+		MissingPaths:     missing,
+		TargetDirRemoved: dirRemoved,
+	}, nil
+}
+
+// List returns the manifest records in slot order. Thin wrapper around
+// manifest.Store.Load — formatting is the CLI's concern. Missing
+// manifest file → empty slice, not an error (slice 1 contract: a fresh
+// system has no installs yet).
+func (o *Orchestrator) List() ([]manifest.Record, error) {
+	m, err := o.manifest.Load()
+	if err != nil {
+		return nil, err
+	}
+	return m.Installs, nil
 }
 
 // preflightCollisions returns paths in `files` that exist on disk but

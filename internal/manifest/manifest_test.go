@@ -165,6 +165,101 @@ func TestStore_UpsertRejectsEmptyID(t *testing.T) {
 	}
 }
 
+func TestStore_RemoveExistingRecord(t *testing.T) {
+	// Slice 3 task #5: Remove is the inverse of Upsert. Removing the
+	// sole record in the manifest leaves an empty Installs slice — the
+	// file remains (so subsequent loads see an empty manifest, not a
+	// missing-file fallback) and the YAML round-trips.
+	path := filepath.Join(t.TempDir(), "installs.yaml")
+	store := manifest.NewStore(path)
+	if err := store.Upsert(manifest.Record{ID: "claude-code:skill:foo", InstalledAt: "t1"}); err != nil {
+		t.Fatalf("seed Upsert: %v", err)
+	}
+	if err := store.Remove("claude-code:skill:foo"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	m, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(m.Installs) != 0 {
+		t.Errorf("len(Installs): got %d, want 0", len(m.Installs))
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("manifest file should still exist after Remove; stat: %v", err)
+	}
+}
+
+func TestStore_RemovePreservesOrderOfOtherRecords(t *testing.T) {
+	// Slot stability under Remove mirrors Upsert's slot preservation
+	// (see TestStore_UpsertPreservesOrderOfOtherRecords): list output
+	// must not jitter when an unrelated install is uninstalled.
+	// Layout: [a, b, c] → Remove(b) → [a, c] (NOT [b, a, c] or any
+	// other re-ordering).
+	path := filepath.Join(t.TempDir(), "installs.yaml")
+	store := manifest.NewStore(path)
+	for _, id := range []string{"a", "b", "c"} {
+		if err := store.Upsert(manifest.Record{ID: id, InstalledAt: "t0"}); err != nil {
+			t.Fatalf("seed Upsert %q: %v", id, err)
+		}
+	}
+	if err := store.Remove("b"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	m, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(m.Installs) != 2 {
+		t.Fatalf("len(Installs): got %d, want 2", len(m.Installs))
+	}
+	if m.Installs[0].ID != "a" || m.Installs[1].ID != "c" {
+		t.Errorf("ordering: got %v, want [a, c]", []string{m.Installs[0].ID, m.Installs[1].ID})
+	}
+}
+
+func TestStore_RemoveMissingID_Errors(t *testing.T) {
+	// Loud failure when the caller asks to remove an ID that isn't in
+	// the manifest. The CLI uses this to render "no such install" to
+	// the user — silent no-op would mask typos and concurrent uninstalls.
+	path := filepath.Join(t.TempDir(), "installs.yaml")
+	store := manifest.NewStore(path)
+	if err := store.Upsert(manifest.Record{ID: "exists", InstalledAt: "t0"}); err != nil {
+		t.Fatalf("seed Upsert: %v", err)
+	}
+	err := store.Remove("does-not-exist")
+	if err == nil {
+		t.Fatal("expected Remove of missing ID to error, got nil")
+	}
+	if !strings.Contains(err.Error(), "does-not-exist") {
+		t.Errorf("error should name the missing ID; got %v", err)
+	}
+	// Existing records still present (Remove did not mutate the file).
+	m, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(m.Installs) != 1 || m.Installs[0].ID != "exists" {
+		t.Errorf("Installs after failed Remove: got %v, want [exists]", m.Installs)
+	}
+}
+
+func TestStore_RemoveRejectsEmptyID(t *testing.T) {
+	// Symmetry with Upsert (hostile-review #3): empty IDs silently
+	// matching any future bug that produces an "" record would let
+	// Remove("") nuke unidentifiable rows. Loud reject at the manifest
+	// layer.
+	path := filepath.Join(t.TempDir(), "installs.yaml")
+	store := manifest.NewStore(path)
+	err := store.Remove("")
+	if err == nil {
+		t.Fatal("expected Remove with empty ID to error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ID") {
+		t.Errorf("error should name the missing field; got %v", err)
+	}
+}
+
 func TestStore_UpsertPreservesOrderOfOtherRecords(t *testing.T) {
 	// Advisor edge case: when an Upsert replaces an existing record,
 	// the replacement must occupy the original slot rather than getting
