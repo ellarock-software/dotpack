@@ -1,0 +1,122 @@
+kind: mcp-server
+dotpack_schema_version: 0
+shape_note: |
+  Like `hook`, mcp-server is a CONFIG FRAGMENT installed via key-merge into
+  the host's MCP config. Unlike hook, the merge target is a top-level map
+  keyed by server name (e.g. ".mcpServers.github = {...}"). The schema below
+  describes the value-object for a single server entry — i.e. the schema is
+  the *contents* of one map entry, not the whole .mcpServers object.
+
+  IMPORTANT counting choice: counts below are per SERVER ENTRY across the
+  corpus (16 entries across 3 files), not per file. The survey reported
+  per-file counts (e.g. "env: 1/3 files") which under-represented coverage
+  (env actually appears in 7/16 server entries — 44%). Schema corrected
+  by hand-grepping the corpus.
+
+template:
+  shape: config_fragment
+  install_target: map_merge
+  source_locations:
+    - host: claude-code
+      file: .mcp.json
+      json_path: $.mcpServers
+      alternate_files: ["~/.claude.json"]
+      note: |
+        DO NOT WRITE TO .claude/settings.json — Claude Code silently
+        ignores mcpServers in settings.json (anthropics/claude-code#24477).
+        Project scope: .mcp.json at repo root. User scope: ~/.claude.json.
+    - host: gemini-cli
+      file: .gemini/settings.json
+      json_path: $.mcpServers
+      alternate_files: ["~/.gemini/settings.json"]
+      note: |
+        Gemini honours mcpServers in settings.json (unlike Claude). Same
+        field shape with documented extensions (httpUrl, headers, cwd,
+        timeout, trust) not observed in this corpus.
+    - host: codex
+      file: ~/.codex/config.toml
+      toml_path: mcp_servers
+      note: |
+        TOML format. Survey.sh TOML extraction is TODO. Treat as
+        unsupported in adapter capability matrix until extraction lands.
+
+server_entry_fields:
+  # All counts are per server entry. Corpus = 16 entries: 3 in file 1, 8 in
+  # file 2, 5 in file 3.
+  - name: command
+    type: string
+    required: true
+    appears_in: 16/16
+    notes: |
+      Executable that launches the MCP server (e.g. "npx", "uvx",
+      "docker", "node", "python"). Always a single binary; never a
+      compound shell command. Universal across hosts.
+  - name: args
+    type: array<string>
+    required: true
+    appears_in: 16/16
+    notes: |
+      Argument list. Always present even when empty. The most common
+      first arg is "-y" (npx auto-confirm) followed by the package
+      specifier. Per-server CLI flags follow (e.g. "--repository",
+      "--local-timezone=...", "--figma-api-key=..."). May contain
+      credentials directly when env vars aren't used.
+  - name: type
+    type: string
+    required: false
+    appears_in: 8/16
+    notes: |
+      Transport identifier. Only "stdio" observed in corpus (8/8 of the
+      present values). When omitted (8/16), hosts default to stdio.
+      Documented spec values include "sse" and "http" for non-stdio
+      transports; not present in corpus but the field exists to allow
+      future divergence.
+  - name: env
+    type: object<string, string>
+    required: false
+    appears_in: 7/16
+    notes: |
+      Environment variables passed to the server process. Almost
+      exclusively used for secrets (API keys, tokens, hosts). Values
+      typically use ${VAR} template syntax that the host resolves from
+      the user's environment at startup. Empirically, env appears
+      whenever the server requires credentials and the author chose
+      env over CLI args.
+
+ecosystem_notes:
+  - "Filename divergence: Claude Code uses `.mcp.json` (project) and
+    `~/.claude.json` (user). The same key name `mcpServers` in
+    `.claude/settings.json` is SILENTLY IGNORED — common foot-gun
+    documented in anthropics/claude-code issues #24477 and #646.
+    Adapters must write to the right file."
+  - "Argument-style credential handling varies. abcdan/mcp.json embeds
+    secrets directly in args (`--figma-api-key=XXXXXXXX`). ChrisWiles
+    uses env vars with ${VAR} substitution. The translator should
+    detect literal secrets in args (high-entropy strings) and surface
+    a warning per the security-agent stage of the pipeline (ADR-0001)."
+  - "Remote MCP servers in the corpus are wrapped via stdio shims
+    (abcdan's Atlassian uses `mcp-remote` with an SSE URL inside args).
+    Gemini's documented httpUrl/headers/url fields would express the
+    same concept natively. Translator should detect the shim pattern
+    when porting to a host that supports native HTTP/SSE."
+  - "Server name (the JSON key) is the install identifier. Two installs
+    with the same name into the same target file collide — manifest
+    must record the server-name claim so a second install fails fast
+    rather than silently overwriting."
+
+deliberately_excluded:
+  - fields:
+      - cwd
+      - timeout
+      - trust
+      - httpUrl
+      - url
+      - headers
+    appeared_in: 0/16
+    reason: |
+      Documented in Gemini CLI's mcpServers spec but absent from the
+      corpus (which is Claude-skewed because real-world
+      .gemini/settings.json with mcpServers is hard to find on GitHub).
+      Adapter-layer for now; revisit when Gemini real-world corpus
+      grows. Per ADR-0007, per-host runtime fields are adapter
+      capability matrix concerns.

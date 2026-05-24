@@ -1,0 +1,141 @@
+kind: hook
+dotpack_schema_version: 0
+shape_note: |
+  The `hook` kind is a CONFIG FRAGMENT, not a standalone file. A hook resource
+  is a slice of host configuration (Claude: `.claude/settings.json $.hooks`;
+  Gemini: `.gemini/settings.json $.hooks`) that, on install, is merged into
+  the host's config rather than dropped as a new file. The translator parses
+  the source slice; the validator gates on the schema below; the adapter
+  performs a config-key merge per ADR-0008 (manifest tracks `merged_keys`).
+
+template:
+  shape: config_fragment
+  source_locations:
+    - host: claude-code
+      file: .claude/settings.json
+      json_path: $.hooks
+    - host: gemini-cli
+      file: .gemini/settings.json
+      json_path: $.hooks
+    - host: codex
+      file: ~/.codex/config.toml
+      toml_path: hooks
+      note: |
+        Not represented in corpus (survey.sh TOML extraction is TODO).
+        Adapter capability for Codex hook = unknown until TOML extraction
+        lands. Treat as `unsupported` by default; revisit per task #4.
+
+structure:
+  # The hook config is two-level nested. Top level: event-binding (event name
+  # → list of binding records). Binding record: { matcher, hooks: [hook-spec] }.
+  # Hook-spec is the leaf with type/command/...
+  top_level:
+    description: |
+      Maps from canonical event name (string) to list of bindings. Event names
+      differ across hosts and the translator normalises them.
+    canonical_event_names:
+      - PreToolUse    # Claude
+      - PostToolUse   # Claude
+      - UserPromptSubmit  # Claude
+      - SessionStart  # Claude
+      - SessionEnd    # Claude
+      - SubagentStart # Claude
+      - SubagentStop  # Claude
+      - Notification  # Claude
+      - PreCompact    # Claude
+      - Setup         # Claude
+      - PermissionRequest  # Claude
+    cross_ecosystem_event_aliases:
+      # Translator-mappable equivalences.
+      - claude: PreToolUse
+        gemini: BeforeTool
+      - claude: PostToolUse
+        gemini: AfterTool
+
+  binding:
+    appears_in: 5/5
+    fields:
+      - name: matcher
+        type: string
+        required: false
+        appears_in: 5/5  # field present in all files; per-block presence varies
+        notes: |
+          Regex / glob filter matched against tool name (Claude) or tool name
+          / file path (Gemini). Examples: "Bash", "Edit|MultiEdit|Write",
+          "write_file|replace", "*". Absent on event types where no matcher
+          makes sense (UserPromptSubmit, SessionStart). dotpack treats absence
+          as "match everything".
+      - name: hooks
+        type: array<hook_spec>
+        required: true
+        appears_in: 5/5
+        notes: |
+          Array of hook-spec objects (see below). Always present at this level.
+
+  hook_spec:
+    appears_in: 5/5
+    fields:
+      - name: type
+        type: string
+        required: true
+        appears_in: 5/5
+        notes: |
+          Always "command" in the entire corpus. Documented spec mentions
+          other types may exist but none seen. Effectively a constant.
+      - name: command
+        type: string
+        required: true
+        appears_in: 5/5
+        notes: |
+          Shell command to execute. May embed env vars
+          ($CLAUDE_PROJECT_DIR, $GEMINI_PROJECT_DIR — host-specific) and
+          multi-line shell logic. Translator preserves verbatim; the
+          env-var substitution is a cross-host translator concern (Claude's
+          $CLAUDE_* and Gemini's $GEMINI_* don't map 1:1 — adapter rewrites
+          on install).
+      - name: timeout
+        type: int
+        required: false
+        appears_in: 3/5
+        notes: |
+          Maximum execution time. UNIT DIFFERS: Claude examples use SECONDS
+          (e.g. 5, 30, 60, 90); Gemini examples use MILLISECONDS (e.g. 8000).
+          The translator normalises to a chosen unit internally; adapters
+          re-emit per host convention. Without normalisation, "timeout: 8"
+          means 8 seconds in Claude and 8 milliseconds in Gemini — silent
+          semantic divergence.
+
+ecosystem_notes:
+  - "Event naming diverges: Claude uses PreToolUse / PostToolUse / Session*
+    / Subagent*; Gemini uses BeforeTool / AfterTool. The structural shape
+    of bindings (matcher + hooks-array) is identical."
+  - "Gemini introduces a top-level `enabled: [hook-name, ...]` registry
+    (corpus example 5) that selectively activates named hooks. Claude
+    has no such concept — bindings are active when present. dotpack's
+    universal kind does not adopt `enabled`; the adapter for Gemini
+    handles it when emitting."
+  - "Timeout unit is the most likely silent-bug source in cross-host
+    translation. Adapter capability matrix must declare which unit it
+    emits and the translator must convert."
+
+deliberately_excluded:
+  - fields:
+      - async
+      - once
+      - statusMessage
+    appeared_in: 1/5 (single file each)
+    reason: |
+      All below the 2-example floor and the omission-failure rationale
+      doesn't hold: omitting `async` defaults to sync (functional, not
+      broken); omitting `once` defaults to every-trigger (functional);
+      `statusMessage` is purely cosmetic. Translator should pass through
+      if present in source; schema doesn't require.
+  - fields:
+      - name
+      - description
+    appeared_in: 1/5 (Gemini example only, single file)
+    reason: |
+      Gemini-specific identifying fields for the `enabled` registry. Below
+      floor in cross-host corpus. The Gemini adapter handles them when the
+      `enabled` registry is in use; dotpack's universal schema does not
+      require them.

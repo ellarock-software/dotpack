@@ -1,0 +1,211 @@
+# schema-corpus.yaml
+#
+# Curated examples of in-the-wild agent resources, grouped by dotpack kind.
+# Feeds `scripts/survey.sh` which fetches each example, clusters frontmatter
+# (or config-fragment) fields, and proposes a per-kind schema at
+# `schema/<kind>.yaml`.
+#
+# Target: 5-10 high-quality examples per kind from well-respected authors.
+# Replace TODO entries with real source pointers before running survey.
+#
+# Source identifier format: <owner>/<repo>@<ref>#<path>
+#   - <ref> is a tag / branch / SHA; default-branch HEAD is acceptable for corpus
+#   - <path> is the path to the resource file (or config file containing it)
+#
+# For file-shaped kinds (skill/agent/command/memory):
+#   - `source` points at the resource file with frontmatter
+#
+# For fragment-shaped kinds (hook/mcp-server):
+#   - `source` points at the config file containing the fragment
+#   - `extract` is a JSONPath / TOML path to the relevant slice
+
+kinds:
+
+  skill:
+    fixture_shape: file_with_frontmatter
+    examples:
+      # Anthropic baseline (canonical name+description, optional license).
+      - source: anthropics/skills@main#skills/skill-creator/SKILL.md
+        note: "Anthropic canonical; meta-skill for creating skills; has license field"
+      - source: anthropics/skills@main#skills/pdf/SKILL.md
+        note: "Anthropic canonical; long imperative description ('Use this skill whenever ...')"
+      - source: anthropics/skills@main#skills/frontend-design/SKILL.md
+        note: "Anthropic canonical; long technical description"
+      - source: anthropics/skills@main#skills/webapp-testing/SKILL.md
+        note: "Anthropic canonical; toolkit-style description"
+
+      # OpenAI / Codex cross-ecosystem (also SKILL.md, slightly different conventions).
+      - source: openai/skills@main#skills/.curated/gh-address-comments/SKILL.md
+        note: "Codex; uses extended `metadata.short-description` sub-key"
+
+      # obra/superpowers — single opinionated curator, minimal frontmatter, no license.
+      - source: obra/superpowers@main#skills/test-driven-development/SKILL.md
+        note: "obra; minimal frontmatter; 'Use when ...' description style"
+      - source: obra/superpowers@main#skills/systematic-debugging/SKILL.md
+        note: "obra; same author/style, different topic"
+      - source: obra/superpowers@main#skills/writing-skills/SKILL.md
+        note: "obra; meta-skill (compare to anthropic skill-creator)"
+
+      # daymade/claude-code-skills — community marketplace with extended fields.
+      - source: daymade/claude-code-skills@main#github-ops/SKILL.md
+        note: "daymade; standard name+description"
+      - source: daymade/claude-code-skills@main#qa-expert/SKILL.md
+        note: "daymade; uses extended `keywords` field (community-only convention)"
+
+  agent:
+    fixture_shape: file_with_frontmatter
+    examples:
+      # wshobson/agents — large curator, multi-host claim; minimal frontmatter.
+      - source: wshobson/agents@main#plugins/python-development/agents/python-pro.md
+        note: "wshobson; minimal frontmatter (name/description/model), no tools field"
+
+      # VoltAgent — heavyweight tools list (comma-string), model alias.
+      - source: VoltAgent/awesome-claude-code-subagents@main#categories/04-quality-security/code-reviewer.md
+        note: "VoltAgent; tools as comma-string of native names; model alias 'opus'"
+      - source: VoltAgent/awesome-claude-code-subagents@main#categories/02-language-specialists/typescript-pro.md
+        note: "VoltAgent; same shape; model alias 'sonnet'"
+      - source: VoltAgent/awesome-claude-code-subagents@main#categories/01-core-development/api-designer.md
+        note: "VoltAgent; same shape; model alias 'sonnet'"
+
+      # 0xfurai — full model ID variant, PROACTIVELY keyword for auto-invocation.
+      - source: 0xfurai/claude-code-subagents@main#agents/python-expert.md
+        note: "0xfurai; uses full model ID 'claude-sonnet-4-20250514'; no tools field"
+      - source: 0xfurai/claude-code-subagents@main#agents/react-expert.md
+        note: "0xfurai; same shape; description uses 'PROACTIVELY' auto-invocation keyword"
+
+      # lst97 — tools list includes MCP-prefixed names (mcp__context7__...).
+      - source: lst97/claude-code-sub-agents@main#agents/quality-testing/code-reviewer.md
+        note: "lst97; tools list includes MCP tools (mcp__context7__*); model: haiku"
+      - source: lst97/claude-code-sub-agents@main#agents/development/backend-architect.md
+        note: "lst97; same shape; model: sonnet"
+
+      # Notes for the survey + ADR (not picked as corpus entries):
+      # - Gemini CLI's agent spec (docs/core/subagents.md) declares different
+      #   frontmatter conventions: tools as YAML array (not comma-string),
+      #   max_turns (snake_case) vs Claude's maxTurns (camelCase), kind: local
+      #   field. Real-world ~/.gemini/agents/*.md adoption is sparse — no
+      #   verified third-party corpus available. The ecosystem divergence is
+      #   documented in docs/adr/0010-agent-schema.md based on the Gemini spec.
+
+  command:
+    fixture_shape: file_with_frontmatter
+    examples:
+      # CLAUDE COMMANDS (markdown body + YAML frontmatter, all fields optional).
+      # Official Anthropic example (allowed-tools + description, no model).
+      - source: anthropics/claude-code@main#.claude/commands/commit-push-pr.md
+        note: "Anthropic official; uses allowed-tools (Bash filters) + description, no model"
+      # wshobson/commands — large community curator; most commands carry only model.
+      - source: wshobson/commands@main#tools/security-scan.md
+        note: "wshobson; only model: claude-sonnet-4-0 in frontmatter; body uses $ARGUMENTS"
+      - source: wshobson/commands@main#tools/api-scaffold.md
+        note: "wshobson; only model field; body has $ARGUMENTS placeholder"
+      - source: wshobson/commands@main#workflows/feature-development.md
+        note: "wshobson; only model: claude-opus-4-1; multi-agent orchestration body"
+
+      # GEMINI TOML COMMANDS (TOML 'frontmatter' IS the file; no body section).
+      # pauldatta/gemini-cli-commands-demo — published demo of Gemini TOML commands.
+      - source: pauldatta/gemini-cli-commands-demo@main#.gemini/commands/agents/start.toml
+        note: "Gemini TOML; required `prompt`, optional `description`"
+      - source: pauldatta/gemini-cli-commands-demo@main#.gemini/commands/agents/run.toml
+        note: "Gemini TOML; same shape"
+      - source: pauldatta/gemini-cli-commands-demo@main#.gemini/commands/agents/status.toml
+        note: "Gemini TOML; same shape; multi-line prompt"
+
+      # ECOSYSTEM NOTE FOR THE SURVEY:
+      # The two formats represent the same conceptual kind (a named, invocable
+      # prompt with optional arguments) but differ on syntax (markdown+YAML
+      # frontmatter vs TOML-only), field names (Claude `description` + body
+      # vs Gemini `description` + `prompt`), and presence of a body (Claude
+      # has one; Gemini puts the prompt inside the TOML). The schema must
+      # express both shapes or define a canonical one and let adapters
+      # round-trip. Survey should call out the divergence explicitly in
+      # ecosystem_notes.
+
+  memory:
+    fixture_shape: full_file
+    examples:
+      # GEMINI.md (Gemini CLI project context).
+      - source: google-gemini/gemini-cli@main#GEMINI.md
+        note: "Gemini CLI's own memory; large monorepo project-wide overview"
+      - source: google-gemini/gemini-cli@main#packages/cli/GEMINI.md
+        note: "subpackage-scoped Gemini memory (React/Ink UI conventions)"
+
+      # AGENTS.md (Codex / cross-tool spec).
+      - source: openai/codex@main#AGENTS.md
+        note: "openai/codex root; Rust crate naming, just fmt/test workflow"
+      - source: openai/openai-cookbook@main#AGENTS.md
+        note: "openai-cookbook; 'Repository Guidelines' structure"
+
+      # CLAUDE.md (Claude Code project memory).
+      - source: shanraisshan/claude-code-best-practice@main#CLAUDE.md
+        note: "best-practice CLAUDE.md; multi-section structured"
+      - source: obra/superpowers@main#CLAUDE.md
+        note: "obra; 'If You Are an AI Agent' contributor-guideline style"
+      - source: wshobson/agents@main#CLAUDE.md
+        note: "wshobson; Claude-Code-specific paths convention, short"
+
+      # SURVEY NOTE:
+      # Memory files have no frontmatter. The "schema" for this kind is
+      # structural/conventional, not field-based. Survey should produce
+      # section conventions, length norms, and naming-discovery rules
+      # (CLAUDE.md vs GEMINI.md vs AGENTS.md filename divergence).
+      # Output may diverge in shape from skill/agent/command schemas —
+      # that's expected (called out in docs/adr/0009-skill-schema.md
+      # consequences re: memory shape-divergence).
+
+  hook:
+    fixture_shape: config_fragment
+    examples:
+      # Claude hooks (.claude/settings.json $.hooks).
+      - source: shanraisshan/claude-code-best-practice@main#.claude/settings.json
+        extract: ".hooks"
+        note: "Claude; 27 lifecycle events, all routing to one Python handler"
+      - source: disler/claude-code-hooks-mastery@main#.claude/settings.json
+        extract: ".hooks"
+        note: "Claude; PreToolUse + PostToolUse + SessionStart/End + UserPromptSubmit etc."
+      - source: ChrisWiles/claude-code-showcase@main#.claude/settings.json
+        extract: ".hooks"
+        note: "Claude; 4 post-tool + 1 pre-tool + 1 user-prompt; per-matcher commands"
+      - source: ZacheryGlass/.claude@master#settings.json
+        extract: ".hooks"
+        note: "Claude (personal dotfiles, branch=master); per-event hooks with ~/.claude/hooks/ scripts"
+
+      # Gemini hooks (.gemini/settings.json $.hooks).
+      - source: nazrul-kabir/gemini-cli-hooks-example@main#.gemini/settings.json
+        extract: ".hooks"
+        note: "Gemini; BeforeTool/AfterTool events (vs Claude PreToolUse/PostToolUse); same structural shape"
+
+      # CODEX CALLOUT (not in corpus, documented in ADR-0013):
+      # Codex CLI uses TOML (~/.codex/config.toml) for config. Survey.sh's
+      # TOML fragment-extraction is currently TODO (line ~88). To include
+      # Codex hooks, the script needs TOML extraction support (e.g. via
+      # dasel or tomlq). Deferred per task #12 description.
+
+  mcp-server:
+    fixture_shape: config_fragment
+    examples:
+      # Real .mcp.json files (Claude Code project-scope; mcpServers in
+      # .claude/settings.json is documented-but-silently-ignored — the
+      # canonical Claude location is .mcp.json or ~/.claude.json).
+      - source: shanraisshan/claude-code-best-practice@main#.mcp.json
+        extract: ".mcpServers"
+        note: "3 stdio servers (Playwright, Context7, DeepWiki) via npx"
+      - source: ChrisWiles/claude-code-showcase@main#.mcp.json
+        extract: ".mcpServers"
+        note: "8 servers across SaaS integrations (Jira/GitHub/Linear/Sentry/Postgres/Slack/Notion/Memory); ${VAR} env-var substitution"
+      - source: abcdan/mcp.json@main#mcp.json
+        extract: ".mcpServers"
+        note: "Personal-use config; mixed transports (stdio via npx/uvx + SSE for Atlassian)"
+
+      # CALLOUTS DOCUMENTED IN ADR-0014 (not in corpus):
+      # - Gemini CLI: mcpServers lives in .gemini/settings.json (same key
+      #   name, slightly extended field set with httpUrl/headers/cwd/timeout/
+      #   trust). No popular real-world .gemini/settings.json with mcpServers
+      #   was findable; documented at github/github-mcp-server's
+      #   install-gemini-cli.md as the spec reference.
+      # - Codex CLI: ~/.codex/config.toml uses `mcp_servers` (TOML).
+      #   Same TOML-extraction blocker as hook kind (survey.sh TODO).
+      #   Treat as unsupported in adapter capability matrix.
+      # - .claude/settings.json mcpServers IS silently ignored by Claude
+      #   Code (per anthropics/claude-code issues #24477, #646). Adapters
+      #   must write to .mcp.json or ~/.claude.json, never settings.json.

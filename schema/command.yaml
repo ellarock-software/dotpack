@@ -1,0 +1,85 @@
+kind: command
+dotpack_schema_version: 0
+template:
+  shape: file_with_prompt_or_body
+  formats:
+    - format: markdown_yaml
+      extension: .md
+      filename: <command-name>.md
+      body: required  # markdown body IS the prompt
+      frontmatter: yaml
+    - format: toml
+      extension: .toml
+      filename: <command-name>.toml
+      body: not_applicable  # prompt is a TOML field, no body
+      frontmatter: toml
+fields:
+  - name: prompt
+    type: string
+    required: true
+    appears_in: 7/7
+    notes: |
+      The instruction text the LLM executes. In .md files, this is the
+      markdown body after frontmatter. In .toml files, this is an explicit
+      `prompt = "..."` field. dotpack treats them as the same canonical
+      field; adapters re-emit native form.
+  - name: description
+    type: string
+    required: false
+    appears_in: 4/7
+    notes: |
+      Brief one-line summary. Present in the anthropics example and all
+      three Gemini TOML examples; absent in wshobson's model-only commands.
+      Used by host `/help` menus.
+  - name: model
+    type: string
+    required: false
+    appears_in: 3/7 (Claude .md only)
+    notes: |
+      Per-command model selection. Values seen: full model ID
+      ("claude-sonnet-4-0", "claude-opus-4-1") — wshobson uses full IDs.
+      Other corpora may use aliases (sonnet/opus/haiku). Adapter resolves
+      per host; Gemini commands inherit session model and have no native
+      slot for this.
+  - name: allowed-tools
+    type: string | array<string>
+    required: false
+    appears_in: 1/7 (anthropics example only)
+    notes: |
+      KEPT despite below-floor (1/7) because absence of this field
+      changes runtime semantics in Claude Code (without it, every Bash
+      invocation prompts for approval; with it, listed tools are
+      auto-approved). The anthropics official example uses
+      "Bash(git add:*), Bash(git commit:*)" filter syntax. Per ADR-0007,
+      this is technically adapter-layer (runtime permissions), but is
+      retained here because Claude's documented spec includes it and
+      it has corpus presence. Adapters that don't support it warn at
+      install time.
+ecosystem_notes:
+  - "Two formats, one concept. Claude commands are markdown + optional YAML
+    frontmatter; Gemini commands are TOML files containing a `prompt`
+    field. The translator unifies on the dotpack representation; adapters
+    re-emit the host-native shape on install."
+  - "Argument placeholders diverge: Claude uses $ARGUMENTS (and $1, $2
+    positional); Gemini uses {{arg0}} double-curly templating. The
+    translator handles substitution syntax during cross-format port; the
+    schema does not enforce one."
+  - "Filename → command-name mapping: both hosts derive the command name
+    from the filename (minus extension). Subdirectories become namespaces:
+    Claude uses subdir prefixes; Gemini uses colons (`agents/start.toml`
+    becomes `/agents:start`)."
+deliberately_excluded:
+  - fields:
+      - argument-hint
+      - disable-model-invocation
+    appeared_in: 0/7
+    reason: |
+      Documented in Claude Code's command frontmatter reference but absent
+      from corpus. Adapter-layer per ADR-0007 — adapters that natively
+      support them re-emit if the source carried them.
+  - body_section_normalisation:
+      reason: |
+        Survey clusters.md noted recurring body sections in wshobson
+        Markdown commands (## Context, ## Requirements, ## Instructions).
+        Not adopted — these are author conventions for prompt structure,
+        not parseable schema. Same posture as ADR-0010 for agent body.

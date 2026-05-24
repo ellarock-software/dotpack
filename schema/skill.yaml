@@ -1,0 +1,72 @@
+kind: skill
+dotpack_schema_version: 0
+template:
+  shape: file_with_frontmatter
+  filename: SKILL.md
+  body: required  # markdown after frontmatter is the skill's instructions
+fields:
+  - name: name
+    type: string
+    required: true
+    appears_in: 10/10
+    notes: |
+      Unique identifier. Letters, numbers, and hyphens only per Gemini CLI spec
+      (other ecosystems converge on the same constraint).
+  - name: description
+    type: string
+    required: true
+    appears_in: 10/10
+    notes: |
+      The primary LLM-triggering field. Two common phrasings in the wild:
+      "Use when ..." (declarative trigger) and "Use this skill whenever ..."
+      (imperative trigger). Both work; dotpack does not normalise. Recommend
+      <= 1024 chars (Anthropic convention noted in body of obra/writing-skills
+      and anthropic/skill-creator).
+  - name: license
+    type: string
+    required: false
+    appears_in: 3/10
+    notes: |
+      Anthropic-ecosystem convention (present in 3/4 anthropics/skills examples,
+      absent everywhere else in the corpus). Free-form pointer to LICENSE.txt or
+      a literal SPDX/proprietary string. Pass-through during translation.
+ecosystem_notes:
+  - SKILL.md is the canonical filename across Claude Code, Gemini CLI, and
+    Codex CLI. The `~/.agents/skills/` alias is honoured by Gemini and Codex;
+    Claude Code uses `.claude/skills/`. The on-disk layout (folder with
+    SKILL.md + optional scripts/, references/, assets/) is identical across
+    all three.
+  - Description-as-trigger is universal. The skill's body (everything after
+    the closing `---`) is the instruction content the agent loads on trigger.
+  - Some skills mention `compatibility` as an optional frontmatter field in
+    their body text, but none of the corpus examples actually used it in
+    frontmatter. Treated as authorial intent, not schema.
+deliberately_excluded:
+  - field: keywords
+    appeared_in: 1/10 (daymade/qa-expert only)
+    reason: |
+      Below the 2-example floor. Single-author convention, not ecosystem
+      pattern. If a translator output preserves it, the adapter should
+      pass it through; the universal schema does not require it.
+  - field: metadata
+    appeared_in: 1/10 (openai/gh-address-comments only)
+    reason: |
+      Below the 2-example floor. Acts as a bucket for non-standard fields
+      (short-description seen). If multiple kinds need a bucket, lift it
+      then; for now, single-occurrence.
+  - fields:
+      - allowed-tools
+      - model
+      - context
+      - agent
+      - argument-hint
+      - disable-model-invocation
+      - user-invocable
+    appeared_in: 0/10
+    reason: |
+      Documented in the Claude Code SKILL.md spec but absent from every
+      example in the corpus. These are per-tool runtime concerns
+      (permissions, model selection, subagent dispatch) that belong in
+      the adapter capability matrix per ADR-0007, not in the universal
+      content schema. The translator may strip or remap them; adapters
+      that natively support them re-emit them on install.
