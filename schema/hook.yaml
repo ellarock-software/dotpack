@@ -2,11 +2,15 @@ kind: hook
 dotpack_schema_version: 0
 shape_note: |
   The `hook` kind is a CONFIG FRAGMENT, not a standalone file. A hook resource
-  is a slice of host configuration (Claude: `.claude/settings.json $.hooks`;
-  Gemini: `.gemini/settings.json $.hooks`) that, on install, is merged into
-  the host's config rather than dropped as a new file. The translator parses
-  the source slice; the validator gates on the schema below; the adapter
-  performs a config-key merge per ADR-0008 (manifest tracks `merged_keys`).
+  is a slice of host configuration that gets merged into the host's settings
+  file rather than dropped as a new file. The translator parses the source
+  slice; the validator gates on the schema below; the adapter performs a
+  config-key merge per ADR-0008 (manifest tracks `merged_keys`).
+
+  Counts below are per HOOK-SPEC LEAF (innermost handler with command/type)
+  or per BINDING (matcher group) depending on the field's level. Corpus
+  totals: 4 Claude `.claude/settings.json` + 1 Gemini `.gemini/settings.json`
+  + 2 Codex `.codex/config.toml` = 7 files, 66 bindings, 67 hook-spec leaves.
 
 template:
   shape: config_fragment
@@ -21,119 +25,174 @@ template:
       file: ~/.codex/config.toml
       toml_path: hooks
       note: |
-        Not represented in corpus (survey.sh TOML extraction is TODO).
-        Adapter capability for Codex hook = unknown until TOML extraction
-        lands. Treat as `unsupported` by default; revisit per task #4.
+        TOML extraction in scripts/survey.sh routes via `yq -p toml -o json`
+        so the staged fragment is JSON-shaped regardless of source format.
+        Codex hook structure is identical to Claude's nested matcher-group
+        shape; event names also identical (PascalCase). See ecosystem_notes.
 
 structure:
   # The hook config is two-level nested. Top level: event-binding (event name
-  # → list of binding records). Binding record: { matcher, hooks: [hook-spec] }.
-  # Hook-spec is the leaf with type/command/...
+  # → list of bindings). Binding record: { matcher, hooks: [hook-spec] }.
+  # Hook-spec is the leaf with type/command/timeout/statusMessage/env.
   top_level:
     description: |
-      Maps from canonical event name (string) to list of bindings. Event names
-      differ across hosts and the translator normalises them.
+      Maps from canonical event name (string) to list of bindings. Claude
+      and Codex share PascalCase event names (identity mapping). Gemini
+      uses BeforeTool/AfterTool — translator handles this two-way mapping.
     canonical_event_names:
-      - PreToolUse    # Claude
-      - PostToolUse   # Claude
-      - UserPromptSubmit  # Claude
-      - SessionStart  # Claude
-      - SessionEnd    # Claude
-      - SubagentStart # Claude
-      - SubagentStop  # Claude
-      - Notification  # Claude
-      - PreCompact    # Claude
-      - Setup         # Claude
-      - PermissionRequest  # Claude
+      # Events with >= 2-file corpus evidence across the 7 surveyed files.
+      - PreToolUse           # 4/4 Claude + 2/2 Codex + (Gemini: BeforeTool)
+      - PostToolUse          # 4/4 Claude + 2/2 Codex + (Gemini: AfterTool)
+      - UserPromptSubmit     # 3/4 Claude + 2/2 Codex
+      - SessionStart         # 3/4 Claude + 1/2 Codex
+      - SessionEnd           # 2/4 Claude
+      - SubagentStart        # 2/4 Claude
+      - SubagentStop         # 2/4 Claude
+      - PermissionRequest    # 2/4 Claude + 1/2 Codex
+      - PreCompact           # 2/4 Claude
+      - PostCompact          # 2/4 Claude
+      - Stop                 # 2/4 Claude + 1/2 Codex
+      - Notification         # 2/4 Claude
+      - PostToolUseFailure   # 2/4 Claude + 1/2 Codex; not in Codex spec table
     cross_ecosystem_event_aliases:
-      # Translator-mappable equivalences.
-      - claude: PreToolUse
+      # Two-way mapping (was three-way before Codex). Codex uses Claude's
+      # PascalCase events as identity — no alias mapping needed.
+      - claude_and_codex: PreToolUse
         gemini: BeforeTool
-      - claude: PostToolUse
+      - claude_and_codex: PostToolUse
         gemini: AfterTool
 
   binding:
-    appears_in: 5/5
+    description: |
+      A matcher group: filter pattern plus a list of handlers. One binding
+      record per entry in the event's array.
+    appears_in: 66/66 bindings
     fields:
       - name: matcher
         type: string
         required: false
-        appears_in: 5/5  # field present in all files; per-block presence varies
+        appears_in: 35/66 bindings
         notes: |
-          Regex / glob filter matched against tool name (Claude) or tool name
-          / file path (Gemini). Examples: "Bash", "Edit|MultiEdit|Write",
-          "write_file|replace", "*". Absent on event types where no matcher
-          makes sense (UserPromptSubmit, SessionStart). dotpack treats absence
-          as "match everything".
+          Regex / glob filter matched against tool name (Claude/Codex) or
+          tool name / file path (Gemini). Examples: "Bash", "Edit|Write",
+          "Read|Bash|apply_patch|Edit|Write", "^mcp__.*$". Absent on event
+          types where no matcher makes sense (UserPromptSubmit, SessionStart,
+          Stop). dotpack treats absence as "match everything".
       - name: hooks
         type: array<hook_spec>
         required: true
-        appears_in: 5/5
+        appears_in: 66/66 bindings
         notes: |
-          Array of hook-spec objects (see below). Always present at this level.
+          Array of hook-spec objects (see below). Always present at this
+          level. Multiple handlers per binding chain in order.
 
   hook_spec:
-    appears_in: 5/5
+    description: |
+      The leaf handler. One hook-spec per command to execute on the event.
+    appears_in: 67/67 leaves
     fields:
       - name: type
         type: string
         required: true
-        appears_in: 5/5
+        appears_in: 67/67 leaves
         notes: |
-          Always "command" in the entire corpus. Documented spec mentions
-          other types may exist but none seen. Effectively a constant.
+          Always "command" in the entire corpus. Codex spec mentions prompt
+          and agent hook handlers are "parsed but skipped" — only command
+          works. Effectively a constant required for forward-compatibility.
       - name: command
         type: string
         required: true
-        appears_in: 5/5
+        appears_in: 67/67 leaves
         notes: |
-          Shell command to execute. May embed env vars
-          ($CLAUDE_PROJECT_DIR, $GEMINI_PROJECT_DIR — host-specific) and
-          multi-line shell logic. Translator preserves verbatim; the
-          env-var substitution is a cross-host translator concern (Claude's
-          $CLAUDE_* and Gemini's $GEMINI_* don't map 1:1 — adapter rewrites
-          on install).
+          Shell command to execute. May embed env vars ($CLAUDE_PROJECT_DIR,
+          $GEMINI_PROJECT_DIR, host-specific) and multi-line shell logic.
+          Translator preserves verbatim; the env-var substitution is a
+          cross-host translator concern (Claude's $CLAUDE_* and Gemini's
+          $GEMINI_* don't map 1:1 — adapter rewrites on install).
       - name: timeout
         type: int
         required: false
-        appears_in: 3/5
+        appears_in: 45/67 leaves
         notes: |
-          Maximum execution time. UNIT DIFFERS: Claude examples use SECONDS
-          (e.g. 5, 30, 60, 90); Gemini examples use MILLISECONDS (e.g. 8000).
+          Maximum execution time. UNIT DIVERGES across hosts:
+            Claude: seconds (corpus: 5, 30, 60, 90)
+            Codex:  seconds (corpus: 3, 5, 10) — matches Claude
+            Gemini: milliseconds (corpus: 8000 = 8 seconds)
           The translator normalises to a chosen unit internally; adapters
           re-emit per host convention. Without normalisation, "timeout: 8"
-          means 8 seconds in Claude and 8 milliseconds in Gemini — silent
-          semantic divergence.
+          means 8 seconds in Claude/Codex and 8 milliseconds in Gemini —
+          silent semantic divergence. See ecosystem_notes for the
+          shanraisshan/claude-code-best-practice corpus anomaly (5000,
+          30000 in a Claude-seconds field — almost certainly user error).
+      - name: statusMessage
+        type: string
+        required: false
+        appears_in: 33/67 leaves
+        notes: |
+          User-facing message displayed while the hook runs. Above floor
+          across hosts: Claude (file 2: 13 leaves), Gemini (file 5: 6
+          leaves), Codex (file 6: 6 leaves), Claude (file 4: 4 leaves).
+          Cosmetic — omission does not break installation. Translator
+          preserves verbatim when present.
+      - name: env
+        type: object<string, string>
+        required: false
+        appears_in: 5/67 leaves
+        notes: |
+          Environment variables passed to the hook process. Documented in
+          Codex spec; corpus presence concentrated in one author
+          (websentry-ai/oacb — 5/5 of their handlers use it for OACB_TIER).
+          Single-author corpus presence held above floor because the field
+          is spec-sanctioned. Translator preserves; adapters pass through.
 
 ecosystem_notes:
-  - "Event naming diverges: Claude uses PreToolUse / PostToolUse / Session*
-    / Subagent*; Gemini uses BeforeTool / AfterTool. The structural shape
-    of bindings (matcher + hooks-array) is identical."
+  - "Event naming convergence: Claude and Codex use identical PascalCase
+    event names (PreToolUse, PostToolUse, SessionStart, UserPromptSubmit,
+    Stop, PermissionRequest, ...). Gemini uses BeforeTool / AfterTool.
+    Translator event-mapping table is two-way (Claude/Codex ↔ Gemini),
+    not three-way. Significant translator simplification vs the original
+    schema's three-way assumption."
+  - "Timeout unit divergence has TWO sides, not three: Claude=seconds,
+    Codex=seconds, Gemini=milliseconds. Adapter capability matrix must
+    declare which unit it emits and the translator must convert."
+  - "Timeout corpus anomaly: shanraisshan/claude-code-best-practice
+    (.claude/settings.json) has timeout values 5000 and 30000 in a field
+    Claude treats as seconds — almost certainly the author confused units.
+    Their hooks effectively never time out (5000 seconds = 83 minutes).
+    Translator should warn when a Claude/Codex timeout exceeds a sane
+    upper bound (e.g., 600 seconds) to catch this user error class."
+  - "PostToolUseFailure is in 3 of 7 files (2 Claude + 1 Codex) but is NOT
+    in the published Codex spec event-name table. Treat as canonical
+    based on cross-host adoption; flag in adapter docs that Codex parser
+    behavior on it is undocumented."
+  - "In-the-wild non-spec TOML shapes (NOT in this corpus): flat
+    array-of-tables `[[hooks]] event = '...' command = '...'` (seen at
+    alinaqi/maggy) and flat key-value map `[hooks] PreToolUse = '...'`
+    (seen at vbcherepanov/total-agent-memory). These may not actually
+    install on current Codex — the spec only documents the nested form
+    surveyed here. Translator should accept them as IMPORTS for legacy
+    interop but EMIT the canonical nested form."
   - "Gemini introduces a top-level `enabled: [hook-name, ...]` registry
-    (corpus example 5) that selectively activates named hooks. Claude
-    has no such concept — bindings are active when present. dotpack's
-    universal kind does not adopt `enabled`; the adapter for Gemini
-    handles it when emitting."
-  - "Timeout unit is the most likely silent-bug source in cross-host
-    translation. Adapter capability matrix must declare which unit it
-    emits and the translator must convert."
+    (corpus file 5) that selectively activates named hooks. Claude and
+    Codex have no such concept — bindings are active when present.
+    dotpack's universal kind does not adopt `enabled`; the Gemini adapter
+    handles it when emitting. The Gemini-only `name` field on hook-spec
+    serves this registry; not adopted universally."
 
 deliberately_excluded:
   - fields:
       - async
       - once
-      - statusMessage
-    appeared_in: 1/5 (single file each)
+    appeared_in: 1/7 files (Gemini only)
     reason: |
-      All below the 2-example floor and the omission-failure rationale
-      doesn't hold: omitting `async` defaults to sync (functional, not
-      broken); omitting `once` defaults to every-trigger (functional);
-      `statusMessage` is purely cosmetic. Translator should pass through
-      if present in source; schema doesn't require.
+      Below the 2-file floor and omission-failure rationale doesn't hold:
+      omitting `async` defaults to sync (functional, not broken); omitting
+      `once` defaults to every-trigger (functional). Translator should
+      pass through if present in source; schema doesn't require.
   - fields:
       - name
       - description
-    appeared_in: 1/5 (Gemini example only, single file)
+    appeared_in: 1/7 files (Gemini only)
     reason: |
       Gemini-specific identifying fields for the `enabled` registry. Below
       floor in cross-host corpus. The Gemini adapter handles them when the

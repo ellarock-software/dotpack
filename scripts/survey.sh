@@ -86,8 +86,16 @@ survey_kind() {
           jq "$extract" "$dest" > "$dest.fragment" && mv "$dest.fragment" "$dest"
           ;;
         *.toml)
-          # TOML extraction left as TODO — implement with `tomlq` or `dasel` when needed
-          echo "  WARN: TOML extraction not yet implemented for $dest" >&2
+          # yq (mikefarah) v4 supports TOML via `-p toml`; output JSON so the
+          # agent sees a uniform fragment shape regardless of source format.
+          if yq -p toml -o json "$extract" "$dest" > "$dest.fragment" 2>"$dest.fragment.err"; then
+            mv "$dest.fragment" "$dest"
+            rm -f "$dest.fragment.err"
+          else
+            echo "  WARN: yq TOML extraction failed for $dest (extract=$extract):" >&2
+            sed 's/^/    /' "$dest.fragment.err" >&2
+            rm -f "$dest.fragment" "$dest.fragment.err"
+          fi
           ;;
       esac
     fi

@@ -7,11 +7,12 @@ shape_note: |
   describes the value-object for a single server entry — i.e. the schema is
   the *contents* of one map entry, not the whole .mcpServers object.
 
-  IMPORTANT counting choice: counts below are per SERVER ENTRY across the
-  corpus (16 entries across 3 files), not per file. The survey reported
-  per-file counts (e.g. "env: 1/3 files") which under-represented coverage
-  (env actually appears in 7/16 server entries — 44%). Schema corrected
-  by hand-grepping the corpus.
+  Counts are per SERVER ENTRY across the corpus (25 entries across 6 files:
+  3 Claude `.mcp.json` files contributing 16 entries, 3 Codex `.codex/config.toml`
+  files contributing 9 entries). One Codex entry (wp-calypso's chrome-devtools)
+  contains nested `tools.<toolname>.approval_mode` sub-entries; those nested
+  entries are NOT counted at server-entry granularity — they're sub-floor
+  per the methodology choice documented in ecosystem_notes.
 
 template:
   shape: config_fragment
@@ -36,87 +37,180 @@ template:
     - host: codex
       file: ~/.codex/config.toml
       toml_path: mcp_servers
+      alternate_files: [".codex/config.toml"]
       note: |
-        TOML format. Survey.sh TOML extraction is TODO. Treat as
-        unsupported in adapter capability matrix until extraction lands.
+        TOML key is `mcp_servers` (snake_case), not Claude's `mcpServers`
+        (camelCase). Both user-scoped (~/.codex/config.toml) and project-
+        scoped (.codex/config.toml) are valid. Codex spec defines a
+        superset field set (see ecosystem_notes); the schema below covers
+        only the cross-host common core. Codex-specific extensions are
+        adapter pass-through territory.
 
 server_entry_fields:
-  # All counts are per server entry. Corpus = 16 entries: 3 in file 1, 8 in
-  # file 2, 5 in file 3.
+  # Discriminated transport: command/args (stdio) XOR url (HTTP).
   - name: command
     type: string
-    required: true
-    appears_in: 16/16
+    required: false
+    required_when: "stdio transport (url absent)"
+    appears_in: 20/25 entries
     notes: |
-      Executable that launches the MCP server (e.g. "npx", "uvx",
-      "docker", "node", "python"). Always a single binary; never a
-      compound shell command. Universal across hosts.
+      Executable that launches the MCP server (e.g. "npx", "uvx", "docker",
+      "node", "python", "/Users/.../graphjin"). Always a single binary;
+      never a compound shell command. Universal across hosts for the
+      stdio transport. Absent on HTTP-transport entries (which use `url`).
   - name: args
     type: array<string>
-    required: true
-    appears_in: 16/16
+    required: false
+    required_when: "stdio transport (command present)"
+    appears_in: 20/25 entries
     notes: |
-      Argument list. Always present even when empty. The most common
-      first arg is "-y" (npx auto-confirm) followed by the package
-      specifier. Per-server CLI flags follow (e.g. "--repository",
-      "--local-timezone=...", "--figma-api-key=..."). May contain
-      credentials directly when env vars aren't used.
-  - name: type
+      Argument list for the stdio executable. Always present when
+      `command` is present (even when conceptually empty — corpus has
+      no entry with command but no args). The most common first arg is
+      "-y" (npx auto-confirm) followed by the package specifier. Per-
+      server CLI flags follow. May contain credentials directly when
+      env vars aren't used.
+  - name: url
     type: string
     required: false
-    appears_in: 8/16
+    required_when: "HTTP transport (command absent)"
+    appears_in: 5/25 entries
     notes: |
-      Transport identifier. Only "stdio" observed in corpus (8/8 of the
-      present values). When omitted (8/16), hosts default to stdio.
-      Documented spec values include "sse" and "http" for non-stdio
-      transports; not present in corpus but the field exists to allow
-      future divergence.
+      HTTP endpoint for streamable HTTP / SSE transport. Mutually
+      exclusive with `command` — presence of `url` indicates the entry
+      is HTTP-transport. All 5 corpus occurrences are in arc-kit
+      (Codex), spanning aws-knowledge, microsoft-learn, google-developer-
+      knowledge, datacommons-mcp, govreposcrape. Codex spec calls this
+      "streamable HTTP server"; Claude's `.mcp.json` corpus uses no `url`
+      entries (Claude's stdio-shim pattern via mcp-remote — see notes).
   - name: env
     type: object<string, string>
     required: false
-    appears_in: 7/16
+    appears_in: 8/25 entries
     notes: |
-      Environment variables passed to the server process. Almost
-      exclusively used for secrets (API keys, tokens, hosts). Values
-      typically use ${VAR} template syntax that the host resolves from
-      the user's environment at startup. Empirically, env appears
-      whenever the server requires credentials and the author chose
-      env over CLI args.
+      Environment variables passed to the stdio server process. Almost
+      exclusively used for secrets (API keys, tokens, hosts) and config
+      paths (REGISTRY_URL in plate). Values typically use ${VAR} template
+      syntax that the host resolves from the user's environment at startup.
+      Empirically, env appears whenever the server requires credentials
+      and the author chose env over CLI args. Codex spec extends with
+      `env_vars` (allowlist with optional source = local|remote) and
+      `bearer_token_env_var` (HTTP transport) — see ecosystem_notes.
 
 ecosystem_notes:
-  - "Filename divergence: Claude Code uses `.mcp.json` (project) and
-    `~/.claude.json` (user). The same key name `mcpServers` in
-    `.claude/settings.json` is SILENTLY IGNORED — common foot-gun
-    documented in anthropics/claude-code issues #24477 and #646.
-    Adapters must write to the right file."
+  - "Codex MCP-server schema is a SUPERSET of Claude/Gemini. The full
+    Codex spec adds (per developers.openai.com/codex/config-reference):
+    cwd, enabled, required, env_vars (with source = local|remote),
+    bearer_token_env_var, env_http_headers, http_headers, oauth_resource,
+    scopes, startup_timeout_sec (+ _ms alias), tool_timeout_sec,
+    default_tools_approval_mode, enabled_tools / disabled_tools (allow/
+    deny lists), experimental_environment (local|remote), and per-tool
+    overrides via tools.<toolname>.approval_mode. None of these clear the
+    universal-schema floor (all <= 1 file in corpus); they are
+    adapter pass-through fields for the Codex adapter, NOT promoted to
+    the cross-host schema. See ADR-0007 consequences re: per-instance
+    lossy promotion when a Codex resource carrying these fields is
+    installed via a non-Codex adapter."
+  - "`type` field NOT promoted to schema despite 13/25 corpus presence
+    (8 'stdio' from ChrisWiles, 5 'http' from arc-kit). Reason: Codex
+    spec discriminates transport by PRESENCE of `url` vs `command`, not
+    by a `type` field. arc-kit's `type = 'http'` is a Claude-style
+    holdover by the author; Codex parser ignores it. Schema uses the
+    spec-canonical discriminator (url-vs-command). Translator drops
+    `type` on import to Codex; passes through for Claude/Gemini where
+    it may still carry meaning."
+  - "`headers` vs `http_headers` (arc-kit): arc-kit uses `headers = {...}`
+    for API-key injection; Codex spec field is `http_headers`. Either
+    arc-kit is wrong (Codex silently ignores `headers`) or `headers` is
+    an undocumented alias. Both seen in corpus (2/25). NEITHER promoted
+    to schema until the spec/source confirms. Translator canonicalises
+    on import: rewrite `headers` to `http_headers` when targeting Codex,
+    flag the original spelling in resource metadata for traceability."
+  - "Per-tool approval override (wp-calypso): chrome-devtools entry
+    contains `tools.click.approval_mode = 'approve'` and
+    `tools.evaluate_script.approval_mode = 'approve'`. Counting choice:
+    these are SUB-entries of one server entry, not separate server
+    entries. At server-entry granularity, 1/25 has the `tools` field —
+    below floor. At nested-tool-entry granularity, 2/2 of wp-calypso's
+    tools have approval_mode — but the denominator is meaningless
+    across the corpus. Schema-wise: not promoted; adapter pass-through.
+    Per ADR-0001, may also be a security-agent input (per-tool approval
+    is a security control — translator should not silently drop it
+    when porting to a host that lacks the concept)."
+  - "Filename + key-name divergence: Claude `.mcp.json $.mcpServers`
+    (camelCase), Gemini `.gemini/settings.json $.mcpServers` (camelCase),
+    Codex `.codex/config.toml mcp_servers` (snake_case). Adapter
+    translates the key name on emit; the schema's `template.source_locations`
+    declares each canonical location."
+  - "Claude footgun: `mcpServers` in `.claude/settings.json` is SILENTLY
+    IGNORED by Claude Code (anthropics/claude-code#24477, #646).
+    Adapters MUST write to `.mcp.json` or `~/.claude.json`."
   - "Argument-style credential handling varies. abcdan/mcp.json embeds
-    secrets directly in args (`--figma-api-key=XXXXXXXX`). ChrisWiles
-    uses env vars with ${VAR} substitution. The translator should
-    detect literal secrets in args (high-entropy strings) and surface
-    a warning per the security-agent stage of the pipeline (ADR-0001)."
-  - "Remote MCP servers in the corpus are wrapped via stdio shims
-    (abcdan's Atlassian uses `mcp-remote` with an SSE URL inside args).
-    Gemini's documented httpUrl/headers/url fields would express the
-    same concept natively. Translator should detect the shim pattern
-    when porting to a host that supports native HTTP/SSE."
-  - "Server name (the JSON key) is the install identifier. Two installs
-    with the same name into the same target file collide — manifest
-    must record the server-name claim so a second install fails fast
-    rather than silently overwriting."
+    secrets directly in args (`--figma-api-key=XXXXXXXX`). arc-kit uses
+    `headers={X-API-Key=${...}}` with ${VAR} substitution. Codex spec
+    `bearer_token_env_var` is the cleanest pattern (env-var indirection).
+    Translator should detect literal secrets in args (high-entropy
+    strings) and surface a warning per the security-agent stage (ADR-0001).
+    No schema-level enforcement (legitimate args contain high-entropy
+    values too — paths, UUIDs, etc.)."
+  - "Remote-MCP wrapper detection. abcdan's Atlassian entry is
+    structurally `command: npx args: [-y, mcp-remote, https://...sse]` —
+    a stdio wrapper around an SSE endpoint. arc-kit's HTTP entries
+    express the same concept natively via `url`. Codex spec supports
+    both. Translator detecting `mcp-remote` (or similar shims) and
+    re-emitting native HTTP form when targeting a host that supports it
+    is cleaner than literal-stdio round-tripping. Not v1; documented."
+  - "Server name (the JSON/TOML key) is the install identifier. Two
+    installs with the same name into the same target file collide —
+    manifest must record the server-name claim so a second install
+    fails fast rather than silently overwriting."
 
 deliberately_excluded:
+  - fields:
+      - type
+    appeared_in: 13/25 entries
+    reason: |
+      Per-spec, transport is discriminated by presence of `url` vs
+      `command`, not by a `type` field. Corpus values are either redundant
+      ('stdio' when command is present) or wrong (arc-kit's 'http' is a
+      Claude-style holdover Codex doesn't recognise). Including in schema
+      would propagate the confusion.
+  - fields:
+      - headers
+      - http_headers
+    appeared_in: 2/25 entries (headers) / 0/25 (http_headers)
+    reason: |
+      arc-kit uses `headers = {...}` for HTTP API-key injection. Codex
+      spec field is `http_headers`. Ambiguity unresolved (alias vs typo
+      vs deprecated). Adapter pass-through with normalization rule
+      documented in ecosystem_notes.
   - fields:
       - cwd
       - timeout
       - trust
       - httpUrl
-      - url
-      - headers
-    appeared_in: 0/16
+      - enabled
+      - required
+      - env_vars
+      - bearer_token_env_var
+      - env_http_headers
+      - oauth_resource
+      - scopes
+      - startup_timeout_sec
+      - startup_timeout_ms
+      - tool_timeout_sec
+      - default_tools_approval_mode
+      - enabled_tools
+      - disabled_tools
+      - experimental_environment
+      - tools
+    appeared_in: 0-1/25 entries each
     reason: |
-      Documented in Gemini CLI's mcpServers spec but absent from the
-      corpus (which is Claude-skewed because real-world
-      .gemini/settings.json with mcpServers is hard to find on GitHub).
-      Adapter-layer for now; revisit when Gemini real-world corpus
-      grows. Per ADR-0007, per-host runtime fields are adapter
-      capability matrix concerns.
+      Documented in Gemini CLI spec (cwd, timeout, trust, httpUrl,
+      headers) OR Codex spec (the rest) but each below floor in the
+      cross-host corpus. Adapter pass-through fields, per ADR-0007.
+      Per-instance lossy detection (ADR-0007 consequences addendum)
+      applies when a resource carrying any of these is installed via
+      a non-Codex/non-Gemini adapter — the adapter should refuse the
+      install without --allow-lossy because the security/lifecycle
+      semantics encoded by these fields cannot be preserved.
