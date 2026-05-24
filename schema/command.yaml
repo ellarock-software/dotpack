@@ -69,17 +69,43 @@ ecosystem_notes:
     Claude uses subdir prefixes; Gemini uses colons (`agents/start.toml`
     becomes `/agents:start`)."
 deliberately_excluded:
-  - fields:
-      - argument-hint
-      - disable-model-invocation
+  # Per ADR-0016 §8, each deliberately_excluded entry declares a
+  # canonical_concept + aliases [{host, field_name}, ...]. Orchestrator's
+  # per-instance lossy detection: if a resource's Extensions carry a field
+  # listed under aliases[].field_name, install is lossy on hosts NOT in
+  # aliases[].host. The body_section_normalisation entry is meta (not a
+  # field) and has no canonical_concept.
+
+  - canonical_concept: claude_command_runtime_overrides
+    aliases:
+      - host: claude-code
+        field_name: argument-hint
+      - host: claude-code
+        field_name: disable-model-invocation
     appeared_in: 0/7
     reason: |
-      Documented in Claude Code's command frontmatter reference but absent
-      from corpus. Adapter-layer per ADR-0007 — adapters that natively
-      support them re-emit if the source carried them.
+      Documented in the Claude Code command frontmatter reference but
+      absent from corpus. These encode Claude-native command ergonomics:
+      CLI argument hinting (`argument-hint`) and invocation gating
+      (`disable-model-invocation`, which prevents the model from
+      auto-triggering the command). Grouped into one canonical_concept
+      because corpus presence is 0/7 across the group. Adapter behaviour:
+      - claude-code adapter: emit natively when present.
+      - non-claude-code adapters: surface as lossy. `disable-model-invocation`
+        is particularly load-bearing — silently dropping it on a host that
+        lacks the concept would change runtime invocation semantics.
+        Install proceeds only with `--allow-lossy`.
+      Note: the universal `allowed-tools` field is PROMOTED to the schema
+      (not deliberately_excluded) under the Deviation 2 rule of ADR-0015
+      — see the field's notes block above. It is NOT a lossy-detection
+      concern; adapters that don't support it warn at install time
+      rather than block.
+
   - body_section_normalisation:
       reason: |
         Survey clusters.md noted recurring body sections in wshobson
         Markdown commands (## Context, ## Requirements, ## Instructions).
         Not adopted — these are author conventions for prompt structure,
         not parseable schema. Same posture as ADR-0010 for agent body.
+        NOT a field; no canonical_concept; not a lossy-detection
+        participant.

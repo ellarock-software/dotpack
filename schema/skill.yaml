@@ -42,31 +42,69 @@ ecosystem_notes:
     their body text, but none of the corpus examples actually used it in
     frontmatter. Treated as authorial intent, not schema.
 deliberately_excluded:
-  - field: keywords
+  # Per ADR-0016 §8, each deliberately_excluded entry declares a
+  # canonical_concept slug + an aliases [{host, field_name}, ...] array.
+  # The orchestrator's per-instance lossy detection consumes these:
+  # if a resource's Extensions carry a field listed in `aliases[].field_name`,
+  # the install is lossy on any host NOT present in `aliases[].host`.
+  # Entries with an empty aliases array are pass-through metadata — no
+  # host parses them natively, so they're never lossy (just preserved).
+
+  - canonical_concept: discovery_keywords
+    aliases: []
+    lossy_when_dropped: false       # No host parses; dropping is a no-op.
     appeared_in: 1/10 (daymade/qa-expert only)
     reason: |
-      Below the 2-example floor. Single-author convention, not ecosystem
-      pattern. If a translator output preserves it, the adapter should
-      pass it through; the universal schema does not require it.
-  - field: metadata
+      Author convention for skill discoverability (tag-like). No surveyed
+      host (Claude Code, Gemini CLI, Codex CLI) parses `keywords` as a
+      first-class discovery field — skills are triggered by `description`
+      across all three. Below the 2-example floor, and adopting it would
+      not change install behaviour anywhere. Adapter behaviour: preserve
+      verbatim as pass-through metadata if the source carries it; never
+      flag as lossy (lossy_when_dropped: false). If a future host adopts
+      native keyword-based discovery, add it to `aliases` and flip
+      lossy_when_dropped to true.
+
+  - canonical_concept: metadata_bucket
+    aliases: []
+    lossy_when_dropped: false       # No host parses; dropping is a no-op.
     appeared_in: 1/10 (openai/gh-address-comments only)
     reason: |
-      Below the 2-example floor. Acts as a bucket for non-standard fields
-      (short-description seen). If multiple kinds need a bucket, lift it
-      then; for now, single-occurrence.
-  - fields:
-      - allowed-tools
-      - model
-      - context
-      - agent
-      - argument-hint
-      - disable-model-invocation
-      - user-invocable
+      Bucket field for non-standard sub-fields (single-author observed
+      `short-description` inside). No host parses it natively. Adapter
+      behaviour: pass-through if present; never lossy. If multiple kinds
+      eventually need a metadata bucket, promote to a universal optional
+      field rather than per-kind extensions.
+
+  - canonical_concept: claude_skill_runtime_overrides
+    aliases:
+      - host: claude-code
+        field_name: allowed-tools
+      - host: claude-code
+        field_name: model
+      - host: claude-code
+        field_name: context
+      - host: claude-code
+        field_name: agent
+      - host: claude-code
+        field_name: argument-hint
+      - host: claude-code
+        field_name: disable-model-invocation
+      - host: claude-code
+        field_name: user-invocable
     appeared_in: 0/10
     reason: |
       Documented in the Claude Code SKILL.md spec but absent from every
-      example in the corpus. These are per-tool runtime concerns
-      (permissions, model selection, subagent dispatch) that belong in
-      the adapter capability matrix per ADR-0007, not in the universal
-      content schema. The translator may strip or remap them; adapters
-      that natively support them re-emit them on install.
+      corpus example. These are per-tool runtime concerns — tool
+      permissions (`allowed-tools`), model selection (`model`), subagent
+      dispatch (`context`, `agent`), CLI ergonomics (`argument-hint`),
+      invocation control (`disable-model-invocation`, `user-invocable`).
+      Grouped into one canonical_concept for now because corpus presence
+      is zero across all of them; splitting into per-concept entries
+      (claude_skill_tool_permissions, claude_skill_model_override, ...)
+      is a follow-up if future corpus surfaces any of them above floor.
+      Adapter behaviour:
+      - claude-code adapter: emit natively when present.
+      - non-claude-code adapters: surface as lossy (the field has runtime
+        meaning on Claude that other hosts cannot honour). Install
+        proceeds only with `--allow-lossy`.

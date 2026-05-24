@@ -61,34 +61,77 @@ ecosystem_notes:
     Approach, Workflow, Quality Checklist) are author conventions, NOT
     schema. dotpack does not enforce or rewrite body structure.
 deliberately_excluded:
-  - fields:
-      - maxTurns
-      - disallowedTools
-      - permissionMode
-      - skills
-      - mcpServers
-      - hooks
-      - memory
+  # Per ADR-0016 §8, each deliberately_excluded entry declares a
+  # canonical_concept + aliases [{host, field_name}, ...]. Orchestrator's
+  # per-instance lossy detection: if a resource's Extensions carry a field
+  # listed under aliases[].field_name, install is lossy on hosts NOT in
+  # aliases[].host. The body_section_normalisation entry is meta (not a
+  # field) and has no canonical_concept.
+
+  - canonical_concept: claude_subagent_runtime_overrides
+    aliases:
+      - host: claude-code
+        field_name: maxTurns
+      - host: claude-code
+        field_name: disallowedTools
+      - host: claude-code
+        field_name: permissionMode
+      - host: claude-code
+        field_name: skills
+      - host: claude-code
+        field_name: mcpServers
+      - host: claude-code
+        field_name: hooks
+      - host: claude-code
+        field_name: memory
     appeared_in: 0/8
     reason: |
-      Documented in Claude Code subagent spec but absent from every corpus
-      example. These are per-tool runtime concerns (permissions, sub-tool
-      dispatch, memory binding) that belong in the adapter capability matrix
-      per ADR-0007, not the universal content schema.
-  - fields:
-      - kind
-      - temperature
-      - max_turns
-      - timeout_mins
+      Documented in the Claude Code subagent spec but absent from every
+      corpus example. These encode subagent runtime semantics:
+      conversation turn limits (`maxTurns`), tool denylist
+      (`disallowedTools`), permission gating (`permissionMode`), inline
+      subresource dispatch (`skills`, `mcpServers`, `hooks`, `memory`).
+      Grouped into one canonical_concept because corpus presence is 0/8
+      across the entire group; finer-grained concepts can be split out
+      if/when corpus evidence surfaces them. Adapter behaviour:
+      - claude-code adapter: emit natively when present.
+      - non-claude-code adapters: surface as lossy. These fields carry
+        runtime semantics (especially `permissionMode` and `disallowedTools`,
+        which are security-relevant) that other hosts cannot honour.
+        Install proceeds only with `--allow-lossy`.
+
+  - canonical_concept: gemini_agent_runtime_overrides
+    aliases:
+      - host: gemini-cli
+        field_name: kind
+      - host: gemini-cli
+        field_name: temperature
+      - host: gemini-cli
+        field_name: max_turns
+      - host: gemini-cli
+        field_name: timeout_mins
     appeared_in: 0/8
     reason: |
-      Gemini-spec-only fields (no Claude corpus presence). Adapter-layer.
-      Gemini's `kind: local|remote` is unrelated to dotpack's universal
-      "kind" taxonomy — naming clash documented in ADR-0010.
+      Gemini-spec-only fields, absent from corpus. These encode
+      Gemini-native agent runtime: agent locality (`kind: local|remote`,
+      naming clash with dotpack's universal `kind` taxonomy documented in
+      ADR-0010), sampling parameter (`temperature`), conversation cap
+      (`max_turns` — snake_case, distinct from Claude's camelCase
+      `maxTurns`), wall-clock cap (`timeout_mins`). Adapter behaviour:
+      - gemini-cli adapter: emit natively when present.
+      - non-gemini adapters: surface as lossy. Install proceeds only
+        with `--allow-lossy`.
+      Note: `max_turns` here is the Gemini name; Claude's `maxTurns` is
+      a separate canonical_concept (claude_subagent_runtime_overrides).
+      A future ADR-0017 may consolidate them under a single
+      conversation_turn_cap canonical_concept with both aliases — see
+      ADR-0016 Consequences for the Scenario B deferral.
+
   - body_section_normalisation:
       reason: |
         Survey proposed canonical body sections ("## Approach", "## Workflow",
         etc.). Rejected — author conventions vary too much to force a single
         layout, and the agent host doesn't parse section headers as
         structure. Section recommendations live in the survey clusters
-        as ecosystem insight, not in the schema.
+        as ecosystem insight, not in the schema. NOT a field; no
+        canonical_concept; not a lossy-detection participant.

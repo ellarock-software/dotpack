@@ -180,21 +180,54 @@ ecosystem_notes:
     serves this registry; not adopted universally."
 
 deliberately_excluded:
-  - fields:
-      - async
-      - once
+  # Per ADR-0016 §8, each deliberately_excluded entry declares a
+  # canonical_concept + aliases [{host, field_name}, ...]. Orchestrator's
+  # per-instance lossy detection: if a resource's Extensions carry a field
+  # listed under aliases[].field_name, install is lossy on hosts NOT in
+  # aliases[].host.
+
+  - canonical_concept: gemini_hook_execution_mode
+    aliases:
+      - host: gemini-cli
+        field_name: async
+      - host: gemini-cli
+        field_name: once
     appeared_in: 1/7 files (Gemini only)
     reason: |
-      Below the 2-file floor and omission-failure rationale doesn't hold:
-      omitting `async` defaults to sync (functional, not broken); omitting
-      `once` defaults to every-trigger (functional). Translator should
-      pass through if present in source; schema doesn't require.
-  - fields:
-      - name
-      - description
+      Gemini-specific execution-mode flags: `async` toggles non-blocking
+      hook execution (default: sync), `once` toggles single-fire-per-session
+      (default: every-trigger). The omission-failure rationale (Deviation
+      2 of ADR-0015) doesn't hold — both defaults are functional, just
+      different from the explicit-true behaviour. Below floor. Adapter
+      behaviour:
+      - gemini-cli adapter: emit natively when present.
+      - non-gemini adapters: surface as lossy. Although the defaults are
+        functional, an author who explicitly set `async: true` chose
+        non-blocking execution; silently emitting a blocking hook elsewhere
+        changes runtime characteristics. Install proceeds only with
+        `--allow-lossy`.
+
+  - canonical_concept: gemini_hook_registry_identifiers
+    aliases:
+      - host: gemini-cli
+        field_name: name
+      - host: gemini-cli
+        field_name: description
+    lossy_when_dropped: false       # Bookkeeping for Gemini's `enabled` registry; no runtime effect on Claude/Codex.
     appeared_in: 1/7 files (Gemini only)
     reason: |
-      Gemini-specific identifying fields for the `enabled` registry. Below
-      floor in cross-host corpus. The Gemini adapter handles them when the
-      `enabled` registry is in use; dotpack's universal schema does not
-      require them.
+      Gemini-specific identifying fields used by the top-level `enabled:
+      [hook-name, ...]` registry (see ecosystem_notes — Gemini's
+      enabled-list activates named hooks). Claude and Codex have no
+      equivalent registry; bindings are active when present. Adapter
+      behaviour:
+      - gemini-cli adapter: emit natively when present; also write the
+        corresponding `enabled` registry entry.
+      - non-gemini adapters: drop silently. These fields are pure
+        registry metadata with no runtime effect on hosts that don't
+        have the registry. NOT lossy (lossy_when_dropped: false) —
+        dropping them on Claude/Codex does not change install behaviour.
+      This is the canonical example for the `lossy_when_dropped: false`
+      escape hatch introduced in ADR-0016 §8. If a future host introduces
+      a hook-registry concept and would parse these fields, add it to
+      `aliases` and flip lossy_when_dropped to true.

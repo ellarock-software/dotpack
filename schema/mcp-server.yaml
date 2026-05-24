@@ -166,51 +166,306 @@ ecosystem_notes:
     fails fast rather than silently overwriting."
 
 deliberately_excluded:
-  - fields:
-      - type
+  # Per ADR-0016 §8, each deliberately_excluded entry declares a
+  # canonical_concept + aliases [{host, field_name}, ...]. Orchestrator's
+  # per-instance lossy detection: if a resource's Extensions carry a field
+  # listed under aliases[].field_name, install is lossy on hosts NOT in
+  # aliases[].host. Entries with aliases: [] are pass-through metadata —
+  # never lossy because no host parses them as load-bearing.
+  #
+  # This block originally lumped 19 host-specific extensions into one
+  # entry; split into per-concept entries per ADR-0016 #10 (schema as
+  # adapter contract — comprehensive inline documentation required).
+
+  - canonical_concept: transport_type_marker
+    aliases: []
+    lossy_when_dropped: false       # No host's runtime depends on `type`; dropping is a no-op.
     appeared_in: 13/25 entries
     reason: |
-      Per-spec, transport is discriminated by presence of `url` vs
-      `command`, not by a `type` field. Corpus values are either redundant
-      ('stdio' when command is present) or wrong (arc-kit's 'http' is a
-      Claude-style holdover Codex doesn't recognise). Including in schema
-      would propagate the confusion.
-  - fields:
-      - headers
-      - http_headers
+      The `type` field (corpus: 8 "stdio" from ChrisWiles Claude entries,
+      5 "http" from arc-kit Codex entries) is NOT a real transport
+      discriminator on any host. Codex spec discriminates by presence of
+      `url` vs `command`. arc-kit's `type = "http"` is a Claude-style
+      holdover the Codex parser ignores. Claude and Gemini accept the
+      field but do not parse it semantically (corpus uses it as
+      documentation only). Adapter behaviour:
+      - All adapters: pass-through if present; never emit if absent.
+      - Never lossy (lossy_when_dropped: false) — no host's runtime
+        depends on `type`. The validator rejects sources where `type`
+        contradicts the transport discriminator (`type: "http"` without
+        `url`, or `type: "stdio"` without `command`); see ADR-0014 and
+        ADR-0016 §7.
+
+  - canonical_concept: http_transport_headers
+    aliases:
+      - host: codex
+        field_name: http_headers
+      - host: codex
+        field_name: headers     # arc-kit holdover, possibly Claude-style typo
     appeared_in: 2/25 entries (headers) / 0/25 (http_headers)
     reason: |
-      arc-kit uses `headers = {...}` for HTTP API-key injection. Codex
-      spec field is `http_headers`. Ambiguity unresolved (alias vs typo
-      vs deprecated). Adapter pass-through with normalization rule
-      documented in ecosystem_notes.
-  - fields:
-      - cwd
-      - timeout
-      - trust
-      - httpUrl
-      - enabled
-      - required
-      - env_vars
-      - bearer_token_env_var
-      - env_http_headers
-      - oauth_resource
-      - scopes
-      - startup_timeout_sec
-      - startup_timeout_ms
-      - tool_timeout_sec
-      - default_tools_approval_mode
-      - enabled_tools
-      - disabled_tools
-      - experimental_environment
-      - tools
-    appeared_in: 0-1/25 entries each
+      HTTP transport custom headers. Codex spec field is `http_headers`;
+      arc-kit (2/25) uses `headers` — either an undocumented alias or
+      a typo Codex silently ignores. Both names listed in aliases under
+      host: codex because the translator preserves the source spelling
+      on import while canonicalising semantically (see
+      ecosystem_notes — translator rewrites `headers` → `http_headers`
+      when targeting Codex emit). Claude/Gemini have no HTTP-transport
+      custom-headers concept in spec (Gemini's `headers` extension is
+      undocumented and not corpus-attested). Adapter behaviour:
+      - codex adapter: emit as `http_headers` (canonical Codex name).
+        If source has `headers`, treat as `http_headers` and warn that
+        the spelling was normalised.
+      - non-codex adapters: surface as lossy. HTTP authentication is
+        load-bearing; silently dropping headers means the install will
+        fail at runtime with confusing auth errors.
+
+  - canonical_concept: stdio_working_directory
+    aliases:
+      - host: codex
+        field_name: cwd
+      - host: gemini-cli
+        field_name: cwd
+    appeared_in: 0-1/25 entries
     reason: |
-      Documented in Gemini CLI spec (cwd, timeout, trust, httpUrl,
-      headers) OR Codex spec (the rest) but each below floor in the
-      cross-host corpus. Adapter pass-through fields, per ADR-0007.
-      Per-instance lossy detection (ADR-0007 consequences addendum)
-      applies when a resource carrying any of these is installed via
-      a non-Codex/non-Gemini adapter — the adapter should refuse the
-      install without --allow-lossy because the security/lifecycle
-      semantics encoded by these fields cannot be preserved.
+      Working directory for the stdio MCP server process. Same name
+      (`cwd`) across both Codex and Gemini specs; same semantics. Claude
+      has no documented `cwd` field — stdio servers inherit Claude's
+      working directory. Adapter behaviour:
+      - codex / gemini-cli adapters: emit natively when present.
+      - claude-code adapter: surface as lossy. The MCP server's behaviour
+        depends on where it runs (e.g., a server reading config from a
+        relative path); silently dropping `cwd` means the server may not
+        find its config on Claude. Install proceeds only with
+        `--allow-lossy`.
+
+  - canonical_concept: gemini_server_overall_timeout
+    aliases:
+      - host: gemini-cli
+        field_name: timeout
+    appeared_in: 0/25 entries
+    reason: |
+      Gemini-spec field for an overall server timeout (no corpus
+      presence). Distinct from Codex's per-phase timeouts
+      (startup_timeout_sec, tool_timeout_sec) — those are separate
+      canonical_concepts. Adapter behaviour:
+      - gemini-cli adapter: emit natively when present.
+      - non-gemini adapters: surface as lossy. Adapter ergonomics note:
+        if a future ADR-0017 unifies overall-vs-phase timeouts into one
+        canonical_concept, this entry merges with codex_startup_timeout
+        and codex_tool_call_timeout. Deferred per ADR-0016 (Scenario B).
+
+  - canonical_concept: gemini_server_trust
+    aliases:
+      - host: gemini-cli
+        field_name: trust
+    appeared_in: 0/25 entries
+    reason: |
+      Gemini-spec field for marking a server as "trusted" (no corpus
+      presence). Encodes a security control — trusted servers bypass
+      certain approval prompts. Adapter behaviour:
+      - gemini-cli adapter: emit natively when present.
+      - non-gemini adapters: surface as lossy. Security control —
+        silently dropping it means a server an author marked trusted
+        on Gemini gets default-untrusted treatment on Claude/Codex,
+        which may surprise the user. Install proceeds only with
+        `--allow-lossy`.
+
+  - canonical_concept: gemini_http_url_alias
+    aliases:
+      - host: gemini-cli
+        field_name: httpUrl
+    canonicalises_to: url           # Same concept as universal `url`; Scenario B per ADR-0016.
+    appeared_in: 0/25 entries
+    reason: |
+      Gemini's documented name for HTTP transport URL. The universal
+      core promotes `url` (the Codex spec name, 5/25 corpus presence
+      from arc-kit) as the canonical HTTP-URL field. `httpUrl` is the
+      SAME CONCEPT under a different name — this is a Scenario B case
+      (cross-host concept-equivalence under different names) called
+      out in ADR-0016 Consequences as deferred to ADR-0017. The
+      `canonicalises_to: url` annotation is the machine-readable anchor
+      ADR-0017 will consume.
+      For MVP:
+      - The translator on Gemini-source import should normalise `httpUrl`
+        to the universal `url` field. (Translator concern, not adapter.)
+      - If the translator fails to normalise and the canonical resource
+        carries `httpUrl` in Extensions, lossy detection per the table
+        above flags it as Gemini-only — over-strict for installs on
+        Codex (which supports the same concept under name `url`).
+        Acceptable until ADR-0017 introduces alias-aware translation.
+
+  - canonical_concept: codex_server_lifecycle
+    aliases:
+      - host: codex
+        field_name: enabled
+      - host: codex
+        field_name: required
+    appeared_in: 0/25 entries
+    reason: |
+      Codex-spec lifecycle flags: `enabled: false` disables a server
+      without removing it from config; `required: true` causes Codex
+      to fail startup if the server doesn't initialise (vs default
+      warn-and-continue). Adapter behaviour:
+      - codex adapter: emit natively when present.
+      - non-codex adapters: surface as lossy. `enabled: false` is
+        particularly load-bearing — silently emitting the server as
+        active on Claude/Gemini contradicts the author's explicit
+        intent. Install proceeds only with `--allow-lossy`.
+
+  - canonical_concept: codex_env_vars_with_source
+    aliases:
+      - host: codex
+        field_name: env_vars
+    appeared_in: 0/25 entries
+    reason: |
+      Codex-spec richer environment-variable declaration with
+      per-variable `source = local|remote` indirection (vs the
+      universal `env` field which is a flat `{name: value}` map).
+      Scenario B-adjacent: `env_vars` and the universal `env` overlap
+      in concept (env vars for the server process) but `env_vars`
+      encodes additional information (variable source). Adapter
+      behaviour:
+      - codex adapter: emit natively when present.
+      - non-codex adapters: surface as lossy. The `source = remote`
+        case encodes that a credential lives in Codex's secret store,
+        not in the local environment — dropping it means the variable
+        is unset at server startup on other hosts, which silently
+        breaks auth. Install proceeds only with `--allow-lossy`.
+
+  - canonical_concept: codex_bearer_token_env_var
+    aliases:
+      - host: codex
+        field_name: bearer_token_env_var
+    appeared_in: 0/25 entries
+    reason: |
+      Codex-spec field for HTTP-transport bearer auth: the name of an
+      env var whose value Codex injects as `Authorization: Bearer
+      ${value}`. Cleanest credential pattern in the corpus (vs
+      args-embedded secrets at abcdan or template-interpolated headers
+      at arc-kit). Adapter behaviour:
+      - codex adapter: emit natively when present.
+      - non-codex adapters: surface as lossy. HTTP auth is load-bearing;
+        dropping the bearer-token directive means the HTTP server
+        rejects all requests with 401. Install proceeds only with
+        `--allow-lossy`.
+
+  - canonical_concept: codex_http_auth_metadata
+    aliases:
+      - host: codex
+        field_name: env_http_headers
+      - host: codex
+        field_name: oauth_resource
+      - host: codex
+        field_name: scopes
+    appeared_in: 0/25 entries
+    reason: |
+      Codex-spec HTTP-transport auth metadata: `env_http_headers`
+      (env-var-interpolated custom headers, vs the literal-values
+      http_headers above), `oauth_resource` (OAuth resource identifier),
+      `scopes` (OAuth scope list). Adapter behaviour:
+      - codex adapter: emit natively when present.
+      - non-codex adapters: surface as lossy. OAuth metadata is
+        load-bearing; dropping it means token-acquisition fails. Install
+        proceeds only with `--allow-lossy`.
+
+  - canonical_concept: codex_startup_timeout
+    aliases:
+      - host: codex
+        field_name: startup_timeout_sec
+      - host: codex
+        field_name: startup_timeout_ms
+    appeared_in: 0/25 entries
+    reason: |
+      Codex-spec timeout for server startup phase (vs request handling).
+      Two unit-suffixed aliases for the same field — Codex spec
+      documents both, parser accepts either. Adapter behaviour:
+      - codex adapter: emit whichever the source carried; if both
+        present, prefer `_sec` per Codex spec precedence. The
+        validator warns on conflict.
+      - non-codex adapters: surface as lossy. Startup timeout encodes
+        an explicit author-chosen wait-budget; silently dropping it
+        means the host uses its default (which may be shorter for a
+        slow-starting server, causing intermittent install-time
+        failures). Install proceeds only with `--allow-lossy`.
+
+  - canonical_concept: codex_tool_call_timeout
+    aliases:
+      - host: codex
+        field_name: tool_timeout_sec
+    appeared_in: 0/25 entries
+    reason: |
+      Codex-spec timeout for individual tool calls (vs startup). Adapter
+      behaviour:
+      - codex adapter: emit natively when present.
+      - non-codex adapters: surface as lossy. Same rationale as
+        codex_startup_timeout. Install proceeds only with `--allow-lossy`.
+
+  - canonical_concept: codex_default_tool_approval_mode
+    aliases:
+      - host: codex
+        field_name: default_tools_approval_mode
+    appeared_in: 0/25 entries
+    reason: |
+      Codex-spec server-wide approval default — gates whether tools
+      from this server require user approval. Security-relevant.
+      Adapter behaviour:
+      - codex adapter: emit natively when present.
+      - non-codex adapters: surface as lossy. Author explicitly chose
+        an approval posture; silently dropping it means tools run
+        under the host's default (which may be more permissive),
+        bypassing the security control. Install proceeds only with
+        `--allow-lossy`.
+
+  - canonical_concept: codex_tool_allowlist
+    aliases:
+      - host: codex
+        field_name: enabled_tools
+      - host: codex
+        field_name: disabled_tools
+    appeared_in: 0/25 entries
+    reason: |
+      Codex-spec per-server tool allowlist (`enabled_tools`) and
+      denylist (`disabled_tools`). Security control. Adapter behaviour:
+      - codex adapter: emit natively when present.
+      - non-codex adapters: surface as lossy. An author who restricted
+        the server's exposed tools via these lists chose explicit
+        attack-surface reduction; silently emitting the unrestricted
+        server elsewhere exposes more tools than the author intended.
+        Install proceeds only with `--allow-lossy`.
+
+  - canonical_concept: codex_experimental_environment
+    aliases:
+      - host: codex
+        field_name: experimental_environment
+    appeared_in: 0/25 entries
+    reason: |
+      Codex-spec `experimental_environment: local|remote` for server
+      placement (whether Codex runs the server itself or expects a
+      remote executor). Adapter behaviour:
+      - codex adapter: emit natively when present.
+      - non-codex adapters: surface as lossy. `remote` placement
+        means the server runs outside the host's process — emitting
+        the entry on Claude/Gemini without the remote-executor
+        infrastructure would attempt local launch and fail. Install
+        proceeds only with `--allow-lossy`.
+
+  - canonical_concept: per_tool_approval
+    aliases:
+      - host: codex
+        field_name: tools     # nested .approval_mode per tool id
+    appeared_in: 1/25 entries (wp-calypso chrome-devtools)
+    reason: |
+      Codex-spec per-tool approval override (`tools.<id>.approval_mode`).
+      A security control — wp-calypso uses it to require user approval
+      for chrome-devtools' `click` and `evaluate_script` tools, which
+      can perform destructive actions. The alias field_name is `tools`
+      (the top-level key); lossy detection sees the resource carrying
+      a `tools` extension and consults this concept. Adapter behaviour:
+      - codex adapter: emit natively when present.
+      - non-codex adapters: surface as lossy. This is the canonical
+        example called out in ADR-0007's per-instance lossy addendum
+        and ADR-0014 — silently dropping per-tool approval is exactly
+        the failure mode dotpack exists to prevent. Install proceeds
+        only with `--allow-lossy`. Also a security-agent input per
+        ADR-0001.
