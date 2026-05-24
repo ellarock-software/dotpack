@@ -64,9 +64,8 @@ type MergedKeyWrite struct {
 
 // LossyReason is one field the adapter would drop on install. Surfaced
 // to the user via --allow-lossy. Populated by the orchestrator's
-// per-instance lossy detection (ADR-0016 §8), not by the adapter
-// itself — adapters in slice 1 just emit; lossy aggregation is
-// orchestrator-side.
+// per-instance lossy detection (ADR-0016 §8) — adapters do not
+// populate it; the schema is the single source of truth.
 type LossyReason struct {
 	FieldPath        string
 	CanonicalConcept string
@@ -74,12 +73,14 @@ type LossyReason struct {
 }
 
 // InstallPlan is what Adapter.Plan returns. Apply is the orchestrator's
-// job; the plan is data, not behaviour.
+// job; the plan is data, not behaviour. The plan does NOT carry lossy
+// state — per ADR-0016 §8 the orchestrator computes that from the
+// schema after Plan returns, against the resource's Extensions and the
+// adapter's HostID. Keeping a plan.Lossy field invited adapters to
+// restate schema knowledge in code, which §8 explicitly supersedes.
 type InstallPlan struct {
-	Files        []FileWrite
-	MergedKeys   []MergedKeyWrite
-	Lossy        bool
-	LossyReasons []LossyReason
+	Files      []FileWrite
+	MergedKeys []MergedKeyWrite
 }
 
 // Adapter is the host-side abstraction per ADR-0016 §2. Implementations

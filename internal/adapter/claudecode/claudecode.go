@@ -8,13 +8,21 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/ellarock/dotpack/internal/adapter"
 	"github.com/ellarock/dotpack/internal/dirs"
 	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock/dotpack/schema"
 )
+
+// hostID is the dotpack adapter HostID for claude-code. Schema lookups
+// (ADR-0016 §8) key by this — kept as a package-level const so the
+// schema package and the adapter agree on spelling without a string
+// literal floating in both places.
+const hostID = "claude-code"
 
 // Adapter is the claude-code host adapter. Construct via New(dirs); the
 // Dirs value is the only injected state so tests can target a tempdir
@@ -31,7 +39,7 @@ func New(d dirs.Dirs) *Adapter {
 }
 
 // HostID returns "claude-code".
-func (*Adapter) HostID() string { return "claude-code" }
+func (*Adapter) HostID() string { return hostID }
 
 // Capabilities returns the per-kind ratings from ADR-0007's matrix.
 // Slice 1 declares only skill; other kinds default to Unsupported
@@ -68,27 +76,13 @@ func (a *Adapter) planSkill(s *resource.Skill, scope adapter.Scope) (adapter.Ins
 		return adapter.InstallPlan{}, err
 	}
 
-	plan := adapter.InstallPlan{
+	return adapter.InstallPlan{
 		Files: []adapter.FileWrite{{
 			Path:    target,
 			Content: content,
 			Mode:    fs.FileMode(0o644),
 		}},
-	}
-
-	// Slice 1: any Extensions present → mark Lossy. Schema-driven
-	// per-instance lossy detection (ADR-0016 §8) is orchestrator-side
-	// work; the adapter just signals "the extension fields would not
-	// survive my emit" so the orchestrator can require --allow-lossy.
-	for key := range s.Extensions {
-		plan.Lossy = true
-		plan.LossyReasons = append(plan.LossyReasons, adapter.LossyReason{
-			FieldPath:      key,
-			SupportedHosts: nil, // schema lookup comes in slice 2
-		})
-	}
-
-	return plan, nil
+	}, nil
 }
 
 // skillTarget computes the on-disk path for a skill at the given scope.
@@ -109,30 +103,113 @@ func skillTarget(d dirs.Dirs, scope adapter.Scope, name string) (string, error) 
 // encodeSkill produces the SKILL.md bytes the orchestrator will write.
 //
 // Per ADR-0008, drop-file resources install byte-identical to their
-// cache copy. When ParseSkill captured the source bytes (Skill.Raw) and
-// no Extension routing decisions need re-encoding, return them verbatim.
-// This preserves authorial YAML formatting (folded scalars, key order,
-// comments) that yaml.Marshal would normalise away.
+// cache copy. The byte-pass-through path fires when (a) the Skill was
+// parsed from source bytes (Raw is set) and (b) no Extension on this
+// resource would need to be dropped on claude-code per ADR-0016 §8.
+// "Drop" means the schema flags the field as lossy on a non-supporting
+// host; for claude-code the runtime-overrides concept (allowed-tools,
+// model, etc.) lists claude-code in its aliases, so a SKILL.md
+// carrying those fields passes through unchanged.
 //
-// The fallback re-encodes universal-core fields. Used when the Skill
-// was synthesised (e.g. translator output, or cache hits where the
-// original bytes were lost) or when slice 1's overly-strict lossy
-// classification dropped Extensions and re-encoding is unavoidable.
-// Slice 2's schema-driven Extension routing will narrow the fallback
-// to genuine non-conformance cases.
+// The re-encode fallback fires for synthesised Skills (no Raw — e.g.
+// translator output or cache misses) and for parsed Skills whose
+// extensions include fields the schema marks as droppable on
+// claude-code. The latter only happens after the orchestrator has
+// accepted --allow-lossy, so producing a different file is the
+// expected behaviour. Extension keys we DO keep (claude-supported or
+// pass-through metadata) are sorted and merged with the universal
+// core; yaml.Marshal on a map is non-deterministic, so a sorted []Node
+// approach is used to keep output stable for diffing and cache_key
+// reproducibility.
 func encodeSkill(s *resource.Skill) ([]byte, error) {
-	if len(s.Raw) > 0 && len(s.Extensions) == 0 {
+	if len(s.Raw) > 0 && canPassThrough(s) {
 		return s.Raw, nil
 	}
+	return reencodeSkill(s)
+}
 
-	front := map[string]any{
-		"name":        s.Name,
-		"description": s.Description,
+// canPassThrough reports whether emitting Raw bytes verbatim would
+// drop nothing of semantic value on claude-code. True iff every
+// extension key resolves (via the schema) to either a claude-code-
+// supported concept or pass-through metadata.
+func canPassThrough(s *resource.Skill) bool {
+	if len(s.Extensions) == 0 {
+		return true
 	}
+	sc, err := schema.Load(resource.KindSkill)
+	if err != nil {
+		// Schema load fail is an unrecoverable bug at this point
+		// (embedded files), but fail safe to re-encode rather than
+		// pretending we know the answer. Re-encode without extensions
+		// is conservative and gives the orchestrator a chance to fail
+		// loudly via §8.
+		return false
+	}
+	for k := range s.Extensions {
+		if !claudeKeeps(sc, k) {
+			return false
+		}
+	}
+	return true
+}
+
+// claudeKeeps reports whether claude-code's emit should retain the
+// extension keyed by fieldName. True if the schema lists claude-code
+// under the matching concept's aliases, or if the concept is
+// pass-through metadata (lossy_when_dropped: false). False otherwise
+// — including for unknown fields, which the orchestrator's §8 check
+// surfaces as lossy.
+func claudeKeeps(sc *schema.Schema, fieldName string) bool {
+	c := sc.LookupExtension(fieldName)
+	if c == nil {
+		return false
+	}
+	if !c.IsLossyWhenDropped() {
+		return true
+	}
+	return c.SupportsHost(hostID)
+}
+
+func reencodeSkill(s *resource.Skill) ([]byte, error) {
+	// Universal core first (fixed order: name, description, license).
+	// Then sorted retained extensions for deterministic output —
+	// yaml.Marshal on a map iterates in random order, so we build the
+	// frontmatter as an explicit MappingNode with controlled ordering.
+	front := []*yaml.Node{}
+	addScalar := func(key string, val any) {
+		front = append(front, &yaml.Node{Kind: yaml.ScalarNode, Value: key})
+		valNode := &yaml.Node{}
+		if err := valNode.Encode(val); err != nil {
+			valNode = &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", val)}
+		}
+		front = append(front, valNode)
+	}
+	addScalar("name", s.Name)
+	addScalar("description", s.Description)
 	if s.License != "" {
-		front["license"] = s.License
+		addScalar("license", s.License)
 	}
-	frontBytes, err := yaml.Marshal(front)
+
+	if len(s.Extensions) > 0 {
+		var sc *schema.Schema
+		if loaded, err := schema.Load(resource.KindSkill); err == nil {
+			sc = loaded
+		}
+		keys := make([]string, 0, len(s.Extensions))
+		for k := range s.Extensions {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if sc != nil && !claudeKeeps(sc, k) {
+				continue
+			}
+			addScalar(k, s.Extensions[k])
+		}
+	}
+
+	mapNode := yaml.Node{Kind: yaml.MappingNode, Content: front}
+	frontBytes, err := yaml.Marshal(&mapNode)
 	if err != nil {
 		return nil, err
 	}

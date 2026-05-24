@@ -49,9 +49,6 @@ func TestClaudeCode_PlanSkill_UserScope_WritesToClaudeHome(t *testing.T) {
 		t.Errorf("plan.Files[0].Path: got %q, want %q", plan.Files[0].Path, want)
 	}
 
-	if plan.Lossy {
-		t.Errorf("plan.Lossy: got true, want false (no Extensions on this skill)")
-	}
 	if len(plan.MergedKeys) != 0 {
 		t.Errorf("plan.MergedKeys: got %d, want 0 (skill is a drop-file kind, not config-merge)", len(plan.MergedKeys))
 	}

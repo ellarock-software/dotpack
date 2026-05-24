@@ -19,6 +19,7 @@ import (
 	"github.com/ellarock/dotpack/internal/dirs"
 	"github.com/ellarock/dotpack/internal/manifest"
 	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock/dotpack/schema"
 )
 
 // Orchestrator wires the dirs, an Adapter, and the manifest store.
@@ -46,10 +47,14 @@ type InstallOptions struct {
 }
 
 // InstallResult is what Install returns on success — the plan that was
-// applied and the manifest Record that was persisted.
+// applied, the manifest Record that was persisted, and any LossyReasons
+// the user opted into via --allow-lossy. The reasons are surfaced even
+// on success so the CLI can echo "installed but the following fields
+// were dropped: ..." for audit trails.
 type InstallResult struct {
-	Plan   adapter.InstallPlan
-	Record manifest.Record
+	Plan         adapter.InstallPlan
+	Record       manifest.Record
+	LossyReasons []adapter.LossyReason
 }
 
 // LossyError is returned when the plan is lossy and AllowLossy is false.
@@ -70,14 +75,22 @@ func (e *LossyError) Error() string {
 }
 
 // Install runs the adapter's Plan against the resource, applies file
-// writes to disk, and appends a manifest record.
+// writes to disk, and appends a manifest record. Per-instance lossy
+// detection (ADR-0016 §8) is computed here from the schema against
+// the resource's Extensions — the adapter's Plan does not carry lossy
+// state; the schema is the single source of truth.
 func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts InstallOptions) (InstallResult, error) {
 	plan, err := o.adapter.Plan(r, scope)
 	if err != nil {
 		return InstallResult{}, fmt.Errorf("plan: %w", err)
 	}
-	if plan.Lossy && !opts.AllowLossy {
-		return InstallResult{}, &LossyError{Host: o.adapter.HostID(), Reasons: plan.LossyReasons}
+
+	reasons, err := lossyReasons(o.adapter.HostID(), r)
+	if err != nil {
+		return InstallResult{}, fmt.Errorf("lossy check: %w", err)
+	}
+	if len(reasons) > 0 && !opts.AllowLossy {
+		return InstallResult{}, &LossyError{Host: o.adapter.HostID(), Reasons: reasons}
 	}
 
 	for _, fw := range plan.Files {
@@ -91,7 +104,22 @@ func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts In
 		return InstallResult{}, fmt.Errorf("append manifest: %w", err)
 	}
 
-	return InstallResult{Plan: plan, Record: rec}, nil
+	return InstallResult{Plan: plan, Record: rec, LossyReasons: reasons}, nil
+}
+
+// lossyReasons runs the ADR-0016 §8 algorithm against a resource's
+// per-kind Extensions. Per-kind dispatch is explicit (typed structs
+// not generic walker, per ADR-0016 §3) so the orchestrator never has
+// to reflect.
+func lossyReasons(hostID string, r resource.Resource) ([]adapter.LossyReason, error) {
+	switch v := r.(type) {
+	case *resource.Skill:
+		return schema.LossyExtensions(resource.KindSkill, hostID, v.Extensions)
+	default:
+		// Kinds without an Extensions field can't be lossy in the §8
+		// sense yet. Add their cases as their per-kind work lands.
+		return nil, nil
+	}
 }
 
 // writeAtomic ensures parent dirs exist, writes the file to a tmp path
