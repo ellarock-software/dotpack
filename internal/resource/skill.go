@@ -14,12 +14,19 @@ import (
 // license) plus a Body (the markdown body of SKILL.md that the host
 // loads on trigger) and Extensions (host-specific frontmatter fields
 // the per-instance lossy check inspects).
+//
+// Raw is the original SKILL.md bytes the parser was given, kept so
+// adapters can satisfy ADR-0008's "byte-identical to the cache copy"
+// guarantee without re-encoding. ParseSkill always populates it;
+// translator-produced Skills (where there is no source file) leave it
+// nil and the adapter falls back to re-encoding the universal core.
 type Skill struct {
 	Name        string
 	Description string
 	License     string
 	Body        string
 	Extensions  map[string]any
+	Raw         []byte
 }
 
 // ParseSkill parses SKILL.md bytes (YAML frontmatter delimited by `---`
@@ -38,7 +45,7 @@ func ParseSkill(raw []byte) (*Skill, error) {
 		return nil, fmt.Errorf("skill: parse frontmatter: %w", err)
 	}
 
-	skill := &Skill{Body: string(body)}
+	skill := &Skill{Body: string(body), Raw: append([]byte(nil), raw...)}
 	for key, val := range fields {
 		switch key {
 		case "name":
