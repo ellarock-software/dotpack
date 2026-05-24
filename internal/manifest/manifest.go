@@ -1,6 +1,6 @@
 // Package manifest persists install provenance to ~/.dotpack/installs.yaml,
 // the source of truth for uninstall / list / reconcile per ADR-0008.
-// Slice 1 supports Load + Append; remove and reconcile arrive when their
+// Slice 1 supports Load + Upsert; remove and reconcile arrive when their
 // CLI subcommands do.
 package manifest
 
@@ -64,14 +64,40 @@ func (s *Store) Load() (*Manifest, error) {
 	return m, nil
 }
 
-// Append loads the current manifest, appends rec, and writes the result
-// back atomically (write to tmp, rename). Parent dirs are created if
-// missing. Concurrent Appends from a single process are not synchronised
-// here — that's the orchestrator's lock concern if it ever needs one.
-func (s *Store) Append(rec Record) error {
+// Upsert loads the current manifest, replaces any record whose ID
+// matches rec.ID (preserving its slot in the slice), or appends rec
+// if no match is found. The result is written back atomically (write
+// to tmp, rename). Parent dirs are created if missing.
+//
+// Per ADR-0008 the manifest is the reconcile source of truth: the
+// (host, kind, name) tuple — encoded as the ID — uniquely identifies
+// an install slot. Re-installs MUST be idempotent at the record level
+// so uninstall/list/reconcile behave consistently. Slot preservation
+// keeps `dotpack list` output stable across re-installs.
+//
+// Empty IDs are rejected (hostile-review safeguard): if a future kind
+// fell through orchestrator.resourceName's default branch and produced
+// an empty ID, every unnamed install would silently overwrite the
+// prior one. The manifest must not store unidentifiable rows.
+//
+// Concurrency: NOT process-safe. Two concurrent `dotpack install`
+// invocations can both Load → both append → last writer wins,
+// silently losing one install's record. Single-process serialisation
+// is sufficient for slice 2 (no concurrent-install feature); a file
+// lock or single-writer daemon is the slice-3 concern when needed.
+func (s *Store) Upsert(rec Record) error {
+	if rec.ID == "" {
+		return fmt.Errorf("manifest: Upsert with empty ID is rejected (would conflate unidentifiable records)")
+	}
 	m, err := s.Load()
 	if err != nil {
 		return err
+	}
+	for i := range m.Installs {
+		if m.Installs[i].ID == rec.ID {
+			m.Installs[i] = rec
+			return s.save(m)
+		}
 	}
 	m.Installs = append(m.Installs, rec)
 	return s.save(m)

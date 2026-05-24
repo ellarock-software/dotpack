@@ -44,6 +44,12 @@ func New(d dirs.Dirs, a adapter.Adapter, m *manifest.Store) *Orchestrator {
 type InstallOptions struct {
 	Source     string
 	AllowLossy bool
+	// Force bypasses the pre-flight collision check (ADR-0008 hygiene:
+	// the orchestrator refuses to overwrite untracked files at an
+	// install target). Use only when the user has audited the
+	// collision and accepts the overwrite — mirrors --allow-lossy.
+	// The CLI surfaces this as --force.
+	Force bool
 }
 
 // InstallResult is what Install returns on success — the plan that was
@@ -63,6 +69,36 @@ type InstallResult struct {
 type LossyError struct {
 	Host    string
 	Reasons []adapter.LossyReason
+}
+
+// CollisionError is returned when the plan would write at one or more
+// paths that already exist on disk AND the install's ID is not present
+// in the manifest. Refusing rather than overwriting protects
+// user-edited files (on FIRST install) and orphans from a previously-
+// failed install. --force on the CLI maps to InstallOptions.Force and
+// bypasses.
+//
+// Drift gap (hostile-review #6, deferred): once an install IS in the
+// manifest, re-install silently overwrites the on-disk bytes even if
+// the user edited them externally. Cache_key drift detection would
+// catch this but isn't wired up yet — slice 3 concern. The current
+// protection is one-shot: first-install collisions are blocked;
+// subsequent in-place updates trust the manifest.
+type CollisionError struct {
+	Paths []string
+}
+
+// Error renders the colliding paths plus the --force hint, matching
+// LossyError's "say what's wrong and how to proceed" shape so a single
+// error message is actionable without re-running.
+func (e *CollisionError) Error() string {
+	lines := make([]string, 0, len(e.Paths)+2)
+	lines = append(lines, "install would collide with existing untracked files:")
+	for _, p := range e.Paths {
+		lines = append(lines, fmt.Sprintf("  - %s", p))
+	}
+	lines = append(lines, "pass --force to overwrite")
+	return strings.Join(lines, "\n")
 }
 
 // Error renders the lossy reasons with the diagnostic data the §8
@@ -111,18 +147,74 @@ func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts In
 		return InstallResult{}, &LossyError{Host: o.adapter.HostID(), Reasons: reasons}
 	}
 
+	rec := buildRecord(o.adapter.HostID(), r, scope, plan, opts, o.now())
+
+	if !opts.Force {
+		collisions, err := preflightCollisions(o.manifest, rec.ID, plan.Files)
+		if err != nil {
+			return InstallResult{}, fmt.Errorf("collision check: %w", err)
+		}
+		if len(collisions) > 0 {
+			return InstallResult{}, &CollisionError{Paths: collisions}
+		}
+	}
+
+	// Partial-write orphan handling deferred: if file K of N fails
+	// mid-loop, files 1..K-1 are on disk with no manifest record.
+	// Pre-flight on re-install will (correctly) flag them as collisions
+	// so the user can recover via --force, but actively cleaning up
+	// the orphans here is #5's job (uninstall semantics).
 	for _, fw := range plan.Files {
 		if err := writeAtomic(fw); err != nil {
 			return InstallResult{}, fmt.Errorf("apply file %s: %w", fw.Path, err)
 		}
 	}
 
-	rec := buildRecord(o.adapter.HostID(), r, scope, plan, opts, o.now())
-	if err := o.manifest.Append(rec); err != nil {
-		return InstallResult{}, fmt.Errorf("append manifest: %w", err)
+	if err := o.manifest.Upsert(rec); err != nil {
+		return InstallResult{}, fmt.Errorf("upsert manifest: %w", err)
 	}
 
 	return InstallResult{Plan: plan, Record: rec, LossyReasons: reasons}, nil
+}
+
+// preflightCollisions returns paths in `files` that exist on disk but
+// are NOT owned by an existing manifest record for id. Owned paths
+// (re-install case) are allowed; unknown paths (user-edited files or
+// orphans from a partial prior install) are reported. Returning a
+// non-nil error here means the manifest itself could not be read —
+// surfaced separately from CollisionError so the caller can tell
+// "your filesystem has unexpected state" apart from "your manifest
+// is broken".
+//
+// Uses os.Lstat (not os.Stat) so symlinks at the target path ARE
+// detected as collisions even when their target is missing (dangling)
+// or unrelated. Treating a symlink as "no collision" would silently
+// replace the user's indirection with a regular file on --force.
+//
+// TOCTOU caveat: this is a pre-flight check, not an atomic guard.
+// A path created between this stat and writeAtomic's rename will
+// be overwritten. The slice-2 hardening targets passive state
+// (untracked files / orphans), not concurrent races.
+func preflightCollisions(store *manifest.Store, id string, files []adapter.FileWrite) ([]string, error) {
+	m, err := store.Load()
+	if err != nil {
+		return nil, err
+	}
+	for _, rec := range m.Installs {
+		if rec.ID == id {
+			// Known install: re-install is allowed. Skip the stat
+			// loop entirely — overwriting our own files is the
+			// expected update path.
+			return nil, nil
+		}
+	}
+	var collisions []string
+	for _, fw := range files {
+		if _, err := os.Lstat(fw.Path); err == nil {
+			collisions = append(collisions, fw.Path)
+		}
+	}
+	return collisions, nil
 }
 
 // writeAtomic ensures parent dirs exist, writes the file to a tmp path

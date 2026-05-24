@@ -64,7 +64,8 @@ func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.Instal
 
 // planSkill produces the install plan for one skill. Per ADR-0009 the
 // target is <root>/skills/<name>/SKILL.md, where <root> is dirs.ClaudeHome
-// (user scope) or ./.claude (project scope, relative to CWD).
+// (user scope) or dirs.ProjectHome/.claude (project scope; both are
+// absolute paths post slice 2 task #2).
 func (a *Adapter) planSkill(s *resource.Skill, scope adapter.Scope) (adapter.InstallPlan, error) {
 	content, err := encodeSkill(s)
 	if err != nil {
@@ -86,6 +87,12 @@ func (a *Adapter) planSkill(s *resource.Skill, scope adapter.Scope) (adapter.Ins
 }
 
 // skillTarget computes the on-disk path for a skill at the given scope.
+// Both scopes return absolute paths — project scope is rooted at
+// dirs.ProjectHome (resolved at FromEnv time from DOTPACK_PROJECT_HOME
+// or CWD) so the manifest record's paths survive uninstall/list from
+// a different CWD. Absent ProjectHome under ScopeProject is a hard
+// error rather than a silent fallback to CWD — the adapter is a pure
+// function of its inputs.
 func skillTarget(d dirs.Dirs, scope adapter.Scope, name string) (string, error) {
 	switch scope {
 	case adapter.ScopeUser:
@@ -94,7 +101,10 @@ func skillTarget(d dirs.Dirs, scope adapter.Scope, name string) (string, error) 
 		}
 		return filepath.Join(d.ClaudeHome, "skills", name, "SKILL.md"), nil
 	case adapter.ScopeProject:
-		return filepath.Join(".claude", "skills", name, "SKILL.md"), nil
+		if d.ProjectHome == "" {
+			return "", fmt.Errorf("claude-code: project scope requires dirs.ProjectHome to be set")
+		}
+		return filepath.Join(d.ProjectHome, ".claude", "skills", name, "SKILL.md"), nil
 	default:
 		return "", fmt.Errorf("claude-code: unknown scope %q", scope)
 	}

@@ -24,6 +24,7 @@ func newInstallCmd() *cobra.Command {
 		kindName   string
 		scopeName  string
 		allowLossy bool
+		force      bool
 	)
 
 	cmd := &cobra.Command{
@@ -39,7 +40,7 @@ The first vertical slice supports:
 Future slices add gemini / codex adapters and the agents-cli umbrella flag.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInstall(cmd, args[0], agentName, kindName, scopeName, allowLossy)
+			return runInstall(cmd, args[0], agentName, kindName, scopeName, allowLossy, force)
 		},
 	}
 
@@ -47,10 +48,11 @@ Future slices add gemini / codex adapters and the agents-cli umbrella flag.`,
 	cmd.Flags().StringVar(&kindName, "kind", "", "Resource kind; inferred from filename when omitted (SKILL.md → skill)")
 	cmd.Flags().StringVar(&scopeName, "scope", "user", "Install scope (user|project)")
 	cmd.Flags().BoolVar(&allowLossy, "allow-lossy", false, "Proceed even if the adapter cannot honour all source fields")
+	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing untracked files at the install target (collisions otherwise refuse)")
 	return cmd
 }
 
-func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName string, allowLossy bool) error {
+func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName string, allowLossy, force bool) error {
 	d, err := dirs.FromEnv()
 	if err != nil {
 		return err
@@ -83,13 +85,20 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 	result, err := orch.Install(res, scope, orchestrator.InstallOptions{
 		Source:     "file://" + absSrc,
 		AllowLossy: allowLossy,
+		Force:      force,
 	})
 	if err != nil {
+		// LossyError + CollisionError both render their own
+		// actionable message (per-field reasons / colliding paths +
+		// the relevant bypass flag). Return as-is so cobra prints
+		// the structured text rather than wrapping it.
 		var le *orchestrator.LossyError
 		if errors.As(err, &le) {
-			// LossyError.Error() already renders per-field reasons +
-			// the --allow-lossy hint (see orchestrator.go); return as-is.
 			return le
+		}
+		var ce *orchestrator.CollisionError
+		if errors.As(err, &ce) {
+			return ce
 		}
 		return err
 	}

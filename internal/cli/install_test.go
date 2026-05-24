@@ -76,6 +76,57 @@ func TestInstall_MissingSourceErrors(t *testing.T) {
 	}
 }
 
+func TestInstall_CollisionRefused_BypassedWithForce(t *testing.T) {
+	// Slice 2 task #3 end-to-end via the CLI: install once → succeeds;
+	// hand-edit the installed file → re-install with the manifest
+	// removed simulates an untracked file at the target → CLI prints
+	// CollisionError; --force re-installs and overwrites.
+	claudeHome := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+
+	// First install: clean.
+	cmd := NewRootCmd()
+	cmd.SetOut(io_DiscardWriter())
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{"install", src, "--agent", "claude-code", "--scope", "user"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+
+	// Wipe the manifest so the installed file is now untracked from
+	// dotpack's perspective. Equivalent to a user who edited the file
+	// and lost the manifest, or a file written by some other tool.
+	if err := os.Remove(filepath.Join(dotpackHome, "installs.yaml")); err != nil {
+		t.Fatalf("remove manifest: %v", err)
+	}
+
+	// Second install with no --force: refuses with CollisionError.
+	cmd2 := NewRootCmd()
+	cmd2.SetOut(io_DiscardWriter())
+	cmd2.SetErr(io_DiscardWriter())
+	cmd2.SetArgs([]string{"install", src, "--agent", "claude-code", "--scope", "user"})
+	err := cmd2.Execute()
+	if err == nil {
+		t.Fatal("expected collision refusal, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "collide") || !strings.Contains(msg, "--force") {
+		t.Errorf("CLI error should describe collision + suggest --force; got %q", msg)
+	}
+
+	// Third install with --force: succeeds.
+	cmd3 := NewRootCmd()
+	cmd3.SetOut(io_DiscardWriter())
+	cmd3.SetErr(io_DiscardWriter())
+	cmd3.SetArgs([]string{"install", src, "--agent", "claude-code", "--scope", "user", "--force"})
+	if err := cmd3.Execute(); err != nil {
+		t.Fatalf("install --force: %v", err)
+	}
+}
+
 func TestInstall_InfersSkillKindFromFilename(t *testing.T) {
 	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
 	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())

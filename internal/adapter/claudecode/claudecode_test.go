@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ellarock/dotpack/internal/adapter"
@@ -55,12 +56,13 @@ func TestClaudeCode_PlanSkill_UserScope_WritesToClaudeHome(t *testing.T) {
 }
 
 func TestClaudeCode_PlanSkill_ProjectScope_WritesToProjectClaudeDir(t *testing.T) {
-	// ScopeProject targets ./.claude/skills/<name>/SKILL.md per ADR-0009.
-	// The base for "./" is the CWD where dotpack ran. We don't override
-	// CWD here — just check the path is relative-to-CWD-shaped (no
-	// leading dirs.ClaudeHome prefix).
+	// ScopeProject targets <ProjectHome>/.claude/skills/<name>/SKILL.md
+	// per ADR-0009 + slice 2 task #2 (project paths absolute, rooted at
+	// dirs.ProjectHome rather than CWD-relative). The manifest record's
+	// paths must be absolute so uninstall/list from any CWD resolve.
 	home := t.TempDir()
-	a := claudecode.New(dirs.Dirs{ClaudeHome: home})
+	projectHome := t.TempDir()
+	a := claudecode.New(dirs.Dirs{ClaudeHome: home, ProjectHome: projectHome})
 
 	skill := &resource.Skill{Name: "h", Description: "d", Body: "b"}
 	plan, err := a.Plan(skill, adapter.ScopeProject)
@@ -70,14 +72,33 @@ func TestClaudeCode_PlanSkill_ProjectScope_WritesToProjectClaudeDir(t *testing.T
 	if len(plan.Files) != 1 {
 		t.Fatalf("len(plan.Files): got %d, want 1", len(plan.Files))
 	}
-	// project-scope path must NOT live under ClaudeHome
 	if filepath.HasPrefix(plan.Files[0].Path, home) {
 		t.Errorf("project-scope path %q should not be under ClaudeHome %q", plan.Files[0].Path, home)
 	}
-	// must end with .claude/skills/h/SKILL.md
-	tail := filepath.Join(".claude", "skills", "h", "SKILL.md")
-	if !endsWith(plan.Files[0].Path, tail) {
-		t.Errorf("plan.Files[0].Path %q should end with %q", plan.Files[0].Path, tail)
+	if !filepath.IsAbs(plan.Files[0].Path) {
+		t.Errorf("project-scope path %q must be absolute (slice 2 task #2)", plan.Files[0].Path)
+	}
+	want := filepath.Join(projectHome, ".claude", "skills", "h", "SKILL.md")
+	if plan.Files[0].Path != want {
+		t.Errorf("plan.Files[0].Path: got %q, want %q", plan.Files[0].Path, want)
+	}
+}
+
+func TestClaudeCode_PlanSkill_ProjectScope_NoProjectHome_Errors(t *testing.T) {
+	// dirs.Dirs is a value passed into the adapter — there is no silent
+	// fallback to CWD. Constructing the adapter without ProjectHome and
+	// asking for ScopeProject must error loudly. (FromEnv populates
+	// ProjectHome from DOTPACK_PROJECT_HOME or os.Getwd() so production
+	// callers never hit this; the contract is for in-process callers /
+	// future agents-cli fan-out that build Dirs explicitly.)
+	a := claudecode.New(dirs.Dirs{ClaudeHome: t.TempDir()})
+	skill := &resource.Skill{Name: "h", Description: "d", Body: "b"}
+	_, err := a.Plan(skill, adapter.ScopeProject)
+	if err == nil {
+		t.Fatal("expected error when ProjectHome is empty under ScopeProject, got nil")
+	}
+	if !strings.Contains(err.Error(), "ProjectHome") {
+		t.Errorf("error should name the missing field; got %v", err)
 	}
 }
 
@@ -137,6 +158,3 @@ func TestClaudeCode_PlanSkill_BytePerfectPassThroughOfParsedSource(t *testing.T)
 	}
 }
 
-func endsWith(s, suffix string) bool {
-	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
-}
