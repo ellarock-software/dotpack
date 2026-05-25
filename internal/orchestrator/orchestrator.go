@@ -23,6 +23,7 @@ package orchestrator
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,15 +40,23 @@ import (
 
 // Reader handles operations that DO NOT traverse an adapter: List and
 // Uninstall. Both work from the manifest alone — List reads slot order;
-// Uninstall walks the record's absolute paths and removes them. Construct
-// with NewReader(d, m). The CLI's `dotpack list` and `dotpack uninstall`
-// use this type — neither needs to know about per-host adapter wiring.
+// Uninstall walks the record's absolute Files paths and removes them
+// AND walks the record's MergedKeys to un-merge config fragments from
+// JSON/TOML host config files. Construct with NewReader(d, m). The
+// CLI's `dotpack list` and `dotpack uninstall` use this type — neither
+// needs to know about per-host adapter wiring.
 //
-// ADR-0016 §9 future-note: when hook + mcp-server kinds land, Uninstall
-// will gain an un-merge-keys step that requires the host adapter. At
-// that point Uninstall moves to Installer (or grows an adapter parameter
-// derived from the ID's host segment). Today's split is honest about
-// today's behaviour; the migration path is open.
+// ADR-0016 §9 refinement (2026-05-25): the prior framing said
+// "Uninstall will gain an un-merge step that requires the host adapter,
+// at which point Uninstall moves to Installer". Empirically the
+// un-merge is FORMAT-specific (JSON vs TOML walker), not host-specific
+// — the manifest record's (File, Path) tuples are self-sufficient, so
+// Reader stays adapter-free and `unmergeKey` dispatches by file
+// extension. If a future slice surfaces a genuine adapter-need at
+// uninstall time (e.g., a kind where the file path can't be stored
+// canonically), the Reader→Installer migration path stays open. See
+// internal/orchestrator/mergedkeys.go's package docstring for the full
+// rationale.
 type Reader struct {
 	dirs     dirs.Dirs
 	manifest *manifest.Store
@@ -199,6 +208,13 @@ func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts Insta
 		if len(collisions) > 0 {
 			return InstallResult{}, &CollisionError{Paths: collisions}
 		}
+		mkCollisions, err := preflightMergedKeyCollisions(i.manifest, rec.ID, plan.MergedKeys)
+		if err != nil {
+			return InstallResult{}, fmt.Errorf("merged-key collision check: %w", err)
+		}
+		if len(mkCollisions) > 0 {
+			return InstallResult{}, &CollisionError{Paths: mkCollisions}
+		}
 	}
 
 	// Partial-write orphan handling deferred: if file K of N fails
@@ -207,9 +223,19 @@ func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts Insta
 	// so the user can recover via --force. Uninstall (#5) does NOT
 	// close this gap — there's no ID to look up for record-less files.
 	// A future `dotpack prune` / `reconcile` subcommand is the owner.
+	//
+	// Same gap extends to merged keys (hostile-review #7): if merged-key
+	// M+1 fails after files 0..K and merged keys 0..M succeeded, the
+	// host config file has M+1 entries the manifest doesn't track.
+	// Re-install preflight catches them; uninstall-by-ID does not.
 	for _, fw := range plan.Files {
 		if err := writeAtomic(fw); err != nil {
 			return InstallResult{}, fmt.Errorf("apply file %s: %w", fw.Path, err)
+		}
+	}
+	for _, mk := range plan.MergedKeys {
+		if err := applyMergedKey(mk); err != nil {
+			return InstallResult{}, fmt.Errorf("apply merged key %s in %s: %w", mk.Path, mk.File, err)
 		}
 	}
 
@@ -321,6 +347,24 @@ func (r *Reader) Uninstall(id string) (UninstallResult, error) {
 			missing = append(missing, p)
 		default:
 			return UninstallResult{}, fmt.Errorf("remove %s: %w", p, err)
+		}
+	}
+
+	// Config-fragment un-merge per ADR-0016 §9. Each manifest MergedKey
+	// names the file the install merged into and the format-native path
+	// it merged at; unmergeKey dispatches by file extension (JSON today;
+	// TOML when codex lands) and atomic-writes the result. Per advisor
+	// (refining ADR §9's "requires the host adapter" future-note), the
+	// un-merge is format-specific, not host-specific — the manifest
+	// record's (File, Path) tuple is self-sufficient, so Reader stays
+	// adapter-free.
+	//
+	// Absent / empty target files and absent leaves are no-ops
+	// (uninstall is idempotent across already-cleaned state); other
+	// I/O or parse errors short-circuit with a wrapped error.
+	for _, mk := range rec.MergedKeys {
+		if err := unmergeKey(adapter.MergedKeyWrite{File: mk.File, Path: mk.Path}); err != nil {
+			return UninstallResult{}, fmt.Errorf("un-merge key %s in %s: %w", mk.Path, mk.File, err)
 		}
 	}
 
@@ -469,6 +513,17 @@ func buildRecord(host string, r resource.Resource, scope adapter.Scope, plan ada
 	}
 	sort.Strings(files)
 
+	mks := make([]manifest.MergedKey, 0, len(plan.MergedKeys))
+	for _, mk := range plan.MergedKeys {
+		mks = append(mks, manifest.MergedKey{File: mk.File, Path: mk.Path})
+	}
+	sort.Slice(mks, func(i, j int) bool {
+		if mks[i].File != mks[j].File {
+			return mks[i].File < mks[j].File
+		}
+		return mks[i].Path < mks[j].Path
+	})
+
 	return manifest.Record{
 		ID:          fmt.Sprintf("%s:%s:%s", host, r.Kind(), name),
 		Source:      opts.Source,
@@ -477,6 +532,7 @@ func buildRecord(host string, r resource.Resource, scope adapter.Scope, plan ada
 		Scope:       string(scope),
 		TargetDir:   plan.TargetDir,
 		Files:       files,
+		MergedKeys:  mks,
 		CacheKey:    cacheKey(plan),
 		InstalledAt: when.Format(time.RFC3339),
 	}, nil
@@ -501,16 +557,40 @@ func resourceName(r resource.Resource) (string, error) {
 	return n.ResourceName(), nil
 }
 
-// cacheKey hashes the install plan's file contents to give the manifest
-// a deduplication / drift-detection handle. Per ADR-0008 the manifest
+// cacheKey hashes the install plan's contents to give the manifest a
+// deduplication / drift-detection handle. Per ADR-0008 the manifest
 // carries a cache_key field; in slice 1 the cache layer doesn't yet
 // exist, so we synthesise the key from the bytes the adapter emitted.
+//
+// For config-fragment installs the plan.Files slice is empty, so the
+// hash also folds in plan.MergedKeys (file, path, json-marshalled
+// value).
+//
+// Determinism caveat (hostile-review #5): json.Marshal sorts map keys
+// lexicographically for map[string]any / map[string]string — that's
+// the case for every emit function today (claudecode.emitMCPServer
+// returns a map[string]any). Typed Go structs marshal in
+// field-declaration order, not alphabetical, so if a future emit
+// returns a struct value the cache_key remains stable per-binary but
+// may change across struct-field reorderings. The guard is the
+// convention "emit functions return map[string]any" — if a future
+// emit returns something else, this hash function gains a stricter
+// canonicalisation step or a runtime type-check.
 func cacheKey(plan adapter.InstallPlan) string {
 	h := sha256.New()
 	for _, f := range plan.Files {
 		h.Write([]byte(f.Path))
 		h.Write([]byte{0})
 		h.Write(f.Content)
+		h.Write([]byte{0})
+	}
+	for _, mk := range plan.MergedKeys {
+		h.Write([]byte(mk.File))
+		h.Write([]byte{0})
+		h.Write([]byte(mk.Path))
+		h.Write([]byte{0})
+		valBytes, _ := json.Marshal(mk.Value)
+		h.Write(valBytes)
 		h.Write([]byte{0})
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))

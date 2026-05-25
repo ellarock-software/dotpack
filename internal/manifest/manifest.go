@@ -14,20 +14,40 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// MergedKey is one (file, path) tuple the install merged into a host
+// config file (per ADR-0016 §9). File is the absolute path of the host
+// config file (e.g., <ProjectHome>/.mcp.json); Path is the format-native
+// expression (JSONPath-ish "$.mcpServers.github" for JSON, dotted
+// "mcp_servers.github" for TOML when codex lands) — the format is
+// inferred from File's extension at apply / un-merge time so a path-
+// shape mismatch is caught at the format-walker layer, not silently.
+//
+// Why a struct (vs the prior []string `"file#path"` shape this slice
+// replaces): separators safe in both halves are not universal (# is
+// rare in filenames but legal — macOS allows it), and uninstall
+// genuinely needs the file path tuple to drive its un-merge step
+// without re-deriving from the host or the schema. The placeholder
+// []string carried no production data, so the format change is
+// one-shot before adoption.
+type MergedKey struct {
+	File string `yaml:"file"`
+	Path string `yaml:"path"`
+}
+
 // Record is one install. Field set per ADR-0008's "{ id, source, kind,
 // agent, scope, target_dir, files: [...], merged_keys: [...], cache_key,
 // installed_at }" schema.
 type Record struct {
-	ID          string   `yaml:"id"`
-	Source      string   `yaml:"source"`
-	Kind        string   `yaml:"kind"`
-	Agent       string   `yaml:"agent"`
-	Scope       string   `yaml:"scope"`
-	TargetDir   string   `yaml:"target_dir,omitempty"`
-	Files       []string `yaml:"files,omitempty"`
-	MergedKeys  []string `yaml:"merged_keys,omitempty"`
-	CacheKey    string   `yaml:"cache_key,omitempty"`
-	InstalledAt string   `yaml:"installed_at"`
+	ID          string      `yaml:"id"`
+	Source      string      `yaml:"source"`
+	Kind        string      `yaml:"kind"`
+	Agent       string      `yaml:"agent"`
+	Scope       string      `yaml:"scope"`
+	TargetDir   string      `yaml:"target_dir,omitempty"`
+	Files       []string    `yaml:"files,omitempty"`
+	MergedKeys  []MergedKey `yaml:"merged_keys,omitempty"`
+	CacheKey    string      `yaml:"cache_key,omitempty"`
+	InstalledAt string      `yaml:"installed_at"`
 }
 
 // Manifest is the top-level YAML structure of installs.yaml.

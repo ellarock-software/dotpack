@@ -164,6 +164,9 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 	for _, f := range result.Plan.Files {
 		cmd.Printf("  wrote %s\n", f.Path)
 	}
+	for _, mk := range result.Plan.MergedKeys {
+		cmd.Printf("  merged %s into %s\n", mk.Path, mk.File)
+	}
 	return nil
 }
 
@@ -208,6 +211,9 @@ func runUmbrellaInstall(cmd *cobra.Command, source, agentName string, kind resou
 	for _, f := range result.Plan.Files {
 		cmd.Printf("  wrote %s\n", f.Path)
 	}
+	for _, mk := range result.Plan.MergedKeys {
+		cmd.Printf("  merged %s into %s\n", mk.Path, mk.File)
+	}
 	return nil
 }
 
@@ -226,7 +232,9 @@ func resolveKind(explicit, sourcePath string) (resource.Kind, error) {
 			return resource.KindSkill, nil
 		case resource.KindAgent:
 			return resource.KindAgent, nil
-		case resource.KindCommand, resource.KindMemory, resource.KindHook, resource.KindMCPServer:
+		case resource.KindMCPServer:
+			return resource.KindMCPServer, nil
+		case resource.KindCommand, resource.KindMemory, resource.KindHook:
 			return "", fmt.Errorf("kind %q not yet supported", explicit)
 		default:
 			return "", fmt.Errorf("unknown kind %q", explicit)
@@ -235,6 +243,11 @@ func resolveKind(explicit, sourcePath string) (resource.Kind, error) {
 	if filepath.Base(sourcePath) == "SKILL.md" {
 		return resource.KindSkill, nil
 	}
+	// No inference for mcp-server: the .mcp.json filename collides with
+	// non-resource fragments a user may have lying around (the JSON
+	// shape doesn't carry a kind discriminator), so we require
+	// --kind mcp-server explicitly. Matches agent's explicit-only
+	// inference policy.
 	return "", fmt.Errorf("cannot infer --kind from %q; pass --kind explicitly", sourcePath)
 }
 
@@ -262,6 +275,15 @@ func loadResource(kind resource.Kind, source string) (resource.Resource, error) 
 			return nil, validationError(errs)
 		}
 		return agent, nil
+	case resource.KindMCPServer:
+		mcp, err := resource.ParseMCPServer(raw)
+		if err != nil {
+			return nil, err
+		}
+		if errs := validator.ValidateMCPServer(mcp); len(errs) > 0 {
+			return nil, validationError(errs)
+		}
+		return mcp, nil
 	default:
 		return nil, fmt.Errorf("kind %q not supported", kind)
 	}
@@ -351,11 +373,32 @@ var umbrellaFactories = map[string]umbrellaConfig{
 			// TestInstall_AgentKindOnAgentsCli_Unsupported. Add a
 			// writer here ONLY when a documented convergence emerges.
 			//
-			// Command/memory/hook/mcp-server kinds: not yet supported
-			// on ANY adapter today (filedrop.Plan returns "kind X not
-			// yet supported"). When they land, decide per-kind whether
+			// Command/memory/hook kinds: not yet supported on ANY
+			// adapter today. When they land, decide per-kind whether
 			// the umbrella supports them and what the canonical writer
 			// is.
+			//
+			// MCP-server kind: per-host adapter support landed in the
+			// configfrag slice (claudecode today), but is INTENTIONALLY
+			// ABSENT from the agents-cli umbrella's writers map. Per
+			// ADR-0016 §1c gating-condition #2, the umbrella's fan-out
+			// shape for config-fragment kinds is FUNDAMENTALLY DIFFERENT
+			// from file-drop: each sub-adapter writes to its OWN config
+			// file (gemini → .gemini/settings.json, codex →
+			// ~/.codex/config.toml), so the writers map widens from
+			// "one canonical writer per kind" to "ordered list of
+			// writers per kind" and UmbrellaInstaller.Install needs a
+			// per-kind dispatch widening. Per ADR-0016 §1c gating-
+			// condition #1, mcp-server is also the canonical case
+			// where literal-§8 lossy aggregation MAY diverge from
+			// convergence-write semantics (codex's mcp-server is a
+			// ~18-field superset of gemini's per ADR-0014). Adding
+			// mcp-server here without widening would silently route
+			// to a single sub-adapter, dropping the other host's
+			// install — that's the failure mode the absence guards
+			// against. Widening + the §1c-#1 refinement is the next
+			// slice; until then, --agent agents-cli foo.mcp.json
+			// fails fast with "kind not supported under umbrella".
 		},
 	},
 }
