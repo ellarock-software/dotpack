@@ -35,13 +35,11 @@ func runList(cmd *cobra.Command) error {
 		return err
 	}
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	// List doesn't need an adapter — it's a pure manifest read. Pass
-	// nil since orchestrator.New takes an Adapter but List doesn't
-	// invoke it. (If a future host gains a side-channel state, that
-	// changes; today this is honest.)
-	orch := orchestrator.New(d, nil, mf)
+	// List is a pure manifest read — no adapter required. orchestrator.Reader
+	// is the type for adapter-free operations (List + Uninstall today).
+	r := orchestrator.NewReader(d, mf)
 
-	records, err := orch.List()
+	records, err := r.List()
 	if err != nil {
 		return err
 	}

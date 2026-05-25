@@ -19,7 +19,7 @@ func TestInstall_AgentToClaudeCode_WritesFileAndRecordsManifest(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	ag := &resource.Agent{
 		Name:        "code-reviewer",
@@ -53,7 +53,7 @@ func TestUninstall_Agent_RemovesFileButLeavesSharedAgentsDir(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	ag := &resource.Agent{Name: "reviewer", Description: "d", Body: "b"}
 	res, err := orch.Install(ag, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
@@ -62,7 +62,7 @@ func TestUninstall_Agent_RemovesFileButLeavesSharedAgentsDir(t *testing.T) {
 	}
 	agentsDir := filepath.Join(d.ClaudeHome, "agents")
 
-	uninstall, err := orch.Uninstall(res.Record.ID)
+	uninstall, err := orchestrator.NewReader(d, mf).Uninstall(res.Record.ID)
 	if err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestUninstall_Agent_PreservesSiblingAgent(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	ag := &resource.Agent{Name: "dp-managed", Description: "d", Body: "b"}
 	res, err := orch.Install(ag, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
@@ -99,7 +99,7 @@ func TestUninstall_Agent_PreservesSiblingAgent(t *testing.T) {
 		t.Fatalf("write sibling: %v", err)
 	}
 
-	if _, err := orch.Uninstall(res.Record.ID); err != nil {
+	if _, err := orchestrator.NewReader(d, mf).Uninstall(res.Record.ID); err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
 	if _, err := os.Stat(sibling); err != nil {
@@ -111,7 +111,7 @@ func TestList_MixedSkillAndAgent_PreservesSlotOrder(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "s1", Description: "d", Body: "b"}
 	ag := &resource.Agent{Name: "a1", Description: "d", Body: "b"}
@@ -122,7 +122,7 @@ func TestList_MixedSkillAndAgent_PreservesSlotOrder(t *testing.T) {
 		t.Fatalf("Install agent: %v", err)
 	}
 
-	records, err := orch.List()
+	records, err := orchestrator.NewReader(d, mf).List()
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestInstall_ResourceWithoutNamed_ReturnsErrorNotPanic(t *testing.T) {
 	// print something better than a Go runtime stack trace.
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, fakeAdapter{}, mf)
+	orch := orchestrator.NewInstaller(d, fakeAdapter{}, mf)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -188,7 +188,7 @@ func TestInstall_AgentWithGeminiOnlyExtensionIsLossyOnClaudeCode(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	ag := (&resource.Agent{Name: "g", Description: "d", Body: "b"}).
 		WithExtensions(map[string]any{"temperature": 0.5})

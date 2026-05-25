@@ -3,6 +3,21 @@
 // orchestrator owns: filesystem mutation, manifest construction, and
 // the --allow-lossy gate. Adapters return plans; the orchestrator
 // runs them.
+//
+// Two types split the surface by adapter dependency:
+//
+//   - Installer (NewInstaller): holds an Adapter; method Install runs the
+//     adapter's Plan and applies it.
+//   - Reader (NewReader): no adapter; methods List + Uninstall work from
+//     the manifest alone (manifest records carry absolute paths and the
+//     host is encoded in the ID, so neither call needs an adapter today).
+//
+// The split replaces an earlier single Orchestrator type whose New(d, a, mf)
+// accepted a nil adapter for List + Uninstall — honest about today's
+// behaviour but actively misleading when ADR-0016 §9's un-merge-keys
+// step lands and Uninstall starts needing the adapter. With the split,
+// the §9 migration is a method move (Reader.Uninstall → Installer.Uninstall),
+// not an API redesign.
 package orchestrator
 
 import (
@@ -22,29 +37,44 @@ import (
 	"github.com/ellarock/dotpack/schema"
 )
 
-// Orchestrator wires the dirs, an Adapter, and the manifest store.
-// One Orchestrator handles one (host, manifest) pair; --agent agents-cli
-// fan-out (ADR-0016 §1) is a higher layer that constructs multiple
-// orchestrators.
-type Orchestrator struct {
+// Reader handles operations that DO NOT traverse an adapter: List and
+// Uninstall. Both work from the manifest alone — List reads slot order;
+// Uninstall walks the record's absolute paths and removes them. Construct
+// with NewReader(d, m). The CLI's `dotpack list` and `dotpack uninstall`
+// use this type — neither needs to know about per-host adapter wiring.
+//
+// ADR-0016 §9 future-note: when hook + mcp-server kinds land, Uninstall
+// will gain an un-merge-keys step that requires the host adapter. At
+// that point Uninstall moves to Installer (or grows an adapter parameter
+// derived from the ID's host segment). Today's split is honest about
+// today's behaviour; the migration path is open.
+type Reader struct {
+	dirs     dirs.Dirs
+	manifest *manifest.Store
+}
+
+// Installer handles Install. Holds the target adapter — the only
+// operation that actually traverses it today. One Installer handles one
+// (host, manifest) pair; --agent agents-cli fan-out (ADR-0016 §1) is a
+// higher layer that constructs multiple Installers.
+type Installer struct {
 	dirs     dirs.Dirs
 	adapter  adapter.Adapter
 	manifest *manifest.Store
 	now      func() time.Time // injected for deterministic tests if needed
 }
 
-// New constructs an Orchestrator. The Adapter may be nil for read-only
-// operations (List, Uninstall) — the manifest carries absolute paths
-// and the host identity is encoded in the ID, so neither call traverses
-// the adapter. Install / re-install paths DO require a non-nil adapter;
-// passing nil there will panic at the adapter.Plan call site.
-//
-// The List and Uninstall test cases pin this contract
-// (TestList_NilAdapter_OK, TestUninstall_NilAdapter_OK) so a future
-// change that adds adapter traversal to either path fails loudly
-// rather than silently nil-derefing in production.
-func New(d dirs.Dirs, a adapter.Adapter, m *manifest.Store) *Orchestrator {
-	return &Orchestrator{dirs: d, adapter: a, manifest: m, now: func() time.Time { return time.Now().UTC() }}
+// NewReader constructs a Reader. No adapter — List and Uninstall do not
+// traverse one.
+func NewReader(d dirs.Dirs, m *manifest.Store) *Reader {
+	return &Reader{dirs: d, manifest: m}
+}
+
+// NewInstaller constructs an Installer. The Adapter is required; Install
+// dispatches to adapter.Plan for the resource, so a nil adapter would
+// panic at the first call site.
+func NewInstaller(d dirs.Dirs, a adapter.Adapter, m *manifest.Store) *Installer {
+	return &Installer{dirs: d, adapter: a, manifest: m, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // InstallOptions are the per-call knobs (analogous to CLI flags). Source
@@ -142,27 +172,27 @@ func (e *LossyError) Error() string {
 // detection (ADR-0016 §8) is computed here from the schema against
 // the resource's Extensions — the adapter's Plan does not carry lossy
 // state; the schema is the single source of truth.
-func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts InstallOptions) (InstallResult, error) {
-	plan, err := o.adapter.Plan(r, scope)
+func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts InstallOptions) (InstallResult, error) {
+	plan, err := i.adapter.Plan(r, scope)
 	if err != nil {
 		return InstallResult{}, fmt.Errorf("plan: %w", err)
 	}
 
-	reasons, err := schema.LossyExtensions(r.Kind(), o.adapter.HostID(), r.Extensions())
+	reasons, err := schema.LossyExtensions(r.Kind(), i.adapter.HostID(), r.Extensions())
 	if err != nil {
 		return InstallResult{}, fmt.Errorf("lossy check: %w", err)
 	}
 	if len(reasons) > 0 && !opts.AllowLossy {
-		return InstallResult{}, &LossyError{Host: o.adapter.HostID(), Reasons: reasons}
+		return InstallResult{}, &LossyError{Host: i.adapter.HostID(), Reasons: reasons}
 	}
 
-	rec, err := buildRecord(o.adapter.HostID(), r, scope, plan, opts, o.now())
+	rec, err := buildRecord(i.adapter.HostID(), r, scope, plan, opts, i.now())
 	if err != nil {
 		return InstallResult{}, err
 	}
 
 	if !opts.Force {
-		collisions, err := preflightCollisions(o.manifest, rec.ID, plan.Files)
+		collisions, err := preflightCollisions(i.manifest, rec.ID, plan.Files)
 		if err != nil {
 			return InstallResult{}, fmt.Errorf("collision check: %w", err)
 		}
@@ -183,7 +213,7 @@ func (o *Orchestrator) Install(r resource.Resource, scope adapter.Scope, opts In
 		}
 	}
 
-	if err := o.manifest.Upsert(rec); err != nil {
+	if err := i.manifest.Upsert(rec); err != nil {
 		return InstallResult{}, fmt.Errorf("upsert manifest: %w", err)
 	}
 
@@ -237,8 +267,8 @@ type UninstallResult struct {
 // — there's no ID to look up. A future `dotpack prune` or `reconcile`
 // subcommand is the owner. The TODO comment at the install loop has
 // been updated to reflect that #5 does NOT close this gap.
-func (o *Orchestrator) Uninstall(id string) (UninstallResult, error) {
-	m, err := o.manifest.Load()
+func (r *Reader) Uninstall(id string) (UninstallResult, error) {
+	m, err := r.manifest.Load()
 	if err != nil {
 		return UninstallResult{}, fmt.Errorf("load manifest: %w", err)
 	}
@@ -305,7 +335,7 @@ func (o *Orchestrator) Uninstall(id string) (UninstallResult, error) {
 		}
 	}
 
-	if err := o.manifest.Remove(id); err != nil {
+	if err := r.manifest.Remove(id); err != nil {
 		return UninstallResult{}, fmt.Errorf("remove manifest record: %w", err)
 	}
 
@@ -321,8 +351,8 @@ func (o *Orchestrator) Uninstall(id string) (UninstallResult, error) {
 // manifest.Store.Load — formatting is the CLI's concern. Missing
 // manifest file → empty slice, not an error (slice 1 contract: a fresh
 // system has no installs yet).
-func (o *Orchestrator) List() ([]manifest.Record, error) {
-	m, err := o.manifest.Load()
+func (r *Reader) List() ([]manifest.Record, error) {
+	m, err := r.manifest.Load()
 	if err != nil {
 		return nil, err
 	}

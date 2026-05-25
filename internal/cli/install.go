@@ -114,10 +114,10 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 		}
 	}
 
-	orch := orchestrator.New(d, a, mf)
+	inst := orchestrator.NewInstaller(d, a, mf)
 
 	absSrc, _ := filepath.Abs(source)
-	result, err := orch.Install(res, scope, orchestrator.InstallOptions{
+	result, err := inst.Install(res, scope, orchestrator.InstallOptions{
 		Source:     "file://" + absSrc,
 		AllowLossy: allowLossy,
 		Force:      force,
@@ -270,7 +270,7 @@ func buildAdapter(name string, d dirs.Dirs) (adapter.Adapter, error) {
 // called. Pinned by TestInstall_ExplicitAgentClaudeCode_SuppressesHint.
 //
 // The no-write guarantee (anti-theatre) lives in the call site: this
-// function is invoked BEFORE orchestrator.New / orch.Install, so a
+// function is invoked BEFORE orchestrator.NewInstaller / inst.Install, so a
 // non-nil return short-circuits the write. Pinned by the anti-theatre
 // assertion in TestInstall_DefaultAgent_AlternateHostHasSameKindName_HintsAndRefuses.
 func checkDefaultAgentMisroute(res resource.Resource, target string, mf *manifest.Store) error {

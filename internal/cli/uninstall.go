@@ -56,15 +56,17 @@ func runUninstall(cmd *cobra.Command, handle, agentName, kindName string) error 
 	}
 
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	// Uninstall doesn't need an adapter — the manifest record carries
-	// absolute paths and orchestrator.Uninstall walks them directly.
-	// Pinning --agent into adapter construction would (incorrectly)
-	// reject a full-ID uninstall whose host doesn't match --agent's
-	// default (hostile-review #1: copy-pasting an ID with a non-default
-	// host would error spuriously once #7 ships a second adapter).
-	orch := orchestrator.New(d, nil, mf)
+	// Uninstall doesn't traverse an adapter today — the manifest record
+	// carries absolute paths and the host identity is encoded in the ID.
+	// orchestrator.Reader is the adapter-free type for List + Uninstall.
+	// This split also avoids the second-adapter footgun the original
+	// nil-adapter convention dodged: a full-ID handle whose host doesn't
+	// match --agent's default would have spuriously failed adapter
+	// construction (hostile-review #1 of slice 3 task #7). With Reader,
+	// no adapter is constructed at all on the uninstall path.
+	r := orchestrator.NewReader(d, mf)
 
-	res, err := orch.Uninstall(id)
+	res, err := r.Uninstall(id)
 	if err != nil {
 		return err
 	}

@@ -20,7 +20,7 @@ func TestInstall_SkillToClaudeCode_WritesFileAndRecordsManifest(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{
 		Name:        "hello-world",
@@ -59,7 +59,7 @@ func TestInstall_FileContentMatchesPlan(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "x", Description: "d", Body: "b\n"}
 	res, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
@@ -84,7 +84,7 @@ func TestInstall_UnknownExtensionRefusedWithoutAllowLossy(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := (&resource.Skill{Name: "y", Description: "d", Body: "b"}).
 		WithExtensions(map[string]any{"made_up_field": "foo"})
@@ -108,7 +108,7 @@ func TestInstall_UnknownExtensionProceedsWithAllowLossy(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := (&resource.Skill{Name: "z", Description: "d", Body: "b"}).
 		WithExtensions(map[string]any{"made_up_field": "foo"})
@@ -163,7 +163,7 @@ func TestInstall_ProjectScope_ManifestRecordHasAbsolutePath(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir(), ProjectHome: projectHome}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "proj-skill", Description: "d", Body: "b\n"}
 	res, err := orch.Install(skill, adapter.ScopeProject, orchestrator.InstallOptions{Source: "f"})
@@ -196,7 +196,7 @@ func TestInstall_CollisionWithUntrackedFile_ReturnsCollisionError(t *testing.T) 
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	// Plant an untracked file at the target path (simulates user edit
 	// OR an orphan from a partial prior install).
@@ -238,7 +238,7 @@ func TestInstall_CollisionBypassedWithForce(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	targetDir := filepath.Join(d.ClaudeHome, "skills", "force-me")
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
@@ -272,7 +272,7 @@ func TestInstall_ReinstallOverTrackedFile_NoCollision(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "reinstall", Description: "d", Body: "v1\n"}
 	if _, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"}); err != nil {
@@ -305,7 +305,7 @@ func TestInstall_CollisionDetectsSymlinkAtTarget(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	targetDir := filepath.Join(d.ClaudeHome, "skills", "symlinked")
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
@@ -368,7 +368,7 @@ func TestUninstall_RemovesFilesAndManifestRecord(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "remove-me", Description: "d", Body: "b\n"}
 	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
@@ -381,7 +381,7 @@ func TestUninstall_RemovesFilesAndManifestRecord(t *testing.T) {
 		t.Fatalf("pre-condition: installed file missing: %v", err)
 	}
 
-	res, err := orch.Uninstall(installed.Record.ID)
+	res, err := orchestrator.NewReader(d, mf).Uninstall(installed.Record.ID)
 	if err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
@@ -413,11 +413,9 @@ func TestUninstall_NoSuchID_Errors(t *testing.T) {
 	// the user expects feedback that the typo / wrong scope / already-
 	// uninstalled state was noticed. Silent no-op hides bugs.
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
-	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
 
-	_, err := orch.Uninstall("claude-code:skill:never-installed")
+	_, err := orchestrator.NewReader(d, mf).Uninstall("claude-code:skill:never-installed")
 	if err == nil {
 		t.Fatal("expected error on unknown ID, got nil")
 	}
@@ -440,7 +438,7 @@ func TestUninstall_MissingFile_NotAnError(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "vanished", Description: "d", Body: "b"}
 	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
@@ -452,7 +450,7 @@ func TestUninstall_MissingFile_NotAnError(t *testing.T) {
 		t.Fatalf("setup: remove installed file: %v", err)
 	}
 
-	res, err := orch.Uninstall(installed.Record.ID)
+	res, err := orchestrator.NewReader(d, mf).Uninstall(installed.Record.ID)
 	if err != nil {
 		t.Fatalf("Uninstall over already-missing file: %v", err)
 	}
@@ -479,7 +477,7 @@ func TestUninstall_HappyPath_TracksRemovedPathsAndTargetDirRemoved(t *testing.T)
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "happy", Description: "d", Body: "b\n"}
 	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
@@ -487,7 +485,7 @@ func TestUninstall_HappyPath_TracksRemovedPathsAndTargetDirRemoved(t *testing.T)
 		t.Fatalf("Install: %v", err)
 	}
 
-	res, err := orch.Uninstall(installed.Record.ID)
+	res, err := orchestrator.NewReader(d, mf).Uninstall(installed.Record.ID)
 	if err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
@@ -510,7 +508,7 @@ func TestUninstall_TargetDirKept_WhenSiblingFileSurvives(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "shared", Description: "d", Body: "b"}
 	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
@@ -522,7 +520,7 @@ func TestUninstall_TargetDirKept_WhenSiblingFileSurvives(t *testing.T) {
 		t.Fatalf("setup WriteFile: %v", err)
 	}
 
-	res, err := orch.Uninstall(installed.Record.ID)
+	res, err := orchestrator.NewReader(d, mf).Uninstall(installed.Record.ID)
 	if err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
@@ -541,7 +539,7 @@ func TestUninstall_DoesNotRemoveTargetDirWithUnrelatedFile(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "shared-dir", Description: "d", Body: "b"}
 	installed, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
@@ -554,7 +552,7 @@ func TestUninstall_DoesNotRemoveTargetDirWithUnrelatedFile(t *testing.T) {
 		t.Fatalf("setup: WriteFile stray: %v", err)
 	}
 
-	if _, err := orch.Uninstall(installed.Record.ID); err != nil {
+	if _, err := orchestrator.NewReader(d, mf).Uninstall(installed.Record.ID); err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
 
@@ -576,7 +574,7 @@ func TestUninstall_ProjectScope_CrossCWD(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir(), ProjectHome: projectHome}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	skill := &resource.Skill{Name: "cross-cwd", Description: "d", Body: "b"}
 	installed, err := orch.Install(skill, adapter.ScopeProject, orchestrator.InstallOptions{Source: "f"})
@@ -599,7 +597,7 @@ func TestUninstall_ProjectScope_CrossCWD(t *testing.T) {
 		t.Fatalf("Chdir: %v", err)
 	}
 
-	if _, err := orch.Uninstall(installed.Record.ID); err != nil {
+	if _, err := orchestrator.NewReader(d, mf).Uninstall(installed.Record.ID); err != nil {
 		t.Fatalf("Uninstall from different CWD: %v", err)
 	}
 	if _, err := os.Stat(expectedPath); !errors.Is(err, os.ErrNotExist) {
@@ -615,7 +613,7 @@ func TestList_ReturnsManifestRecordsInOrder(t *testing.T) {
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	for _, name := range []string{"alpha", "bravo", "charlie"} {
 		skill := &resource.Skill{Name: name, Description: "d", Body: "b"}
@@ -624,7 +622,7 @@ func TestList_ReturnsManifestRecordsInOrder(t *testing.T) {
 		}
 	}
 
-	got, err := orch.List()
+	got, err := orchestrator.NewReader(d, mf).List()
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -639,59 +637,13 @@ func TestList_ReturnsManifestRecordsInOrder(t *testing.T) {
 	}
 }
 
-func TestList_NilAdapter_OK(t *testing.T) {
-	// Hostile-review #4 of slice 3: List doesn't touch the adapter,
-	// so the CLI's `dotpack list` constructs the orchestrator with
-	// adapter=nil. Pin this contract so a future change that adds
-	// adapter traversal to List fails loudly here rather than silently
-	// nil-derefing when a user runs `dotpack list` in production.
-	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
-	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, nil, mf)
-
-	got, err := orch.List()
-	if err != nil {
-		t.Fatalf("List with nil adapter: %v", err)
-	}
-	if len(got) != 0 {
-		t.Errorf("List: got %d, want 0", len(got))
-	}
-}
-
-func TestUninstall_NilAdapter_OK(t *testing.T) {
-	// Same contract as TestList_NilAdapter_OK: Uninstall must NOT
-	// traverse the adapter (the manifest carries absolute paths;
-	// host identity is encoded in the ID). The CLI's `dotpack uninstall`
-	// constructs the orchestrator with adapter=nil so a full-ID handle
-	// can target a host the local --agent flag doesn't recognise.
-	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
-	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-
-	// Seed a record via a real adapter so the manifest has something
-	// to uninstall, then re-construct the orchestrator with nil adapter
-	// for the uninstall call.
-	seed := orchestrator.New(d, claudecode.New(d), mf)
-	skill := &resource.Skill{Name: "no-adapter", Description: "d", Body: "b"}
-	installed, err := seed.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
-	if err != nil {
-		t.Fatalf("seed Install: %v", err)
-	}
-
-	orch := orchestrator.New(d, nil, mf)
-	if _, err := orch.Uninstall(installed.Record.ID); err != nil {
-		t.Fatalf("Uninstall with nil adapter: %v", err)
-	}
-}
-
 func TestList_EmptyManifest_ReturnsEmpty(t *testing.T) {
 	// No installs yet (or manifest file absent) → List returns an empty
 	// slice, NOT an error. The CLI prints "no installs" or similar.
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
-	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
 
-	got, err := orch.List()
+	got, err := orchestrator.NewReader(d, mf).List()
 	if err != nil {
 		t.Fatalf("List on empty manifest: %v", err)
 	}
@@ -723,7 +675,7 @@ func TestInstall_NativeExtensionOnClaudeCode_NotLossy_BytesPreserved(t *testing.
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
-	orch := orchestrator.New(d, a, mf)
+	orch := orchestrator.NewInstaller(d, a, mf)
 
 	res, err := orch.Install(skill, adapter.ScopeUser, orchestrator.InstallOptions{Source: "f"})
 	if err != nil {
