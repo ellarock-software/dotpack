@@ -6,7 +6,7 @@ A translation that passes the reviewer + security gates is expensive to produce 
 
 ## Decision
 
-Translated artifacts persist to `~/.dotpack/cache/<owner>/<repo>/<sha>/<path>/`. Future installs of the same (source, version) install from cache and skip the full pipeline. A separate `dotpack contribute <source>` command optionally opens a PR back to the source repo with the translated copy + dotpack metadata, letting users push their translations upstream when they want to.
+Translated artifacts persist to `~/.dotpack/cache/{owner}/{repo}/{sha}/{path}/`. Future installs of the same (source, version) install from cache and skip the full pipeline. A separate `dotpack contribute {source}` command optionally opens a PR back to the source repo with the translated copy + dotpack metadata, letting users push their translations upstream when they want to.
 
 ## Why
 

@@ -23,7 +23,7 @@ The schema also documents three host-specific install-target footguns and the Co
 
 **Transport discrimination by field presence, not by `type`.** Codex spec uses presence of `url` vs `command` as the transport discriminator. Corpus has both `type = "stdio"` (8 ChrisWiles Claude entries) and `type = "http"` (5 arc-kit Codex entries) — but the latter is a Claude-style holdover by the author, NOT a Codex spec field (Codex ignores it). The schema follows the spec: no `type` field; transport is inferred. Translator drops `type` on Codex import; passes through for Claude/Gemini where it may carry meaning.
 
-**Per-entry counting beats per-file counting.** Pre-existing methodology (from original ADR), reaffirmed by Codex: per-entry granularity surfaces field adoption that per-file counting hides. `env` appears in 8/25 entries across 4 files (was 7/16 across 2 files in Claude-only corpus). Nested sub-entries (wp-calypso's `tools.<toolname>.approval_mode`) do NOT inherit server-entry granularity — they're sub-floor at the server-entry level (1/25 has the `tools` field).
+**Per-entry counting beats per-file counting.** Pre-existing methodology (from original ADR), reaffirmed by Codex: per-entry granularity surfaces field adoption that per-file counting hides. `env` appears in 8/25 entries across 4 files (was 7/16 across 2 files in Claude-only corpus). Nested sub-entries (wp-calypso's `tools.{toolname}.approval_mode`) do NOT inherit server-entry granularity — they're sub-floor at the server-entry level (1/25 has the `tools` field).
 
 **The `headers` vs `http_headers` ambiguity is documented, not resolved.** arc-kit uses `headers = {...}` for API-key injection (2/25 entries); Codex spec field is `http_headers` (0/25). Either arc-kit is wrong (Codex silently ignores), `headers` is an undocumented alias, or the spec lags. Neither field promoted to schema; translator canonicalises on import to Codex (rewrite `headers` → `http_headers`, preserve original spelling in resource metadata for traceability).
 
@@ -35,7 +35,7 @@ The schema also documents three host-specific install-target footguns and the Co
 
 ## Consequences
 
-**Manifest schema for mcp-server installs.** Per [ADR-0008](./0008-manifest-as-install-provenance-source-of-truth.md), `merged_keys` records the keys this resource added. For mcp-server that's `$.mcpServers.<server-name>` (Claude/Gemini) or `mcp_servers.<server-name>` (Codex) — a single key per install. Name collision between two installs into the same target file must fail fast (per ecosystem_notes); the manifest's collision detection check is the place to enforce this.
+**Manifest schema for mcp-server installs.** Per [ADR-0008](./0008-manifest-as-install-provenance-source-of-truth.md), `merged_keys` records the keys this resource added. For mcp-server that's `$.mcpServers.{server-name}` (Claude/Gemini) or `mcp_servers.{server-name}` (Codex) — a single key per install. Name collision between two installs into the same target file must fail fast (per ecosystem_notes); the manifest's collision detection check is the place to enforce this.
 
 **Adapter capability matrix.**
 - `claude-code`: native. Writes to `.mcp.json` (project) or `~/.claude.json` (user). Refuses settings.json for mcpServers. Manifest tracks merged keys. Lossy when source carries Codex-superset fields (per ADR-0007 addendum).
@@ -49,7 +49,7 @@ The schema also documents three host-specific install-target footguns and the Co
 - Track per-host merged keys in manifest for surgical uninstall.
 - Trigger per-instance lossy detection (ADR-0007 addendum) when a Codex-rich resource is installed via a thinner adapter.
 
-**Phase 0 complete (for real this time).** All six MVP kinds (skill, agent, command, memory, hook, mcp-server) have schemas at `schema/<kind>.yaml`, ADRs at `docs/adr/0009-...0014-...md`, and **Codex coverage across the two fragment kinds**. The TOML-extraction blocker (`scripts/survey.sh` TODO) is closed.
+**Phase 0 complete (for real this time).** All six MVP kinds (skill, agent, command, memory, hook, mcp-server) have schemas at `schema/{kind}.yaml`, ADRs at `docs/adr/0009-...0014-...md`, and **Codex coverage across the two fragment kinds**. The TOML-extraction blocker (`scripts/survey.sh` TODO) is closed.
 
 ## Artefacts
 

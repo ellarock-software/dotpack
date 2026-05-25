@@ -33,10 +33,10 @@ Per [ADR-0003](./0003-empirically-derived-schema-via-corpus-survey.md). Fourth k
 **Translator complexity is in import resolution and filename selection.** The Gemini `@file.md` import resolution is the main translation work. Filename mapping is mechanical (host → filename).
 
 **Adapter capability matrix.**
-- `claude-code`: native for CLAUDE.md and AGENTS.md (reads both with CLAUDE.md preferred). Writes to `<scope>/CLAUDE.md`.
+- `claude-code`: native for CLAUDE.md and AGENTS.md (reads both with CLAUDE.md preferred). Writes to `{scope}/CLAUDE.md`.
 - `agents-cli` (Gemini/Codex):
-  - Gemini side: native GEMINI.md. Writes to `<scope>/GEMINI.md`.
-  - Codex side: native AGENTS.md. Writes to `<scope>/AGENTS.md`.
+  - Gemini side: native GEMINI.md. Writes to `{scope}/GEMINI.md`.
+  - Codex side: native AGENTS.md. Writes to `{scope}/AGENTS.md`.
   - This is another fan-out case for the agents-cli adapter (task #4).
 
 **Install-target scope is a new concept** the schema introduces explicitly. Prior kinds (skill/agent/command) install into a fixed directory per host. Memory installs into a *user-specified* subdirectory. Manifest format (per ADR-0008) already has `target_dir` field — fits naturally.

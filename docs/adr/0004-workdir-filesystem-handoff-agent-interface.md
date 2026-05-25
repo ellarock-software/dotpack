@@ -6,7 +6,7 @@
 
 ## Decision
 
-dotpack creates a per-invocation workdir with `input/` (source files for the agent to read) and an empty `output/` (where the agent writes results). dotpack invokes `$DOTPACK_AGENT_CMD <workdir>` and, when the command exits, reads `output/` for the result. All three agents use the same contract; the prompts differ in what they ask the agent to write.
+dotpack creates a per-invocation workdir with `input/` (source files for the agent to read) and an empty `output/` (where the agent writes results). dotpack invokes `$DOTPACK_AGENT_CMD {workdir}` and, when the command exits, reads `output/` for the result. All three agents use the same contract; the prompts differ in what they ask the agent to write.
 
 ## Why
 
@@ -14,4 +14,4 @@ A stdin→stdout text contract works for reviewer/security (small JSON verdict) 
 
 ## Consequences
 
-The configured `$DOTPACK_AGENT_CMD` **must support tool-use** (read/write files). Simple wrappers like `curl | jq` cannot serve as the agent runtime — see [ADR-0002](./0002-pluggable-dotpack-agent-cmd-not-anthropic-sdk.md). Workdirs are created under `~/.dotpack/workdirs/<run-id>/` and retained on failure; successful runs clean theirs up. Reviewer + security run in parallel against the same translator-output workdir copied into their respective `input/`s.
+The configured `$DOTPACK_AGENT_CMD` **must support tool-use** (read/write files). Simple wrappers like `curl | jq` cannot serve as the agent runtime — see [ADR-0002](./0002-pluggable-dotpack-agent-cmd-not-anthropic-sdk.md). Workdirs are created under `~/.dotpack/workdirs/{run-id}/` and retained on failure; successful runs clean theirs up. Reviewer + security run in parallel against the same translator-output workdir copied into their respective `input/`s.

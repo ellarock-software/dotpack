@@ -19,7 +19,7 @@ Deliberately excluded:
 
 **Why `model` is optional despite 8/8 presence.** Marking 100%-present fields as required is the empirically-honest default. We violate that default here because the published Gemini CLI spec explicitly makes `model` optional (defaults to inheriting the parent session's model). The 8/8 corpus presence reflects a Claude-author convention to set the model explicitly; making `model` required would force every Gemini-style agent through the translator just to add a field the host wouldn't have demanded. Schema is for the ecosystem, not just the corpus.
 
-**Why `tools` is optional with mixed type.** 5/8 corpus presence. The survey marked it required at 5/8 with an "installation failure mode" rationale ("non-tool agents are chatter-only") — wrong analysis: agents with no `tools` declaration inherit the host's default tool grant, which is functional, not chatter-only. The corpus proves this: 3/8 agents omit `tools` entirely and are still functional subagents. Type is `string | array<string>` because Claude convention is a comma-separated string and Gemini convention is a YAML array; the translator normalises internally, adapters re-emit native shape.
+**Why `tools` is optional with mixed type.** 5/8 corpus presence. The survey marked it required at 5/8 with an "installation failure mode" rationale ("non-tool agents are chatter-only") — wrong analysis: agents with no `tools` declaration inherit the host's default tool grant, which is functional, not chatter-only. The corpus proves this: 3/8 agents omit `tools` entirely and are still functional subagents. Type is `string | array{string}` because Claude convention is a comma-separated string and Gemini convention is a YAML array; the translator normalises internally, adapters re-emit native shape.
 
 **Universal-vs-adapter boundary** (same as ADR-0009). The universal schema captures content metadata (who am I, what do I do, what model do I want, what tools do I expect). Runtime configuration (permission modes, max turns, temperature, inline MCP server declarations) varies per host and lives in the adapter capability matrix.
 
@@ -32,7 +32,7 @@ Deliberately excluded:
 **Body-section recommendations preserved separately.** The survey produced a thoughtful clustering of body sections (`## Approach`, `## Workflow`, `## Quality Checklist`, etc.). dotpack does not enforce these, but the survey's `clusters.md` is preserved in the workdir as author-facing recommendations. If dotpack ever adds an `agent-creator` scaffolder it can consume this.
 
 **Adapter implications.**
-- `claude-code` adapter: `tools` comma-string format is native. Agent goes into `.claude/agents/<name>.md` (project) or `~/.claude/agents/<name>.md` (user).
+- `claude-code` adapter: `tools` comma-string format is native. Agent goes into `.claude/agents/{name}.md` (project) or `~/.claude/agents/{name}.md` (user).
 - `agents-cli` adapter (Gemini + Codex via `~/.agents/`): the convergent `~/.agents/agents/` path is **not yet honoured** by either Gemini or Claude for the agent kind (skills converge on `~/.agents/skills/`; agents do not). agents-cli must fan out to each host's native agent directory. This is the same shape of problem as task #4 (hook/mcp-server fan-out) — `agent` joins the list.
 
 ## Artefacts

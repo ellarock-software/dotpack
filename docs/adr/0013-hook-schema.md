@@ -30,7 +30,7 @@ The `hook` kind is a CONFIG FRAGMENT — a slice of host configuration that gets
 
 **`PostToolUseFailure` added to canonical events even though it's not in the Codex spec table.** 3/7 files (2 Claude + 1 Codex) use it. Cross-host adoption clears the floor; adapter docs should flag that Codex parser behavior on this event name is undocumented (may or may not fire).
 
-**Methodology — floor rule held, BUT shape regression caught only by hand.** Survey agent flattened the nested structure to a 6-field list, same failure mode as the original survey of this kind. The methodology lesson stands: nested-structure kinds (hook, mcp-server with deep tools.<id> nesting) require human reshape after the survey. The agent's per-leaf counts were close to correct (off by one — 66 vs 67) but useless without the structure.
+**Methodology — floor rule held, BUT shape regression caught only by hand.** Survey agent flattened the nested structure to a 6-field list, same failure mode as the original survey of this kind. The methodology lesson stands: nested-structure kinds (hook, mcp-server with deep `tools.{id}` nesting) require human reshape after the survey. The agent's per-leaf counts were close to correct (off by one — 66 vs 67) but useless without the structure.
 
 ## Consequences
 
