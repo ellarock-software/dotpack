@@ -217,6 +217,50 @@ func TestFromEnv_AgentsHome_NonexistentEnvDoesNotError(t *testing.T) {
 	}
 }
 
+func TestFromEnv_CodexHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
+	// Mirror of the Agents/Gemini/Claude relative-env fixes for
+	// DOTPACK_CODEX_HOME (codex mcp-server slice). CodexHome is distinct
+	// from AgentsHome: skills converge at AgentsHome/skills/ (cross-host
+	// root), but config.toml is codex-specific and lives at CodexHome.
+	// Same class of bug: relative env values silently break across chdir.
+	wantParent := t.TempDir()
+	rel := "codex-cfg"
+	t.Chdir(wantParent)
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_CODEX_HOME", rel)
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.CodexHome) {
+		t.Errorf("CodexHome must be absolute after FromEnv normalises env input; got %q", d.CodexHome)
+	}
+	wantAbs := filepath.Join(wantParent, rel)
+	if filepath.Clean(d.CodexHome) != filepath.Clean(wantAbs) {
+		t.Errorf("CodexHome: got %q, want %q", d.CodexHome, wantAbs)
+	}
+}
+
+func TestFromEnv_CodexHome_NonexistentEnvDoesNotError(t *testing.T) {
+	// Write-target tolerance: codex mcp-server install MkdirAll's
+	// CodexHome on first use, so FromEnv must accept a not-yet-existing
+	// path. Existence at FromEnv time is not required.
+	parent := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_CODEX_HOME", filepath.Join(parent, "does-not-exist-yet"))
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.CodexHome) {
+		t.Errorf("CodexHome must be absolute; got %q", d.CodexHome)
+	}
+}
+
 func TestFromEnv_DotpackHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
 	// Same class as the ClaudeHome relative-env fix: a relative
 	// DOTPACK_DOTPACK_HOME silently breaks list/uninstall after chdir,

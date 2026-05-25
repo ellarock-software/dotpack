@@ -38,6 +38,15 @@ type Dirs struct {
 	// convergence; until then, `--agent codex` is the only writer.
 	AgentsHome string
 
+	// CodexHome is the root of Codex CLI's user config, e.g. ~/.codex.
+	// The codex adapter writes user-scope mcp-server installs to
+	// CodexHome/config.toml (per schema/mcp-server.yaml's
+	// template.source_locations entry for host codex; ADR-0014). Distinct
+	// from AgentsHome — skills live at AgentsHome/skills/ (cross-host
+	// convergence root), but config.toml is codex-specific and lives at
+	// CodexHome.
+	CodexHome string
+
 	// DotpackHome is the root of dotpack's own state, e.g. ~/.dotpack.
 	// The manifest store writes installs.yaml here (per ADR-0008).
 	DotpackHome string
@@ -53,8 +62,9 @@ type Dirs struct {
 
 // FromEnv resolves Dirs from the user's environment, with overrides for
 // tests: DOTPACK_CLAUDE_HOME / DOTPACK_GEMINI_HOME / DOTPACK_AGENTS_HOME
-// / DOTPACK_DOTPACK_HOME / DOTPACK_PROJECT_HOME (the *_HOME suffixes are
-// deliberately verbose so they're never confused with PATH-like things).
+// / DOTPACK_CODEX_HOME / DOTPACK_DOTPACK_HOME / DOTPACK_PROJECT_HOME (the
+// *_HOME suffixes are deliberately verbose so they're never confused with
+// PATH-like things).
 // Returns an error if HOME cannot be resolved AND no overrides are set.
 //
 // All env vars, when set, are normalised to absolute paths
@@ -72,9 +82,10 @@ type Dirs struct {
 //     absolute" invariant when accepted verbatim. CWD-fallback path is
 //     exempt: Getwd by definition returns an existing directory.
 //   - DOTPACK_CLAUDE_HOME / DOTPACK_GEMINI_HOME / DOTPACK_AGENTS_HOME /
-//     DOTPACK_DOTPACK_HOME are dotpack-managed WRITE targets; install
-//     MkdirAll's their trees on first use, so FromEnv must tolerate a
-//     not-yet-existing path. Normalise to absolute, do not stat.
+//     DOTPACK_CODEX_HOME / DOTPACK_DOTPACK_HOME are dotpack-managed WRITE
+//     targets; install MkdirAll's their trees on first use, so FromEnv
+//     must tolerate a not-yet-existing path. Normalise to absolute, do
+//     not stat.
 //
 // ProjectHome CWD fallback (hostile-review #5 from 42ec230): when unset,
 // falls back to os.Getwd(). Getwd failure is tolerated here (ProjectHome
@@ -86,11 +97,12 @@ func FromEnv() (Dirs, error) {
 		ClaudeHome:  os.Getenv("DOTPACK_CLAUDE_HOME"),
 		GeminiHome:  os.Getenv("DOTPACK_GEMINI_HOME"),
 		AgentsHome:  os.Getenv("DOTPACK_AGENTS_HOME"),
+		CodexHome:   os.Getenv("DOTPACK_CODEX_HOME"),
 		DotpackHome: os.Getenv("DOTPACK_DOTPACK_HOME"),
 		ProjectHome: os.Getenv("DOTPACK_PROJECT_HOME"),
 	}
 
-	if d.ClaudeHome == "" || d.GeminiHome == "" || d.AgentsHome == "" || d.DotpackHome == "" {
+	if d.ClaudeHome == "" || d.GeminiHome == "" || d.AgentsHome == "" || d.CodexHome == "" || d.DotpackHome == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return Dirs{}, fmt.Errorf("resolve $HOME: %w", err)
@@ -103,6 +115,9 @@ func FromEnv() (Dirs, error) {
 		}
 		if d.AgentsHome == "" {
 			d.AgentsHome = filepath.Join(home, ".agents")
+		}
+		if d.CodexHome == "" {
+			d.CodexHome = filepath.Join(home, ".codex")
 		}
 		if d.DotpackHome == "" {
 			d.DotpackHome = filepath.Join(home, ".dotpack")
@@ -125,6 +140,11 @@ func FromEnv() (Dirs, error) {
 		d.AgentsHome = abs
 	} else {
 		return Dirs{}, fmt.Errorf("DOTPACK_AGENTS_HOME=%q: resolve abs: %w", d.AgentsHome, err)
+	}
+	if abs, err := filepath.Abs(d.CodexHome); err == nil {
+		d.CodexHome = abs
+	} else {
+		return Dirs{}, fmt.Errorf("DOTPACK_CODEX_HOME=%q: resolve abs: %w", d.CodexHome, err)
 	}
 	if abs, err := filepath.Abs(d.DotpackHome); err == nil {
 		d.DotpackHome = abs

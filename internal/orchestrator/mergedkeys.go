@@ -24,9 +24,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/ellarock/dotpack/internal/adapter"
 	"github.com/ellarock/dotpack/internal/manifest"
@@ -78,11 +81,7 @@ func applyMergedKey(mk adapter.MergedKeyWrite) error {
 	case mergedFormatJSON:
 		return applyJSONMergedKey(mk)
 	case mergedFormatTOML:
-		// TOML support lands with the codex slice (pelletier/go-toml/v2
-		// is the sanctioned dep per ADR-0016 §4). For tracer-bullet
-		// shape, the configfrag.New validator rejects FormatTOML
-		// policies that would route here; this is a defensive guard.
-		return fmt.Errorf("merged-key apply: TOML emit not yet implemented for %s", mk.File)
+		return applyTOMLMergedKey(mk)
 	default:
 		return fmt.Errorf("merged-key apply: unknown format %v", format)
 	}
@@ -160,20 +159,32 @@ func unmergeJSONKey(mk MergedKeySelector) error {
 	if err != nil {
 		return fmt.Errorf("merged-key un-merge: parse path %q: %w", mk.Path, err)
 	}
+	var changed bool
 	switch mk.Op {
 	case adapter.MergedKeySet:
-		if err := deleteJSONPath(root, path); err != nil {
+		c, err := deleteJSONPath(root, path)
+		if err != nil {
 			return fmt.Errorf("merged-key un-merge: delete %q in %s: %w", mk.Path, mk.File, err)
 		}
+		changed = c
 	case adapter.MergedKeyAppend:
 		if mk.Selector == "" {
 			return fmt.Errorf("merged-key un-merge: %s op=append requires a Selector in the manifest (this is a manifest-shape bug; install should never have persisted an append-MergedKey without one)", mk.Path)
 		}
-		if err := removeJSONArrayElementBySelector(root, path, mk.Selector); err != nil {
+		c, err := removeJSONArrayElementBySelector(root, path, mk.Selector)
+		if err != nil {
 			return fmt.Errorf("merged-key un-merge: remove array element at %q in %s: %w", mk.Path, mk.File, err)
 		}
+		changed = c
 	default:
 		return fmt.Errorf("merged-key un-merge: unknown op %q for %s", mk.Op, mk.File)
+	}
+	// Skip the write when nothing was removed — preserves user-authored
+	// bytes (mode, whitespace, key order, string-quote style) on
+	// idempotent uninstall. Hostile-review #5 from THIS slice. Symmetric
+	// with the no-op-no-write posture in unmergeTOMLKey.
+	if !changed {
+		return nil
 	}
 	return writeJSON(mk.File, root)
 }
@@ -201,7 +212,7 @@ func unmergeKey(mk MergedKeySelector) error {
 	case mergedFormatJSON:
 		return unmergeJSONKey(mk)
 	case mergedFormatTOML:
-		return fmt.Errorf("merged-key un-merge: TOML emit not yet implemented for %s", mk.File)
+		return unmergeTOMLKey(mk)
 	default:
 		return fmt.Errorf("merged-key un-merge: unknown format %v", format)
 	}
@@ -271,6 +282,286 @@ func preserveMode(path string, dflt os.FileMode) os.FileMode {
 	return st.Mode().Perm()
 }
 
+// applyTOMLMergedKey is the TOML mirror of applyJSONMergedKey. The map-
+// walk primitives (setJSONPath, getJSONPath, deleteJSONPath) are
+// FORMAT-AGNOSTIC — they walk map[string]any by []string segments and
+// don't reference JSON semantics, so TOML reuses them after
+// parseTOMLPath does the format-specific path parsing. The "JSON" in
+// their name is historical; renaming would churn ~14 callsites for no
+// functional gain. (appendJSONPath + removeJSONArrayElementBySelector
+// are also format-agnostic but unreached today — Op=Append on TOML is
+// not yet wired; see the switch arm below.)
+//
+// normalizeForTOML applies HERE — to the install's value only, NOT to
+// the full root. The root contains user-authored content (e.g.,
+// `version = 1.0` at top-level); normalizing that would coerce the
+// user's explicit float to int and silently mutate bytes dotpack does
+// not own. Hostile-review #1 from THIS slice. Apply only to mk.Value
+// because that's the JSON-sourced fragment whose integral-float64
+// arrival shape needs coercion before TOML emit.
+//
+// Op=Set is fully wired today (codex mcp-server). Op=Append on TOML
+// returns "not yet implemented" — codex hook is the next slice that
+// needs it (per the hook slice's §9 pre-positioning in
+// schema/hook.yaml's cross-host event aliases).
+func applyTOMLMergedKey(mk adapter.MergedKeyWrite) error {
+	root, err := readTOMLOrEmpty(mk.File)
+	if err != nil {
+		return err
+	}
+	path, err := parseTOMLPath(mk.Path)
+	if err != nil {
+		return fmt.Errorf("merged-key apply: parse path %q: %w", mk.Path, err)
+	}
+	switch mk.Op {
+	case adapter.MergedKeySet:
+		normalizedValue, err := normalizeForTOML(mk.Value)
+		if err != nil {
+			return fmt.Errorf("merged-key apply: normalize value for %q in %s: %w", mk.Path, mk.File, err)
+		}
+		if err := setJSONPath(root, path, normalizedValue); err != nil {
+			return fmt.Errorf("merged-key apply: set %q in %s: %w", mk.Path, mk.File, err)
+		}
+	case adapter.MergedKeyAppend:
+		// Codex mcp-server is Op=Set only; codex hook (next slice) will
+		// need this arm. The configfrag adapter cannot produce an Op=
+		// Append MergedKeyWrite for TOML today because no emit function
+		// sets that combination — this guard catches a future slot
+		// missing wiring rather than silently no-oping.
+		//
+		// When codex hook lands, this arm runs normalizeForTOML on
+		// mk.Value (same posture as MergedKeySet above) then calls
+		// appendJSONPath. Pinned by a unit test in mergedkeys_toml_test.go
+		// today so bit-rot of the structured error is caught.
+		return fmt.Errorf("merged-key apply: Op=Append on TOML not yet implemented (file %s, path %q — wires with codex hook slice)", mk.File, mk.Path)
+	default:
+		return fmt.Errorf("merged-key apply: unknown op %q for %s", mk.Op, mk.File)
+	}
+	return writeTOML(mk.File, root)
+}
+
+// unmergeTOMLKey is the TOML mirror of unmergeJSONKey. Absent file is a
+// no-op (uninstall is idempotent). Same drift-tolerance principles:
+// non-map intermediates on the delete path are no-ops (user manually
+// nulled out the parent); missing leaves are no-ops.
+//
+// Op=Append's array-element-by-selector arm errors "not yet
+// implemented" alongside applyTOMLMergedKey's Op=Append guard — the two
+// move together. When codex hook lands, both wire.
+func unmergeTOMLKey(mk MergedKeySelector) error {
+	raw, err := os.ReadFile(mk.File)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("merged-key un-merge: read %s: %w", mk.File, err)
+	}
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return nil
+	}
+	var root map[string]any
+	if err := toml.Unmarshal(raw, &root); err != nil {
+		return fmt.Errorf("merged-key un-merge: parse %s as TOML: %w", mk.File, err)
+	}
+	if root == nil {
+		return nil
+	}
+	path, err := parseTOMLPath(mk.Path)
+	if err != nil {
+		return fmt.Errorf("merged-key un-merge: parse path %q: %w", mk.Path, err)
+	}
+	var changed bool
+	switch mk.Op {
+	case adapter.MergedKeySet:
+		c, err := deleteJSONPath(root, path)
+		if err != nil {
+			return fmt.Errorf("merged-key un-merge: delete %q in %s: %w", mk.Path, mk.File, err)
+		}
+		changed = c
+	case adapter.MergedKeyAppend:
+		return fmt.Errorf("merged-key un-merge: Op=Append on TOML not yet implemented (file %s, path %q — wires with codex hook slice)", mk.File, mk.Path)
+	default:
+		return fmt.Errorf("merged-key un-merge: unknown op %q for %s", mk.Op, mk.File)
+	}
+	// Skip the write when nothing was removed — preserves user-authored
+	// bytes (mode, whitespace, key order, integer-vs-float syntax) on
+	// idempotent uninstall. Hostile-review #5 from THIS slice. Especially
+	// load-bearing on TOML because go-toml/v2's emit normalizes string
+	// quote style (`"x"` → `'x'`) and re-sorts keys — touching the file
+	// would be visible noise in the user's diff for a no-op operation.
+	if !changed {
+		return nil
+	}
+	return writeTOML(mk.File, root)
+}
+
+// readTOMLOrEmpty is the TOML mirror of readJSONOrEmpty. Absent file →
+// empty map. Empty / whitespace-only → empty map. Non-table root →
+// structured error.
+//
+// Empirically (probe in /tmp/dotpack-toml-probe before this slice
+// landed), pelletier/go-toml/v2 produces map[string]any with:
+//   - int64 for integers (NOT float64 like JSON's default)
+//   - float64 for non-integral floats
+//   - bool, string natively
+//   - []any for arrays
+//   - map[string]any for tables / inline tables / array-of-tables
+//
+// The format-agnostic map walkers (setJSONPath etc.) accept all of
+// these because they only inspect map[string]any and []any, never
+// numeric types.
+func readTOMLOrEmpty(path string) (map[string]any, error) {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return map[string]any{}, nil
+	}
+	var root map[string]any
+	if err := toml.Unmarshal(raw, &root); err != nil {
+		return nil, fmt.Errorf("parse %s as TOML: %w", path, err)
+	}
+	if root == nil {
+		return map[string]any{}, nil
+	}
+	return root, nil
+}
+
+// writeTOML serialises root → bytes via pelletier/go-toml/v2 and atomic-
+// writes to path. Mirrors writeJSON's mode preservation policy for
+// credential-bearing files.
+//
+// IMPORTANT: writeTOML does NOT walk root applying normalizeForTOML.
+// Earlier drafts did, motivated by the JSON-source-into-TOML-target
+// float64-to-`30.0` problem. Hostile-review #1 (this slice): walking
+// the whole root coerces user-authored TOML floats too — `version =
+// 1.0` (which toml.Unmarshal reports as float64(1.0)) gets demoted to
+// `version = 1` on the next dotpack write. Direct violation of "we
+// don't own this file." The coercion now lives at the merge-boundary
+// in applyTOMLMergedKey — applied to mk.Value only — so JSON-sourced
+// install values are coerced while user-authored content passes
+// through untouched.
+//
+// Comment preservation: NOT pursued. go-toml/v2's Unmarshal(_, &map[
+// string]any) strips comments, so a hand-authored `# blah` line in
+// ~/.codex/config.toml is lost on the first dotpack-touched write.
+// Mirrors writeJSON's "no comments in JSON" policy — dotpack-managed
+// host config files are read-modify-write through the structured
+// representation; users wanting persistent comments should keep them
+// in a separate `~/.codex/config.toml.local` (codex spec allows
+// per-project overlays; the schema notes alternate_files).
+func writeTOML(path string, root map[string]any) error {
+	out, err := toml.Marshal(root)
+	if err != nil {
+		return fmt.Errorf("marshal %s as TOML: %w", path, err)
+	}
+	mode := preserveMode(path, 0o644)
+	return writeAtomic(adapter.FileWrite{Path: path, Content: out, Mode: mode})
+}
+
+// normalizeForTOML walks a JSON-shaped value (map[string]any / []any /
+// scalars from json.Unmarshal) and coerces it into a TOML-marshalable
+// shape:
+//
+//   - integral float64 (e.g., 30 from JSON-decode of `30`) → int64. Non-
+//     integral float64 (30.5) stays float64. Non-finite (Inf/NaN) errors
+//     — TOML has no representation.
+//   - nil at a MAP key → drop the key. go-toml/v2 silently drops nil
+//     scalars too, but explicit drop is symmetric with TOML semantics
+//     and surfaces the loss in the diff (the key just isn't there in
+//     the output) rather than emitting a confusing `key = `.
+//   - nil at a SLICE index → error. go-toml/v2 errors with "encoding a
+//     nil interface is not supported"; we surface a structured wrapper
+//     with the index for debuggability.
+//   - maps recurse; slices recurse; everything else (int64, bool,
+//     string, already-coerced types) passes through.
+//
+// Why a custom walker and not just toml.Marshal's behavior: (a) the
+// integer-vs-float distinction is invisible to JSON (`30` and `30.0`
+// both deserialize to float64) but VISIBLE in TOML's on-disk format,
+// so a user diffing config.toml sees integer fields suddenly become
+// floats. (b) silent nil-drop on map values is fine; silent error on
+// slice nils isn't — we want the install to fail with a clear pointer
+// to the offending source rather than go-toml/v2's terse default.
+//
+// Apply ONLY to JSON-sourced values at the merge boundary —
+// applyTOMLMergedKey runs this on mk.Value before setJSONPath. Do NOT
+// apply to the full root: toml.Unmarshal preserves user-authored
+// integer-vs-float distinctions in the returned map (int64 for ints,
+// float64 for floats), and walking the root would coerce the user's
+// `version = 1.0` to `1` (hostile-review #1 this slice — silent
+// corruption of bytes dotpack does not own).
+func normalizeForTOML(v any) (any, error) {
+	switch x := v.(type) {
+	case float64:
+		if math.IsInf(x, 0) || math.IsNaN(x) {
+			return nil, fmt.Errorf("non-finite float %v has no TOML representation", x)
+		}
+		if x == math.Trunc(x) && x >= math.MinInt64 && x <= math.MaxInt64 {
+			return int64(x), nil
+		}
+		return x, nil
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, vv := range x {
+			if vv == nil {
+				continue
+			}
+			nv, err := normalizeForTOML(vv)
+			if err != nil {
+				return nil, fmt.Errorf("at .%s: %w", k, err)
+			}
+			out[k] = nv
+		}
+		return out, nil
+	case []any:
+		out := make([]any, 0, len(x))
+		for i, item := range x {
+			if item == nil {
+				return nil, fmt.Errorf("at [%d]: nil array element has no TOML representation", i)
+			}
+			nv, err := normalizeForTOML(item)
+			if err != nil {
+				return nil, fmt.Errorf("at [%d]: %w", i, err)
+			}
+			out = append(out, nv)
+		}
+		return out, nil
+	default:
+		return v, nil
+	}
+}
+
+// parseTOMLPath splits a dotted TOML path ("mcp_servers.foo") into
+// ["mcp_servers", "foo"]. NO leading `$` (that's the JSON-syntax
+// marker). Empty path / empty segments rejected.
+//
+// Defensive: an adapter that mistakenly emits a JSON-syntax path
+// ("$.mcp_servers.foo") into a TOML-format KindConfig surfaces here
+// rather than producing a top-level `$` table entry. The cross-format
+// safety net complements configfrag.New's policy validator (which
+// catches WIRING bugs at construction) — this catches EMIT bugs at
+// apply time.
+func parseTOMLPath(p string) ([]string, error) {
+	if p == "" {
+		return nil, fmt.Errorf("TOML path is empty (root-only paths cannot be merged into)")
+	}
+	if strings.HasPrefix(p, "$") {
+		return nil, fmt.Errorf("TOML path must NOT have $ prefix; got %q (JSON-syntax path passed to TOML walker — adapter emit bug)", p)
+	}
+	parts := strings.Split(p, ".")
+	for i, part := range parts {
+		if part == "" {
+			return nil, fmt.Errorf("TOML path %q has an empty segment at position %d", p, i)
+		}
+	}
+	return parts, nil
+}
+
 // parseJSONPath splits a "$.a.b.c" expression into ["a", "b", "c"].
 // Dot-segments only. Empty segments, missing $-root, and bare $
 // (no trailing path) are rejected — the adapter-side path string is
@@ -328,6 +619,13 @@ func parseJSONPath(p string) ([]string, error) {
 // is a structured error (e.g., the user manually wrote
 // "mcpServers": "foo" — a string, not an object — at the root; trying to
 // set "$.mcpServers.github" then fails honestly rather than overwriting).
+//
+// FORMAT-AGNOSTIC: walks map[string]any by []string segments without
+// referencing JSON syntax. Used by both applyJSONMergedKey and
+// applyTOMLMergedKey. Error messages render the path with dot-join
+// rather than the Go []string default ([%v]) so the user sees their
+// adapter-emitted path shape regardless of format. The "JSON" in the
+// function name is historical (predates the TOML walker pair).
 func setJSONPath(root map[string]any, path []string, value any) error {
 	if len(path) == 0 {
 		return fmt.Errorf("setJSONPath: empty path")
@@ -344,7 +642,7 @@ func setJSONPath(root map[string]any, path []string, value any) error {
 		}
 		subMap, ok := next.(map[string]any)
 		if !ok {
-			return fmt.Errorf("path %v: intermediate segment %q is %T, not a map; refusing to overwrite (manually edit the file or use --force)", path, seg, next)
+			return fmt.Errorf("path %s: intermediate segment %q is %T, not a map; refusing to overwrite (manually edit the file or use --force)", strings.Join(path, "."), seg, next)
 		}
 		cur = subMap
 	}
@@ -401,7 +699,7 @@ func appendJSONPath(root map[string]any, path []string, value any) error {
 		}
 		subMap, ok := next.(map[string]any)
 		if !ok {
-			return fmt.Errorf("path %v: intermediate segment %q is %T, not a map; refusing to overwrite (manually edit the file or use --force)", path, seg, next)
+			return fmt.Errorf("path %s: intermediate segment %q is %T, not a map; refusing to overwrite (manually edit the file or use --force)", strings.Join(path, "."), seg, next)
 		}
 		cur = subMap
 	}
@@ -413,7 +711,7 @@ func appendJSONPath(root map[string]any, path []string, value any) error {
 	}
 	arr, ok := existing.([]any)
 	if !ok {
-		return fmt.Errorf("path %v: leaf segment %q is %T, not an array; refusing to overwrite (manually edit the file or use --force)", path, leafKey, existing)
+		return fmt.Errorf("path %s: leaf segment %q is %T, not an array; refusing to overwrite (manually edit the file or use --force)", strings.Join(path, "."), leafKey, existing)
 	}
 	cur[leafKey] = append(arr, value)
 	return nil
@@ -421,12 +719,14 @@ func appendJSONPath(root map[string]any, path []string, value any) error {
 
 // removeJSONArrayElementBySelector navigates to the array at path and
 // removes the FIRST element whose sha256 content-hash matches selector.
-// Stable across sibling installs/uninstalls and user reorders — the
-// hash identity survives where a numeric index would shift.
+// Returns (changed, err) where changed reports whether an element was
+// actually found and removed. Stable across sibling installs/uninstalls
+// and user reorders — the hash identity survives where a numeric index
+// would shift.
 //
 // Drift tolerance: when no element matches (user edited the binding,
-// user deleted it, file is missing entirely up to the array), the
-// function returns nil and the file is left as-found. This is the
+// user deleted it, file is missing entirely up to the array), returns
+// (false, nil) and the caller should skip the file write. This is the
 // "drift on uninstall is intentional" principle extended to the hook
 // case — the alternative (refuse to uninstall when content has
 // drifted) would block the user from clearing the manifest record
@@ -438,43 +738,43 @@ func appendJSONPath(root map[string]any, path []string, value any) error {
 // "already gone" is the right interpretation. Asymmetric with apply's
 // strictness about non-map intermediates, matching deleteJSONPath's
 // docstring.
-func removeJSONArrayElementBySelector(root map[string]any, path []string, selector string) error {
+func removeJSONArrayElementBySelector(root map[string]any, path []string, selector string) (bool, error) {
 	if len(path) == 0 {
-		return fmt.Errorf("removeJSONArrayElementBySelector: empty path")
+		return false, fmt.Errorf("removeJSONArrayElementBySelector: empty path")
 	}
 	cur := root
 	for i := 0; i < len(path)-1; i++ {
 		seg := path[i]
 		next, ok := cur[seg]
 		if !ok {
-			return nil
+			return false, nil
 		}
 		subMap, ok := next.(map[string]any)
 		if !ok {
-			return nil
+			return false, nil
 		}
 		cur = subMap
 	}
 	leafKey := path[len(path)-1]
 	existing, present := cur[leafKey]
 	if !present {
-		return nil
+		return false, nil
 	}
 	arr, ok := existing.([]any)
 	if !ok {
-		return nil
+		return false, nil
 	}
 	for i, el := range arr {
 		hash, err := selectorFor(el)
 		if err != nil {
-			return fmt.Errorf("hash array element at index %d: %w", i, err)
+			return false, fmt.Errorf("hash array element at index %d: %w", i, err)
 		}
 		if hash == selector {
 			cur[leafKey] = append(arr[:i], arr[i+1:]...)
-			return nil
+			return true, nil
 		}
 	}
-	return nil
+	return false, nil
 }
 
 // selectorFor computes the canonical content-hash for an array element.
@@ -498,9 +798,11 @@ func selectorFor(v any) (string, error) {
 	return "sha256:" + hex.EncodeToString(h[:]), nil
 }
 
-// deleteJSONPath removes root[path[0]][path[1]]...[path[-1]]. Walks the
-// path; missing intermediates are a no-op (uninstall is idempotent
-// across already-cleaned state).
+// deleteJSONPath removes root[path[0]][path[1]]...[path[-1]]. Returns
+// (changed, err) where changed reports whether the leaf was actually
+// present and removed. Walks the path; missing intermediates are a
+// no-op-no-change (uninstall is idempotent across already-cleaned
+// state) — callers can skip the file write when changed=false.
 //
 // Non-map intermediates (e.g., the user manually set
 // {"mcpServers": null} or {"mcpServers": "foo"}) are ALSO treated as
@@ -512,29 +814,40 @@ func selectorFor(v any) (string, error) {
 // "remove this install's claim"; refusing because the user nulled out
 // the parent would surprise users who expect uninstall to be tolerant.
 // Matches the principle documented on Uninstall: "Drift on uninstall is
-// intentional" (hostile-review #4).
+// intentional" (hostile-review #4 from slice v15).
 //
 // Empty parent maps are NOT recursively removed — see unmergeJSONKey's
 // file-retention policy docstring for the rationale.
-func deleteJSONPath(root map[string]any, path []string) error {
+//
+// changed=true → caller should atomic-write the mutated root.
+// changed=false → caller should skip the write; the file is already in
+// the desired state. This avoids the hostile-review #5 hygiene gap
+// from THIS slice where idempotent uninstall touched bytes unnecessarily
+// (key sorting, string quote style flips, etc. — visible noise in the
+// user's diff for a no-op operation).
+func deleteJSONPath(root map[string]any, path []string) (bool, error) {
 	if len(path) == 0 {
-		return fmt.Errorf("deleteJSONPath: empty path")
+		return false, fmt.Errorf("deleteJSONPath: empty path")
 	}
 	cur := root
 	for i := 0; i < len(path)-1; i++ {
 		seg := path[i]
 		next, ok := cur[seg]
 		if !ok {
-			return nil
+			return false, nil
 		}
 		subMap, ok := next.(map[string]any)
 		if !ok {
-			return nil
+			return false, nil
 		}
 		cur = subMap
 	}
-	delete(cur, path[len(path)-1])
-	return nil
+	leafKey := path[len(path)-1]
+	if _, present := cur[leafKey]; !present {
+		return false, nil
+	}
+	delete(cur, leafKey)
+	return true, nil
 }
 
 // unmergeExistingAppendsForID is the re-install cleanup step for
@@ -636,25 +949,25 @@ func preflightMergedKeyCollisions(store *manifest.Store, id string, mks []adapte
 	}
 	for _, mk := range mks {
 		// Symlink already handled above; the second pass focuses on
-		// slot-occupancy checks against the parsed JSON.
-		raw, err := os.ReadFile(mk.File)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
+		// slot-occupancy checks against the parsed file.
+		//
+		// Format dispatch by file extension — same convention as
+		// applyMergedKey / unmergeKey. A JSON adapter targeting a
+		// .toml file (or vice versa) surfaces here at preflight rather
+		// than later at apply-time, when half a merged-key plan may
+		// already be on disk.
+		format, err := formatFromFile(mk.File)
 		if err != nil {
-			return nil, fmt.Errorf("merged-key preflight: read %s: %w", mk.File, err)
+			return nil, fmt.Errorf("merged-key preflight: %w", err)
 		}
-		if len(strings.TrimSpace(string(raw))) == 0 {
+		root, exists, err := readMergeRootForPreflight(mk.File, format)
+		if err != nil {
+			return nil, fmt.Errorf("merged-key preflight: %w", err)
+		}
+		if !exists {
 			continue
 		}
-		var root map[string]any
-		if err := json.Unmarshal(raw, &root); err != nil {
-			return nil, fmt.Errorf("merged-key preflight: parse %s: %w", mk.File, err)
-		}
-		if root == nil {
-			continue
-		}
-		path, err := parseJSONPath(mk.Path)
+		path, err := parseMergedKeyPath(format, mk.Path)
 		if err != nil {
 			return nil, fmt.Errorf("merged-key preflight: parse path %q: %w", mk.Path, err)
 		}
@@ -703,4 +1016,57 @@ func preflightMergedKeyCollisions(store *manifest.Store, id string, mks []adapte
 		}
 	}
 	return collisions, nil
+}
+
+// readMergeRootForPreflight parses path's content into a map[string]any
+// for slot-occupancy checking, dispatching on format. Returns (root,
+// false, nil) for absent / empty files — preflight treats those as
+// "nothing to collide with" rather than errors (the apply step will
+// create the file from scratch). Non-map roots (e.g., a user manually
+// wrote a JSON array at the top level) return (nil, false, nil) — the
+// merged-key walkers all assume a map root, so a non-map root is
+// "incompatible with our merge model" which is itself a collision the
+// apply step will surface; preflight stays lenient here to avoid
+// double-reporting.
+func readMergeRootForPreflight(path string, format mergedFormat) (map[string]any, bool, error) {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", path, err)
+	}
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return nil, false, nil
+	}
+	var root map[string]any
+	switch format {
+	case mergedFormatJSON:
+		if err := json.Unmarshal(raw, &root); err != nil {
+			return nil, false, fmt.Errorf("parse %s as JSON: %w", path, err)
+		}
+	case mergedFormatTOML:
+		if err := toml.Unmarshal(raw, &root); err != nil {
+			return nil, false, fmt.Errorf("parse %s as TOML: %w", path, err)
+		}
+	default:
+		return nil, false, fmt.Errorf("unknown format %v for %s", format, path)
+	}
+	if root == nil {
+		return nil, false, nil
+	}
+	return root, true, nil
+}
+
+// parseMergedKeyPath dispatches path parsing by format — JSON paths
+// require the `$.` prefix; TOML paths use dotted segments only.
+func parseMergedKeyPath(format mergedFormat, p string) ([]string, error) {
+	switch format {
+	case mergedFormatJSON:
+		return parseJSONPath(p)
+	case mergedFormatTOML:
+		return parseTOMLPath(p)
+	default:
+		return nil, fmt.Errorf("unknown format %v", format)
+	}
 }
