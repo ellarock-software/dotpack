@@ -24,6 +24,10 @@ _Avoid_: Layout, structure, format.
 The component that materializes a schema-and-template-conformant resource into a target agent host's native filesystem layout and configuration. An adapter may serve one host (e.g., `claude-code`) or several that converge on a shared convention (e.g., `agents-cli` writes to `.agents/` and `~/.agents/`, which both Gemini CLI and Codex CLI honor as a skills-dir alias).
 _Avoid_: AgentHost, target, backend.
 
+**File-drop adapter**:
+The shared **adapter** implementation that handles **kinds** whose install is a file write (skill, agent, command, memory). The deep module lives in `internal/adapter/filedrop`; the per-host packages (`claudecode`, `gemini`, `codex`) shrink to per-host `Policy` declarations that wire the host's `HostID`, per-kind `Layout`, and `AgentToolsShape` into the deep impl. Distinguished from config-fragment adapters (future, for `hook` and `mcp-server` kinds per [ADR-0016](docs/adr/0016-agents-cli-adapter-fan-out-and-schema-driven-lossy-detection.md) §5–§7) which merge JSON/TOML fragments into existing host config files rather than writing standalone files.
+_Avoid_: dropfile, write-file adapter, file adapter.
+
 **Capability matrix**:
 A per-**adapter** declaration of how each **kind** is supported: `native` (first-class concept in the target), `lossy` (maps to a related concept with fidelity loss), or `unsupported` (no analogue at all). Default install policy refuses `lossy` unless the user passes `--allow-lossy`.
 _Avoid_: Support table, compatibility map.
