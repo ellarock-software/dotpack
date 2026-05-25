@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -49,6 +50,13 @@ $DOTPACK_GEMINI_HOME / ~/.gemini, or $DOTPACK_AGENTS_HOME / ~/.agents
 developers.openai.com/codex/skills). Project scope writes under
 $DOTPACK_PROJECT_HOME / CWD.
 
+When --agent is omitted and the manifest already has a matching
+(kind, name) on a different host, install refuses with a
+"did you mean --agent X?" hint. Pass --agent explicitly (including
+--agent claude-code) to opt in. Symmetric to the cross-host hint
+uninstall surfaces when a short-name lookup misses on the defaulted
+host.
+
 Future slices add the agents-cli umbrella flag (write-once convergence
 to ~/.agents/skills/ across gemini-cli + codex per ADR-0016 §1).`,
 		Args: cobra.ExactArgs(1),
@@ -92,6 +100,20 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 	}
 
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))
+
+	// Default-agent misroute hint (slice-3 #7-followon). Symmetric in
+	// spirit to orchestrator.Uninstall's miss-hint, but lives in the CLI
+	// because the trigger condition — "did the user accept the default
+	// --agent?" — is a cobra concept the orchestrator (correctly) does
+	// not know about. Match is on the (kind, name) TUPLE (sharper than
+	// uninstall's bare short-name) because install always knows the
+	// resource's Kind() from resolveKind/loadResource.
+	if !cmd.Flags().Changed("agent") {
+		if err := checkDefaultAgentMisroute(res, agentName, mf); err != nil {
+			return err
+		}
+	}
+
 	orch := orchestrator.New(d, a, mf)
 
 	absSrc, _ := filepath.Abs(source)
@@ -203,6 +225,136 @@ func buildAdapter(name string, d dirs.Dirs) (adapter.Adapter, error) {
 	default:
 		return nil, fmt.Errorf("unknown agent %q", name)
 	}
+}
+
+// buildableHostIDs returns the set of --agent values that buildAdapter
+// would accept (i.e. would yield a constructed adapter rather than an
+// error). checkDefaultAgentMisroute uses this set to drop stale
+// manifest records that name a host the current dotpack binary cannot
+// build — surfacing such a host as a "did you mean --agent X?"
+// suggestion would land the user at "unknown agent X" on the retry,
+// moving them from one error to another with no progress.
+//
+// KEEP IN SYNC with buildAdapter's success arms (claude-code,
+// gemini-cli, codex). agents-cli is omitted because today buildAdapter
+// rejects it explicitly ("not yet implemented"); when the agents-cli
+// umbrella flag lands per ADR-0016 §1, add it here too.
+//
+// Pinned by TestInstall_DefaultAgent_StaleManifestHost_OnlyMatch_NoHint
+// and TestInstall_DefaultAgent_MixedStaleAndBuildableHosts_HintsOnlyBuildable.
+func buildableHostIDs() map[string]struct{} {
+	return map[string]struct{}{
+		"claude-code": {},
+		"gemini-cli":  {},
+		"codex":       {},
+	}
+}
+
+// checkDefaultAgentMisroute returns a "did you mean --agent X?" error
+// when the user accepted the default --agent value (target is
+// claude-code by default) AND the manifest already has a record with
+// the same (kind, name) tuple on a host OTHER than the target AND has
+// no matching record on the target itself. In all other cases it
+// returns nil and the install proceeds normally.
+//
+// The check stays in the CLI layer (rather than in orchestrator) per
+// advisor: the trigger "was --agent defaulted?" is a cobra-flag
+// concept; pushing it into the orchestrator would make the orchestrator
+// learn about CLI default-resolution semantics it has no business
+// knowing.
+//
+// The match is on the (kind, name) tuple, not just the trailing
+// short-name. Install always knows the resource's Kind() from
+// resolveKind/loadResource, so a same-name-different-kind record on
+// another host is a distinct concept and must NOT trigger the hint —
+// sharper than uninstall, which compares bare short-names because its
+// default --kind=skill is itself a misroute candidate. The kind filter
+// is pinned by
+// TestInstall_DefaultAgent_OtherHostDifferentKind_NoHint.
+//
+// The escape hatch is explicit --agent claude-code: cobra's
+// Flags().Changed("agent") flips to true and this function is not
+// called. Pinned by TestInstall_ExplicitAgentClaudeCode_SuppressesHint.
+//
+// The no-write guarantee (anti-theatre) lives in the call site: this
+// function is invoked BEFORE orchestrator.New / orch.Install, so a
+// non-nil return short-circuits the write. Pinned by the anti-theatre
+// assertion in TestInstall_DefaultAgent_AlternateHostHasSameKindName_HintsAndRefuses.
+func checkDefaultAgentMisroute(res resource.Resource, target string, mf *manifest.Store) error {
+	namer, ok := res.(resource.Named)
+	if !ok {
+		// No name-bearing resource → can't compute the (kind, name) tuple.
+		// buildRecord will surface a clearer error downstream for kinds
+		// that haven't wired a Named branch (memory, mcp-server when they
+		// land). Skipping the hint is the right behaviour here — we'd
+		// rather not invent a fake match key.
+		return nil
+	}
+	name := namer.ResourceName()
+	kind := string(res.Kind())
+
+	m, err := mf.Load()
+	if err != nil {
+		return fmt.Errorf("manifest load (hint check): %w", err)
+	}
+
+	buildable := buildableHostIDs()
+	alternates := map[string]struct{}{}
+	onTarget := false
+	for _, rec := range m.Installs {
+		if rec.Kind != kind {
+			continue
+		}
+		// Compare on the trailing short-name component of the ID rather
+		// than maintaining a separate (host, kind, name) tuple key.
+		// Mirrors orchestrator.Uninstall's short-name extraction so the
+		// install-side and uninstall-side hint code use the same
+		// id-decomposition convention — drift between the two would
+		// produce subtly inconsistent hint behaviour across the two
+		// commands.
+		short := rec.ID
+		if i := strings.LastIndex(short, ":"); i >= 0 {
+			short = short[i+1:]
+		}
+		if short != name {
+			continue
+		}
+		if rec.Agent == target {
+			onTarget = true
+			continue
+		}
+		// Drop hosts the current binary cannot build. Surfacing a stale
+		// or removed adapter name as a --agent suggestion would move
+		// the user from this error to "unknown agent X" with no
+		// progress.
+		if _, ok := buildable[rec.Agent]; !ok {
+			continue
+		}
+		alternates[rec.Agent] = struct{}{}
+	}
+	if onTarget || len(alternates) == 0 {
+		return nil
+	}
+
+	hosts := make([]string, 0, len(alternates))
+	for h := range alternates {
+		hosts = append(hosts, h)
+	}
+	sort.Strings(hosts)
+
+	// Message shape mirrors orchestrator.Uninstall's "did you mean" hint
+	// in spirit: surface the evidence (kind + name + the hosts that
+	// already own a matching record), name the single-shot fix (the
+	// alphabetically-first alternate host so the suggestion is stable),
+	// and document the explicit-opt-in escape hatch in case the user
+	// really did want the default. Listing all alternate hosts (not
+	// just the first) avoids cherry-picking when the manifest is
+	// ambiguous — TestInstall_DefaultAgent_MultipleAlternateHosts_HintsAll
+	// pins this.
+	primary := hosts[0]
+	return fmt.Errorf("install would default to --agent %s, but %s %q is already installed on: %s; "+
+		"did you mean --agent %s? (pass --agent %s explicitly to override)",
+		target, kind, name, strings.Join(hosts, ", "), primary, target)
 }
 
 func parseScope(name string) (adapter.Scope, error) {
