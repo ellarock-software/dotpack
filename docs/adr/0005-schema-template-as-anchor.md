@@ -14,4 +14,4 @@ The schema-as-anchor framing positions dotpack as a *standard-setter* rather tha
 
 ## Consequences
 
-Every other architectural decision falls out of this: the validator/translator split, the LLM trust gate, the workdir interface, the cache, the capability matrix, the manifest. If dotpack ever stops investing in the schema, the rest of the architecture loses its center.
+Every other architectural decision falls out of this: the validator/translator split, the LLM trust gate, the workdir interface, the cache, per-host kind support and lossy detection, the manifest. If dotpack ever stops investing in the schema, the rest of the architecture loses its center.

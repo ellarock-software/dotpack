@@ -153,13 +153,13 @@ body content
 }
 
 func TestInstall_AgentOnCodex_ReturnsUnsupportedError(t *testing.T) {
-	// Codex declares Capabilities[KindAgent] absent (no native codex
-	// agent loading path per OpenAI docs); Plan returns "codex: kind
-	// agent not yet supported". CLI must surface that as a normal error
-	// (not panic, not silent success), so the user sees an actionable
-	// message instead of fishing in the manifest for a write that never
-	// happened. Pins the contract: CLI does NOT pre-filter on
-	// Capabilities — the adapter's Plan is the enforcement point.
+	// Codex leaves KindAgent absent from Policy.Layouts (no native codex
+	// agent loading path per OpenAI docs); filedrop.Plan returns "codex:
+	// kind agent not yet supported". CLI must surface that as a normal
+	// error (not panic, not silent success), so the user sees an
+	// actionable message instead of fishing in the manifest for a write
+	// that never happened. Pins the contract: CLI does NOT pre-filter on
+	// host-kind support — the adapter's Plan is the enforcement point.
 	setupCodexEnv(t)
 
 	tmp := t.TempDir()

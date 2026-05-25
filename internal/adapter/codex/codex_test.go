@@ -23,36 +23,13 @@ func TestCodex_HostID(t *testing.T) {
 	}
 }
 
-func TestCodex_Capabilities_SkillNative_AgentUnsupported(t *testing.T) {
-	// Skill on codex is native: codex CLI loads skills from
-	// ~/.agents/skills/<name>/SKILL.md per developers.openai.com/codex/skills.
-	// Agent on codex is declared Unsupported EXPLICITLY (not left absent
-	// and relying on iota's zero value): schema/agent.yaml makes zero
-	// mentions of codex, OpenAI Codex CLI docs document no subagent
-	// loading directory analogous to .claude/agents/ or .gemini/agents/.
-	// The explicit declaration makes "deliberately decided not to
-	// support" visible — distinguishable from "nobody thought about it
-	// yet." Behaviour-form assertion (caps[KindAgent] == Unsupported)
-	// rather than presence-form (`, has := caps[...]; has`) so a future
-	// rephrasing of the declaration (e.g. via a helper that emits the
-	// same value) doesn't trip a false negative.
-	a := codex.New(dirs.Dirs{AgentsHome: t.TempDir()})
-	caps := a.Capabilities()
-	if got := caps[resource.KindSkill]; got != adapter.Native {
-		t.Errorf("Capabilities[skill]: got %v, want Native", got)
-	}
-	if got := caps[resource.KindAgent]; got != adapter.Unsupported {
-		t.Errorf("Capabilities[agent]: got %v, want Unsupported (codex CLI documents no native agent loading directory)", got)
-	}
-}
-
 func TestCodex_Plan_AgentKind_ReturnsUnsupportedError(t *testing.T) {
-	// Adapter-level enforcement of Capabilities[agent] absent. Even if a
-	// future CLI bug routes an agent resource to the codex adapter, Plan
-	// must return a structured error rather than silently writing the
-	// agent to some fictional path. The error mentions both the host
-	// ("codex") and the kind ("agent") so the CLI surfaces an actionable
-	// message.
+	// Adapter-level enforcement of KindAgent absent from Policy.Layouts.
+	// Even if a future CLI bug routes an agent resource to the codex
+	// adapter, Plan must return a structured error rather than silently
+	// writing the agent to some fictional path. The error mentions both
+	// the host ("codex") and the kind ("agent") so the CLI surfaces an
+	// actionable message.
 	a := codex.New(dirs.Dirs{AgentsHome: t.TempDir()})
 	ag := &resource.Agent{Name: "x", Description: "d", Body: "b"}
 	_, err := a.Plan(ag, adapter.ScopeUser)

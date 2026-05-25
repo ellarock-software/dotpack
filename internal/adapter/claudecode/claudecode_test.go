@@ -20,14 +20,6 @@ func TestClaudeCode_HostID(t *testing.T) {
 	}
 }
 
-func TestClaudeCode_CapabilitiesSkillIsNative(t *testing.T) {
-	a := claudecode.New(dirs.Dirs{ClaudeHome: t.TempDir()})
-	caps := a.Capabilities()
-	if got := caps[resource.KindSkill]; got != adapter.Native {
-		t.Errorf("Capabilities[skill]: got %v, want Native (per ADR-0009)", got)
-	}
-}
-
 func TestClaudeCode_PlanSkill_UserScope_WritesToClaudeHome(t *testing.T) {
 	home := t.TempDir()
 	a := claudecode.New(dirs.Dirs{ClaudeHome: home})

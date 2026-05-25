@@ -25,26 +25,6 @@ const (
 	ScopeProject Scope = "project"
 )
 
-// CapabilityLevel encodes the per-(kind, adapter) capability matrix
-// from ADR-0007.
-type CapabilityLevel int
-
-const (
-	// Unsupported: adapter refuses installs of this kind with a clear
-	// error. No Plan call.
-	Unsupported CapabilityLevel = iota
-	// Lossy: adapter can install this kind but the universal-core
-	// fields don't map cleanly. Requires --allow-lossy at the
-	// orchestrator level.
-	Lossy
-	// Native: adapter installs this kind without loss.
-	Native
-)
-
-// KindCapabilityMatrix is one Adapter's per-kind rating, returned by
-// Adapter.Capabilities().
-type KindCapabilityMatrix map[resource.Kind]CapabilityLevel
-
 // FileWrite represents one file the adapter wants the orchestrator to
 // write. Per ADR-0008, the content is byte-identical to the cache
 // copy for drop-file kinds (no frontmatter mutation).
@@ -96,9 +76,12 @@ type InstallPlan struct {
 }
 
 // Adapter is the host-side abstraction per ADR-0016 §2. Implementations
-// live in sub-packages (internal/adapter/claudecode, etc.).
+// live in sub-packages (internal/adapter/claudecode, etc.). Per-kind
+// support is expressed by Plan's behaviour: unsupported kinds return a
+// typed error ("kind X not yet supported"); supported kinds return an
+// InstallPlan. Per-instance lossiness is computed by the orchestrator
+// from schema aliases (ADR-0016 §8), not by the adapter.
 type Adapter interface {
 	HostID() string
-	Capabilities() KindCapabilityMatrix
 	Plan(r resource.Resource, scope Scope) (InstallPlan, error)
 }

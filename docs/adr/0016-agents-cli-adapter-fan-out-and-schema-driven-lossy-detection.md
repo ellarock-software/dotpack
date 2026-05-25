@@ -10,29 +10,32 @@ Settling this exposed seven follow-on questions that all sit inside the same arc
 
 ### 1. Adapter granularity — two sub-adapters, one CLI flag
 
-`gemini` and `codex` are independent `Adapter` implementations, each with its own capability-matrix row. `--agent agents-cli` is an orchestrator-side CLI flag that resolves to the adapter set `{gemini, codex}`. The umbrella CLI flag does not become a third adapter. For file-drop kinds the orchestrator special-cases the flag to write `.agents/` once rather than invoking both sub-adapters with redundant writes; for config-fragment kinds the orchestrator invokes each sub-adapter and aggregates their install plans.
+`gemini` and `codex` are independent `Adapter` implementations, each with its own per-host kind-support data (`Policy.Layouts` membership for the file-drop adapter; see §2 + [ADR-0007](./0007-universal-kinds-with-adapter-capability-matrix.md)). `--agent agents-cli` is an orchestrator-side CLI flag that resolves to the adapter set `{gemini, codex}`. The umbrella CLI flag does not become a third adapter. For file-drop kinds the orchestrator special-cases the flag to write `.agents/` once rather than invoking both sub-adapters with redundant writes; for config-fragment kinds the orchestrator invokes each sub-adapter and aggregates their install plans.
 
 ### 2. Adapter interface — plan-returning, not filesystem-mutating
 
 ```go
 type Adapter interface {
-    HostID() string                                          // "claude-code", "gemini", "codex"
-    Capabilities() KindCapabilityMatrix                      // per-kind native/lossy/unsupported per ADR-0007
+    HostID() string                                          // "claude-code", "gemini-cli", "codex"
     Plan(resource Resource, scope Scope) (InstallPlan, error)
 }
 
-type KindCapabilityMatrix map[Kind]CapabilityLevel
-type CapabilityLevel int // Native | Lossy | Unsupported
-
 type InstallPlan struct {
-    Files        []FileWrite      // path + content for file-drop kinds
-    MergedKeys   []MergedKeyWrite // (file, json_path or toml_path, value) for fragment kinds
-    Lossy        bool             // true when any LossyReasons present
-    LossyReasons []LossyReason    // {field_path, canonical_concept, supported_hosts}
+    Files      []FileWrite      // path + content for file-drop kinds
+    MergedKeys []MergedKeyWrite // (file, json_path or toml_path, value) for fragment kinds
+    TargetDir  string           // dir the orchestrator may reclaim on uninstall when empty
+}
+
+type LossyReason struct { // populated by the orchestrator, not the adapter
+    FieldPath        string
+    CanonicalConcept string
+    SupportedHosts   []string
 }
 ```
 
-`Capabilities()` returns the per-(kind, adapter) matrix from [ADR-0007](./0007-universal-kinds-with-adapter-capability-matrix.md) so the orchestrator can short-circuit `Unsupported` kinds (clear error, no `Plan` call) and surface `Lossy` kinds before invoking the per-instance check. The per-instance lossy detection in §8 is a *finer-grained* signal: a kind rated `Native` overall can still flag specific resources as lossy when extension fields are present. The orchestrator combines both: kind-level `Unsupported` → refuse; kind-level `Lossy` OR per-instance lossy → require `--allow-lossy`; otherwise proceed.
+Per-kind support is expressed by `Plan`'s behaviour: unsupported kinds return a typed error (`"<host>: kind <k> not yet supported"`); supported kinds return an `InstallPlan`. For the file-drop adapter, `Policy.Layouts` membership is the data structure that drives this — a kind present in `Layouts` is supported; a kind absent yields the error. There is no separate `Capabilities()` interface method: the architecture review (cards #1, #5) collapsed the old per-(kind, adapter) `Native`/`Lossy`/`Unsupported` matrix into this Plan-error contract because no production caller traversed the queryable form (see [ADR-0007](./0007-universal-kinds-with-adapter-capability-matrix.md) for the rationale and history).
+
+Per-instance lossiness is computed by the orchestrator after `Plan` returns, using §8's schema-driven check against the resource's `Extensions` and the adapter's `HostID`. The plan does NOT carry lossy state — keeping a `plan.Lossy` field invited adapters to restate schema knowledge in code, which §8 explicitly supersedes. The orchestrator's policy is: `Plan` errors with "kind not supported" → refuse; per-instance lossy reasons present AND `--allow-lossy` not set → refuse with `LossyError`; otherwise proceed.
 
 Adapters are pure functions of the resource. The orchestrator applies plans, persists manifest records, and gates lossy plans behind `--allow-lossy`. This keeps adapters trivially unit-testable, makes dry-run free (`Plan` without `Apply`), and centralises manifest construction.
 

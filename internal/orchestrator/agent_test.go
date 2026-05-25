@@ -148,8 +148,7 @@ func (fakeUnnamedResource) Extensions() map[string]any { return nil }
 // touching the schema package or any claudecode-specific dispatch.
 type fakeAdapter struct{}
 
-func (fakeAdapter) HostID() string                        { return "fake-host" }
-func (fakeAdapter) Capabilities() adapter.KindCapabilityMatrix { return nil }
+func (fakeAdapter) HostID() string { return "fake-host" }
 func (fakeAdapter) Plan(r resource.Resource, _ adapter.Scope) (adapter.InstallPlan, error) {
 	return adapter.InstallPlan{}, nil
 }

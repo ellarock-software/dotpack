@@ -22,8 +22,8 @@ import (
 // skillOnlyPolicy is a fixture: a host that supports only the skill kind.
 // Used to pin the kind-not-supported error path without dragging in
 // real schema data. UserRoot is a no-op resolver — tests using this
-// fixture don't exercise targetPath (they check error dispatch / HostID /
-// Capabilities derivation, all of which are upstream of path computation).
+// fixture don't exercise targetPath (they check error dispatch and HostID,
+// both upstream of path computation).
 var skillOnlyPolicy = filedrop.Policy{
 	HostID: "test-host",
 	Layouts: map[resource.Kind]filedrop.Layout{
@@ -113,23 +113,6 @@ func TestFiledrop_HostID_ReturnsPolicyHostID(t *testing.T) {
 	a := filedrop.New(dirs.Dirs{}, filedrop.Policy{HostID: "test-host"})
 	if got := a.HostID(); got != "test-host" {
 		t.Errorf("HostID = %q; want %q", got, "test-host")
-	}
-}
-
-func TestFiledrop_Capabilities_DerivedFromLayoutsMembership(t *testing.T) {
-	// Kinds present in Layouts → Native; kinds absent → Unsupported via
-	// CapabilityLevel's iota zero value. This is the consolidation that
-	// makes the codex-no-agent declaration data-driven (no entry in
-	// Layouts == no support, no separate "Unsupported" assignment).
-	// Pinning both arms (present and absent) so a refactor that returns
-	// e.g. an empty map for all kinds fails this test loudly.
-	a := filedrop.New(dirs.Dirs{}, skillOnlyPolicy)
-	caps := a.Capabilities()
-	if got := caps[resource.KindSkill]; got != adapter.Native {
-		t.Errorf("Capabilities[skill] = %v; want Native (skill IS in Layouts)", got)
-	}
-	if got := caps[resource.KindAgent]; got != adapter.Unsupported {
-		t.Errorf("Capabilities[agent] = %v; want Unsupported (agent NOT in Layouts; zero-value semantics)", got)
 	}
 }
 

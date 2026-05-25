@@ -3,10 +3,8 @@ package gemini_test
 import (
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter"
 	"github.com/ellarock/dotpack/internal/adapter/gemini"
 	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
 )
 
 func TestGemini_HostID(t *testing.T) {
@@ -22,13 +20,3 @@ func TestGemini_HostID(t *testing.T) {
 	}
 }
 
-func TestGemini_CapabilitiesSkillAndAgentAreNative(t *testing.T) {
-	a := gemini.New(dirs.Dirs{GeminiHome: t.TempDir()})
-	caps := a.Capabilities()
-	if got := caps[resource.KindSkill]; got != adapter.Native {
-		t.Errorf("Capabilities[skill]: got %v, want Native", got)
-	}
-	if got := caps[resource.KindAgent]; got != adapter.Native {
-		t.Errorf("Capabilities[agent]: got %v, want Native", got)
-	}
-}

@@ -13,14 +13,6 @@ import (
 	"github.com/ellarock/dotpack/schema"
 )
 
-func TestClaudeCode_CapabilitiesAgentIsNative(t *testing.T) {
-	a := claudecode.New(dirs.Dirs{ClaudeHome: t.TempDir()})
-	caps := a.Capabilities()
-	if got := caps[resource.KindAgent]; got != adapter.Native {
-		t.Errorf("Capabilities[agent]: got %v, want Native", got)
-	}
-}
-
 func TestClaudeCode_PlanAgent_UserScope_FlatFileLayout(t *testing.T) {
 	// Agents are a FLAT file <root>/agents/<name>.md, NOT nested in a
 	// per-name subdirectory the way skills are. The plan.TargetDir must

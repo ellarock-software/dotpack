@@ -127,20 +127,6 @@ func New(d dirs.Dirs, p Policy) *Adapter {
 // are keyed by.
 func (a *Adapter) HostID() string { return a.policy.HostID }
 
-// Capabilities returns the per-kind capability matrix derived from
-// Layouts membership: a present kind is Native, an absent kind is
-// Unsupported (via CapabilityLevel's iota zero value, which Go map
-// lookups return for missing keys). This collapses the codex-no-agent
-// declaration into the same data structure that drives Plan dispatch
-// — one source of truth, not two parallel ones.
-func (a *Adapter) Capabilities() adapter.KindCapabilityMatrix {
-	m := adapter.KindCapabilityMatrix{}
-	for k := range a.policy.Layouts {
-		m[k] = adapter.Native
-	}
-	return m
-}
-
 // Plan returns the install plan for a resource. Dispatch is data-driven
 // — Layouts membership decides which kinds this host supports; absent
 // kinds return a structured error. The path is computed from the

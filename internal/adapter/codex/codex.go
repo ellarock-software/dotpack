@@ -7,11 +7,10 @@
 // directory documented by the codex CLI. The absence of resource.KindAgent
 // from Policy.Layouts is the canonical declaration of that: the
 // filedrop module returns "kind agent not yet supported" for any
-// Plan(KindAgent) call, and Capabilities() returns Unsupported (via
-// CapabilityLevel's iota zero value) without a separate explicit entry.
-// Agent support would be added by appending a KindAgent Layout entry
-// + setting AgentToolsShape; that requires the codex CLI to document
-// a native agent loading directory analogous to .claude/agents/.
+// Plan(KindAgent) call. Agent support would be added by appending a
+// KindAgent Layout entry + setting AgentToolsShape; that requires the
+// codex CLI to document a native agent loading directory analogous to
+// .claude/agents/.
 //
 // Skill paths: <AgentsHome>/skills/<name>/SKILL.md (user) or
 // <ProjectHome>/.agents/skills/<name>/SKILL.md (project). Per
@@ -50,11 +49,12 @@ func userRoot(d dirs.Dirs) (string, error) {
 }
 
 // Policy is the codex per-host data the filedrop module dispatches on.
-// Skill only — agent is absent from Layouts (data-driven equivalent of
-// the old Capabilities matrix's explicit KindAgent: Unsupported entry).
+// KindAgent is INTENTIONALLY ABSENT from Layouts — codex CLI documents
+// no native agent loading directory per developers.openai.com/codex (a
+// deliberate decision, not an oversight). filedrop.Plan returns "kind
+// agent not yet supported" for any Plan(KindAgent) call as a result.
 // AgentToolsShape is intentionally left at zero value (ToolsShapeUnused)
-// because no agent Layout exists; the filedrop encoder errors if Plan
-// is called for KindAgent before that branch is reached.
+// because no agent Layout exists.
 var Policy = filedrop.Policy{
 	HostID: hostID,
 	Layouts: map[resource.Kind]filedrop.Layout{
