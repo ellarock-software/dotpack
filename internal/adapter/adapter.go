@@ -1,8 +1,10 @@
 // Package adapter declares the Adapter interface and plan types per
-// ADR-0016 §2. Each host (claude-code, gemini, codex, ...) lives in
-// its own sub-package and implements Adapter. The orchestrator owns
-// Apply: adapters are pure functions of the resource that return an
-// InstallPlan; they never touch the filesystem themselves.
+// ADR-0016 §2. Each host (claude-code, gemini-cli, codex, ...) lives
+// in its own sub-package and implements Adapter; the HostID strings
+// match the `host:` aliases in schema/*.yaml (see schema.Alias). The
+// orchestrator owns Apply: adapters are pure functions of the
+// resource that return an InstallPlan; they never touch the
+// filesystem themselves.
 package adapter
 
 import (

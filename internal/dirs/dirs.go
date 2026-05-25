@@ -20,6 +20,15 @@ type Dirs struct {
 	// ClaudeHome/skills/<name>/SKILL.md (per ADR-0009).
 	ClaudeHome string
 
+	// GeminiHome is the root of Gemini CLI's user config, e.g.
+	// ~/.gemini. The gemini-cli adapter writes user-scope skills to
+	// GeminiHome/skills/<name>/SKILL.md and agents to
+	// GeminiHome/agents/<name>.md. The ~/.agents/ convergence path
+	// (shared with codex) is reserved for the future agents-cli
+	// umbrella flag per ADR-0016 §1, not claimed by the per-host
+	// adapter.
+	GeminiHome string
+
 	// DotpackHome is the root of dotpack's own state, e.g. ~/.dotpack.
 	// The manifest store writes installs.yaml here (per ADR-0008).
 	DotpackHome string
@@ -68,17 +77,21 @@ type Dirs struct {
 func FromEnv() (Dirs, error) {
 	d := Dirs{
 		ClaudeHome:  os.Getenv("DOTPACK_CLAUDE_HOME"),
+		GeminiHome:  os.Getenv("DOTPACK_GEMINI_HOME"),
 		DotpackHome: os.Getenv("DOTPACK_DOTPACK_HOME"),
 		ProjectHome: os.Getenv("DOTPACK_PROJECT_HOME"),
 	}
 
-	if d.ClaudeHome == "" || d.DotpackHome == "" {
+	if d.ClaudeHome == "" || d.GeminiHome == "" || d.DotpackHome == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return Dirs{}, fmt.Errorf("resolve $HOME: %w", err)
 		}
 		if d.ClaudeHome == "" {
 			d.ClaudeHome = filepath.Join(home, ".claude")
+		}
+		if d.GeminiHome == "" {
+			d.GeminiHome = filepath.Join(home, ".gemini")
 		}
 		if d.DotpackHome == "" {
 			d.DotpackHome = filepath.Join(home, ".dotpack")
@@ -91,6 +104,11 @@ func FromEnv() (Dirs, error) {
 		d.ClaudeHome = abs
 	} else {
 		return Dirs{}, fmt.Errorf("DOTPACK_CLAUDE_HOME=%q: resolve abs: %w", d.ClaudeHome, err)
+	}
+	if abs, err := filepath.Abs(d.GeminiHome); err == nil {
+		d.GeminiHome = abs
+	} else {
+		return Dirs{}, fmt.Errorf("DOTPACK_GEMINI_HOME=%q: resolve abs: %w", d.GeminiHome, err)
 	}
 	if abs, err := filepath.Abs(d.DotpackHome); err == nil {
 		d.DotpackHome = abs

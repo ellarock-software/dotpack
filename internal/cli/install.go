@@ -11,6 +11,7 @@ import (
 
 	"github.com/ellarock/dotpack/internal/adapter"
 	"github.com/ellarock/dotpack/internal/adapter/claudecode"
+	"github.com/ellarock/dotpack/internal/adapter/gemini"
 	"github.com/ellarock/dotpack/internal/dirs"
 	"github.com/ellarock/dotpack/internal/manifest"
 	"github.com/ellarock/dotpack/internal/orchestrator"
@@ -30,21 +31,25 @@ func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <source-path>",
 		Short: "Install a resource into an agent host",
-		Long: `Install a single resource (SKILL.md for now) into the named agent host.
+		Long: `Install a single resource (skill or agent) into the named agent host.
 
-The first vertical slice supports:
-  --agent claude-code
-  --kind  skill (or inferred when the source is named SKILL.md)
-  --scope user (writes to $DOTPACK_CLAUDE_HOME or ~/.claude/skills/<name>/)
+Supported today:
+  --agent claude-code | gemini-cli
+  --kind  skill | agent (skill is inferred when the source is named SKILL.md;
+          agent requires --kind agent explicitly)
+  --scope user | project
 
-Future slices add gemini / codex adapters and the agents-cli umbrella flag.`,
+User scope writes to $DOTPACK_CLAUDE_HOME / ~/.claude (or $DOTPACK_GEMINI_HOME
+/ ~/.gemini). Project scope writes under $DOTPACK_PROJECT_HOME / CWD.
+
+Future slices add the codex adapter and the agents-cli umbrella flag.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInstall(cmd, args[0], agentName, kindName, scopeName, allowLossy, force)
 		},
 	}
 
-	cmd.Flags().StringVar(&agentName, "agent", "claude-code", "Target host adapter (currently: claude-code)")
+	cmd.Flags().StringVar(&agentName, "agent", "claude-code", "Target host adapter (claude-code | gemini-cli)")
 	cmd.Flags().StringVar(&kindName, "kind", "", "Resource kind; inferred from filename when omitted (SKILL.md → skill)")
 	cmd.Flags().StringVar(&scopeName, "scope", "user", "Install scope (user|project)")
 	cmd.Flags().BoolVar(&allowLossy, "allow-lossy", false, "Proceed even if the adapter cannot honour all source fields")
@@ -181,8 +186,10 @@ func buildAdapter(name string, d dirs.Dirs) (adapter.Adapter, error) {
 	switch name {
 	case "claude-code":
 		return claudecode.New(d), nil
-	case "gemini", "codex", "agents-cli":
-		return nil, fmt.Errorf("agent %q not yet implemented (slice 1 is claude-code only)", name)
+	case "gemini-cli":
+		return gemini.New(d), nil
+	case "codex", "agents-cli":
+		return nil, fmt.Errorf("agent %q not yet implemented", name)
 	default:
 		return nil, fmt.Errorf("unknown agent %q", name)
 	}

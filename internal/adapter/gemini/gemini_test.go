@@ -1,0 +1,34 @@
+package gemini_test
+
+import (
+	"testing"
+
+	"github.com/ellarock/dotpack/internal/adapter"
+	"github.com/ellarock/dotpack/internal/adapter/gemini"
+	"github.com/ellarock/dotpack/internal/dirs"
+	"github.com/ellarock/dotpack/internal/resource"
+)
+
+func TestGemini_HostID(t *testing.T) {
+	// Schema (schema/agent.yaml, schema/mcp-server.yaml, schema/hook.yaml)
+	// declares aliases with `host: gemini-cli`. The adapter's HostID MUST
+	// match the schema string exactly — LossyExtensions matches on equal,
+	// so a mismatch silently flips gemini-native concepts to lossy on
+	// their own host. The CLI flag mirrors the HostID for symmetry with
+	// `--agent claude-code`.
+	a := gemini.New(dirs.Dirs{GeminiHome: t.TempDir()})
+	if got := a.HostID(); got != "gemini-cli" {
+		t.Errorf("HostID: got %q, want %q", got, "gemini-cli")
+	}
+}
+
+func TestGemini_CapabilitiesSkillAndAgentAreNative(t *testing.T) {
+	a := gemini.New(dirs.Dirs{GeminiHome: t.TempDir()})
+	caps := a.Capabilities()
+	if got := caps[resource.KindSkill]; got != adapter.Native {
+		t.Errorf("Capabilities[skill]: got %v, want Native", got)
+	}
+	if got := caps[resource.KindAgent]; got != adapter.Native {
+		t.Errorf("Capabilities[agent]: got %v, want Native", got)
+	}
+}

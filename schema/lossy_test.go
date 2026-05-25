@@ -39,16 +39,19 @@ func TestLossyExtensions_AllowedToolsOnClaudeCode_NotLossy(t *testing.T) {
 	}
 }
 
-func TestLossyExtensions_AllowedToolsOnGemini_Lossy(t *testing.T) {
-	// Same concept, different target host. gemini is NOT in
-	// claude_skill_runtime_overrides.aliases → lossy on gemini.
-	got, err := schema.LossyExtensions(resource.KindSkill, "gemini",
+func TestLossyExtensions_AllowedToolsOnGeminiCLI_Lossy(t *testing.T) {
+	// Same concept, different target host. gemini-cli is NOT in
+	// claude_skill_runtime_overrides.aliases → lossy on gemini-cli.
+	// (Pre-slice-3-#7 this used bare "gemini" as a synthetic non-claude
+	// host. Now that gemini-cli is a real adapter, the test uses the
+	// real HostID — the synthetic case is subsumed.)
+	got, err := schema.LossyExtensions(resource.KindSkill, "gemini-cli",
 		map[string]any{"allowed-tools": []any{"Read"}})
 	if err != nil {
 		t.Fatalf("LossyExtensions: %v", err)
 	}
 	if len(got) != 1 {
-		t.Fatalf("expected 1 lossy reason on gemini; got %+v", got)
+		t.Fatalf("expected 1 lossy reason on gemini-cli; got %+v", got)
 	}
 	if got[0].FieldPath != "allowed-tools" {
 		t.Errorf("FieldPath: got %q, want allowed-tools", got[0].FieldPath)
@@ -68,7 +71,7 @@ func TestLossyExtensions_PassThroughMetadata_NeverLossy(t *testing.T) {
 	// any host, because dropping them changes nothing observable.
 	// The schema binds the on-disk field names via Concept.FieldNames
 	// (separate from aliases[].host, which is for hosted concepts).
-	for _, host := range []string{"claude-code", "gemini", "codex", "made-up-host"} {
+	for _, host := range []string{"claude-code", "gemini-cli", "codex", "made-up-host"} {
 		got, err := schema.LossyExtensions(resource.KindSkill, host,
 			map[string]any{"keywords": []any{"tag1"}})
 		if err != nil {

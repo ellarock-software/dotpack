@@ -127,6 +127,48 @@ func TestFromEnv_ClaudeHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
 	}
 }
 
+func TestFromEnv_GeminiHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
+	// Mirror of TestFromEnv_ClaudeHome_RelativeEnvIsResolvedToAbsolute
+	// for DOTPACK_GEMINI_HOME (slice 3 task #7 — second adapter `gemini`).
+	// Same class of bug: a relative env value silently breaks across
+	// chdir. FromEnv must filepath.Abs.
+	wantParent := t.TempDir()
+	rel := "gemini-cfg"
+	t.Chdir(wantParent)
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_GEMINI_HOME", rel)
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.GeminiHome) {
+		t.Errorf("GeminiHome must be absolute after FromEnv normalises env input; got %q", d.GeminiHome)
+	}
+	wantAbs := filepath.Join(wantParent, rel)
+	if filepath.Clean(d.GeminiHome) != filepath.Clean(wantAbs) {
+		t.Errorf("GeminiHome: got %q, want %q", d.GeminiHome, wantAbs)
+	}
+}
+
+func TestFromEnv_GeminiHome_NonexistentEnvDoesNotError(t *testing.T) {
+	// Same write-target tolerance as ClaudeHome — gemini-cli adapter
+	// MkdirAll's the tree on first install.
+	parent := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_GEMINI_HOME", filepath.Join(parent, "does-not-exist-yet"))
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.GeminiHome) {
+		t.Errorf("GeminiHome must be absolute; got %q", d.GeminiHome)
+	}
+}
+
 func TestFromEnv_DotpackHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
 	// Same class as the ClaudeHome relative-env fix: a relative
 	// DOTPACK_DOTPACK_HOME silently breaks list/uninstall after chdir,

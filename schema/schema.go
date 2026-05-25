@@ -50,7 +50,10 @@ type Concept struct {
 }
 
 // Alias is one (host, field_name) pair under a concept's aliases array.
-// host is the dotpack adapter HostID ("claude-code", "gemini", "codex");
+// host is the dotpack adapter HostID ("claude-code", "gemini-cli",
+// "codex") — MUST match the adapter's HostID() return verbatim, since
+// LossyExtensions compares by string equality. A mismatch silently
+// flips a host's native concepts to lossy on the host's own adapter.
 // field_name is the on-disk frontmatter key as it appears in that host's
 // SKILL.md (e.g. "allowed-tools"). The field_name namespace is distinct
 // from the canonical_concept slug namespace — pitfall (a) in the slice-2

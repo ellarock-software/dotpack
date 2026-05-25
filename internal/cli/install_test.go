@@ -225,9 +225,12 @@ func TestUninstall_FullIDBypassesAgentFlag(t *testing.T) {
 	// silently reshape the lookup. But runUninstall used to call
 	// buildAdapter(agentName) unconditionally, which errored on any
 	// --agent value that isn't claude-code regardless of what's in the
-	// ID. Once #7 (gemini adapter) lands this would break copy-paste-
-	// the-ID workflows on day one. The fix: when the handle is a full
-	// ID, the host segment IS the source of truth — --agent is ignored.
+	// ID. Once a second adapter lands (gemini-cli per slice 3 task #7)
+	// this would break copy-paste-the-ID workflows on day one. The fix:
+	// when the handle is a full ID, the host segment IS the source of
+	// truth — --agent is ignored. Below we pass `--agent gemini-cli`
+	// (the actual second adapter, divergent from the ID's host segment
+	// `claude-code`) to exercise the case the comment describes.
 	claudeHome := t.TempDir()
 	dotpackHome := t.TempDir()
 	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
@@ -248,7 +251,7 @@ func TestUninstall_FullIDBypassesAgentFlag(t *testing.T) {
 	// --agent set to a value the install command would refuse, but the
 	// handle is a full ID — uninstall MUST honour the ID and ignore
 	// --agent. Otherwise pasting an ID with a non-default host fails.
-	uninstall.SetArgs([]string{"uninstall", "claude-code:skill:dotpack-tracer-bullet", "--agent", "gemini"})
+	uninstall.SetArgs([]string{"uninstall", "claude-code:skill:dotpack-tracer-bullet", "--agent", "gemini-cli"})
 	if err := uninstall.Execute(); err != nil {
 		t.Fatalf("uninstall by full ID with mismatched --agent should succeed; got %v", err)
 	}

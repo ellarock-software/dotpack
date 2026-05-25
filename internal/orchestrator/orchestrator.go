@@ -115,7 +115,7 @@ func (e *CollisionError) Error() string {
 // WHY each field was rejected and WHERE it would have worked — not
 // just a bare field-name list. Format example:
 //
-//	install would be lossy on gemini:
+//	install would be lossy on gemini-cli:
 //	  - allowed-tools (concept: claude_skill_runtime_overrides; native on: claude-code)
 //	  - my_typo_field (unknown field — no schema entry claims it)
 //	pass --allow-lossy to proceed

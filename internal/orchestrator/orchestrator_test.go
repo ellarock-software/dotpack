@@ -127,7 +127,7 @@ func TestLossyError_Error_RendersConceptAndSupportedHosts(t *testing.T) {
 	// collected. The new formatter surfaces both so users know WHY
 	// each field was rejected and WHERE it would have worked.
 	le := &orchestrator.LossyError{
-		Host: "gemini",
+		Host: "gemini-cli",
 		Reasons: []adapter.LossyReason{
 			{FieldPath: "allowed-tools", CanonicalConcept: "claude_skill_runtime_overrides", SupportedHosts: []string{"claude-code"}},
 			{FieldPath: "my_typo", CanonicalConcept: "", SupportedHosts: nil},
@@ -135,7 +135,7 @@ func TestLossyError_Error_RendersConceptAndSupportedHosts(t *testing.T) {
 	}
 	msg := le.Error()
 	for _, want := range []string{
-		"gemini",
+		"gemini-cli",
 		"allowed-tools",
 		"claude_skill_runtime_overrides",
 		"claude-code",
