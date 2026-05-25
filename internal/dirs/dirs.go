@@ -23,11 +23,20 @@ type Dirs struct {
 	// GeminiHome is the root of Gemini CLI's user config, e.g.
 	// ~/.gemini. The gemini-cli adapter writes user-scope skills to
 	// GeminiHome/skills/<name>/SKILL.md and agents to
-	// GeminiHome/agents/<name>.md. The ~/.agents/ convergence path
-	// (shared with codex) is reserved for the future agents-cli
-	// umbrella flag per ADR-0016 §1, not claimed by the per-host
-	// adapter.
+	// GeminiHome/agents/<name>.md.
 	GeminiHome string
+
+	// AgentsHome is the root of the shared cross-host resource tree,
+	// e.g. ~/.agents. Codex CLI's only documented native skill path
+	// is AgentsHome/skills/<name>/SKILL.md (per
+	// developers.openai.com/codex/skills); Gemini CLI ALSO reads from
+	// here as a convergence path (its preferred is GeminiHome/skills/),
+	// but the gemini-cli adapter writes to its host-specific path so
+	// `--agent gemini-cli` doesn't collide with `--agent codex` at the
+	// shared root. The future `--agent agents-cli` umbrella flag
+	// (ADR-0016 §1) special-cases AgentsHome/skills/ for write-once
+	// convergence; until then, `--agent codex` is the only writer.
+	AgentsHome string
 
 	// DotpackHome is the root of dotpack's own state, e.g. ~/.dotpack.
 	// The manifest store writes installs.yaml here (per ADR-0008).
@@ -43,20 +52,18 @@ type Dirs struct {
 }
 
 // FromEnv resolves Dirs from the user's environment, with overrides for
-// tests: DOTPACK_CLAUDE_HOME / DOTPACK_DOTPACK_HOME / DOTPACK_PROJECT_HOME
-// (the *_HOME suffixes are deliberately verbose so they're never confused
-// with PATH-like things). Returns an error if HOME cannot be resolved AND
-// no overrides are set.
+// tests: DOTPACK_CLAUDE_HOME / DOTPACK_GEMINI_HOME / DOTPACK_AGENTS_HOME
+// / DOTPACK_DOTPACK_HOME / DOTPACK_PROJECT_HOME (the *_HOME suffixes are
+// deliberately verbose so they're never confused with PATH-like things).
+// Returns an error if HOME cannot be resolved AND no overrides are set.
 //
-// All three env vars, when set, are normalised to absolute paths
+// All env vars, when set, are normalised to absolute paths
 // (filepath.Abs against CWD at FromEnv time). A relative env value
 // silently breaks across chdir — install would write into one tree,
 // `dotpack list` from a different CWD would look at a different tree.
 // Slice 2 task #2 fixed this for DOTPACK_PROJECT_HOME (commit 42ec230);
-// slice 3 task #5 extends it to ClaudeHome / DotpackHome, where `list`
-// and `uninstall` are the first features to actively bite the relative
-// case (slice 1's install ran once per CWD-session, so the bug stayed
-// latent).
+// slice 3 task #5 extended it to ClaudeHome / DotpackHome; slice 3 #7
+// added GeminiHome; slice 3 #8 adds AgentsHome.
 //
 // Existence rules diverge by role:
 //   - DOTPACK_PROJECT_HOME MUST exist as a directory — we READ from it
@@ -64,10 +71,10 @@ type Dirs struct {
 //     nonexistent values silently defeated the "manifest paths are
 //     absolute" invariant when accepted verbatim. CWD-fallback path is
 //     exempt: Getwd by definition returns an existing directory.
-//   - DOTPACK_CLAUDE_HOME / DOTPACK_DOTPACK_HOME are dotpack-managed
-//     WRITE targets; install MkdirAll's their trees on first use, so
-//     FromEnv must tolerate a not-yet-existing path. Normalise to
-//     absolute, do not stat.
+//   - DOTPACK_CLAUDE_HOME / DOTPACK_GEMINI_HOME / DOTPACK_AGENTS_HOME /
+//     DOTPACK_DOTPACK_HOME are dotpack-managed WRITE targets; install
+//     MkdirAll's their trees on first use, so FromEnv must tolerate a
+//     not-yet-existing path. Normalise to absolute, do not stat.
 //
 // ProjectHome CWD fallback (hostile-review #5 from 42ec230): when unset,
 // falls back to os.Getwd(). Getwd failure is tolerated here (ProjectHome
@@ -78,11 +85,12 @@ func FromEnv() (Dirs, error) {
 	d := Dirs{
 		ClaudeHome:  os.Getenv("DOTPACK_CLAUDE_HOME"),
 		GeminiHome:  os.Getenv("DOTPACK_GEMINI_HOME"),
+		AgentsHome:  os.Getenv("DOTPACK_AGENTS_HOME"),
 		DotpackHome: os.Getenv("DOTPACK_DOTPACK_HOME"),
 		ProjectHome: os.Getenv("DOTPACK_PROJECT_HOME"),
 	}
 
-	if d.ClaudeHome == "" || d.GeminiHome == "" || d.DotpackHome == "" {
+	if d.ClaudeHome == "" || d.GeminiHome == "" || d.AgentsHome == "" || d.DotpackHome == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return Dirs{}, fmt.Errorf("resolve $HOME: %w", err)
@@ -92,6 +100,9 @@ func FromEnv() (Dirs, error) {
 		}
 		if d.GeminiHome == "" {
 			d.GeminiHome = filepath.Join(home, ".gemini")
+		}
+		if d.AgentsHome == "" {
+			d.AgentsHome = filepath.Join(home, ".agents")
 		}
 		if d.DotpackHome == "" {
 			d.DotpackHome = filepath.Join(home, ".dotpack")
@@ -109,6 +120,11 @@ func FromEnv() (Dirs, error) {
 		d.GeminiHome = abs
 	} else {
 		return Dirs{}, fmt.Errorf("DOTPACK_GEMINI_HOME=%q: resolve abs: %w", d.GeminiHome, err)
+	}
+	if abs, err := filepath.Abs(d.AgentsHome); err == nil {
+		d.AgentsHome = abs
+	} else {
+		return Dirs{}, fmt.Errorf("DOTPACK_AGENTS_HOME=%q: resolve abs: %w", d.AgentsHome, err)
 	}
 	if abs, err := filepath.Abs(d.DotpackHome); err == nil {
 		d.DotpackHome = abs

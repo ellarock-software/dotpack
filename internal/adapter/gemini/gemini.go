@@ -5,14 +5,21 @@
 // content, gemini-cli does not own the dir).
 //
 // Convergence note: per schema/skill.yaml ecosystem_notes, gemini-cli
-// ALSO honours the shared `~/.agents/skills/` path for the skill kind
-// (Codex too). That convergence path is the agents-cli umbrella flag's
-// responsibility (ADR-0016 §1) and is intentionally NOT claimed by this
-// per-host adapter — writing skills there from --agent gemini-cli would
-// collide with the codex adapter when #8 lands. For the agent kind, per
-// schema/agent.yaml ecosystem_notes, `.agents/agents/` is NOT yet
-// honoured by either Claude or Gemini — agents-cli must fan out to each
-// host's native agents/ dir until that changes.
+// ALSO reads the shared `~/.agents/skills/` path for the skill kind.
+// Codex (slice 3 task #8) WRITES to that shared path — it's codex's
+// only documented native skill root per developers.openai.com/codex/skills.
+// gemini-cli deliberately writes to its host-specific GeminiHome/skills/
+// instead so that `--agent gemini-cli` and `--agent codex` produce
+// distinct manifest-tracked targets today; the gemini-cli runtime still
+// picks up the codex-installed skill via its read-side convergence.
+// The future `--agent agents-cli` umbrella flag (ADR-0016 §1) will
+// special-case writing to ~/.agents/skills/ ONCE for both hosts; that
+// IS a future collision with `--agent codex` at the same path, owned
+// by the umbrella's CLI-flag-to-adapter-set logic when it lands. For
+// the agent kind, per schema/agent.yaml ecosystem_notes, `.agents/agents/`
+// is NOT yet honoured by either Claude or Gemini — agents-cli must fan
+// out to each host's native agents/ dir until that changes. (Codex's
+// agent capability is documented authoritatively in package codex.)
 package gemini
 
 import (

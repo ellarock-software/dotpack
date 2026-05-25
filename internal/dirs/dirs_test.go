@@ -169,6 +169,54 @@ func TestFromEnv_GeminiHome_NonexistentEnvDoesNotError(t *testing.T) {
 	}
 }
 
+func TestFromEnv_AgentsHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
+	// Mirror of TestFromEnv_GeminiHome_RelativeEnvIsResolvedToAbsolute
+	// for DOTPACK_AGENTS_HOME (slice 3 task #8 — third adapter `codex`).
+	// Codex's only documented native skill path is ~/.agents/skills/
+	// (per developers.openai.com/codex/skills), so the codex adapter
+	// targets <AgentsHome>/skills/<name>/ for user scope. AgentsHome is
+	// shared infrastructure: agents-cli umbrella (ADR-0016 §1) will
+	// eventually special-case the same root for write-once convergence.
+	// Same class of bug as Claude/Gemini: relative env values silently
+	// break across chdir.
+	wantParent := t.TempDir()
+	rel := "agents-cfg"
+	t.Chdir(wantParent)
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_AGENTS_HOME", rel)
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.AgentsHome) {
+		t.Errorf("AgentsHome must be absolute after FromEnv normalises env input; got %q", d.AgentsHome)
+	}
+	wantAbs := filepath.Join(wantParent, rel)
+	if filepath.Clean(d.AgentsHome) != filepath.Clean(wantAbs) {
+		t.Errorf("AgentsHome: got %q, want %q", d.AgentsHome, wantAbs)
+	}
+}
+
+func TestFromEnv_AgentsHome_NonexistentEnvDoesNotError(t *testing.T) {
+	// Same write-target tolerance as ClaudeHome / GeminiHome — codex
+	// adapter MkdirAll's the .agents/skills/<name>/ tree on first
+	// install. Existence at FromEnv time is not required.
+	parent := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_AGENTS_HOME", filepath.Join(parent, "does-not-exist-yet"))
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.AgentsHome) {
+		t.Errorf("AgentsHome must be absolute; got %q", d.AgentsHome)
+	}
+}
+
 func TestFromEnv_DotpackHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
 	// Same class as the ClaudeHome relative-env fix: a relative
 	// DOTPACK_DOTPACK_HOME silently breaks list/uninstall after chdir,

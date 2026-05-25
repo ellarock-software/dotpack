@@ -11,6 +11,7 @@ import (
 
 	"github.com/ellarock/dotpack/internal/adapter"
 	"github.com/ellarock/dotpack/internal/adapter/claudecode"
+	"github.com/ellarock/dotpack/internal/adapter/codex"
 	"github.com/ellarock/dotpack/internal/adapter/gemini"
 	"github.com/ellarock/dotpack/internal/dirs"
 	"github.com/ellarock/dotpack/internal/manifest"
@@ -34,22 +35,29 @@ func newInstallCmd() *cobra.Command {
 		Long: `Install a single resource (skill or agent) into the named agent host.
 
 Supported today:
-  --agent claude-code | gemini-cli
+  --agent claude-code | gemini-cli | codex
   --kind  skill | agent (skill is inferred when the source is named SKILL.md;
-          agent requires --kind agent explicitly)
+          agent requires --kind agent explicitly. Codex supports skill only —
+          --kind agent --agent codex returns an error per ADR-0007's
+          default-deny posture since codex CLI documents no native agent
+          loading directory.)
   --scope user | project
 
-User scope writes to $DOTPACK_CLAUDE_HOME / ~/.claude (or $DOTPACK_GEMINI_HOME
-/ ~/.gemini). Project scope writes under $DOTPACK_PROJECT_HOME / CWD.
+User scope writes to $DOTPACK_CLAUDE_HOME / ~/.claude,
+$DOTPACK_GEMINI_HOME / ~/.gemini, or $DOTPACK_AGENTS_HOME / ~/.agents
+(codex's only documented native skill root per
+developers.openai.com/codex/skills). Project scope writes under
+$DOTPACK_PROJECT_HOME / CWD.
 
-Future slices add the codex adapter and the agents-cli umbrella flag.`,
+Future slices add the agents-cli umbrella flag (write-once convergence
+to ~/.agents/skills/ across gemini-cli + codex per ADR-0016 §1).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInstall(cmd, args[0], agentName, kindName, scopeName, allowLossy, force)
 		},
 	}
 
-	cmd.Flags().StringVar(&agentName, "agent", "claude-code", "Target host adapter (claude-code | gemini-cli)")
+	cmd.Flags().StringVar(&agentName, "agent", "claude-code", "Target host adapter (claude-code | gemini-cli | codex)")
 	cmd.Flags().StringVar(&kindName, "kind", "", "Resource kind; inferred from filename when omitted (SKILL.md → skill)")
 	cmd.Flags().StringVar(&scopeName, "scope", "user", "Install scope (user|project)")
 	cmd.Flags().BoolVar(&allowLossy, "allow-lossy", false, "Proceed even if the adapter cannot honour all source fields")
@@ -188,7 +196,9 @@ func buildAdapter(name string, d dirs.Dirs) (adapter.Adapter, error) {
 		return claudecode.New(d), nil
 	case "gemini-cli":
 		return gemini.New(d), nil
-	case "codex", "agents-cli":
+	case "codex":
+		return codex.New(d), nil
+	case "agents-cli":
 		return nil, fmt.Errorf("agent %q not yet implemented", name)
 	default:
 		return nil, fmt.Errorf("unknown agent %q", name)
