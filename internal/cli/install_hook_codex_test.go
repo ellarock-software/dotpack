@@ -13,10 +13,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// codexHookInstall installs the named hook fixture onto codex at user
+// codexHookInstallHelper installs the named hook fixture onto codex at user
 // scope and returns the resolved config.toml path. Single-call helper
 // for the scenario tests so env setup + invocation lives in one place.
-func codexHookInstall(t *testing.T, codexHome, dotpackHome, srcName string) string {
+func codexHookInstallHelper(t *testing.T, codexHome, dotpackHome, srcName string) string {
 	t.Helper()
 	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
 	t.Setenv("DOTPACK_GEMINI_HOME", t.TempDir())
@@ -110,7 +110,7 @@ func readCodexHooks(t *testing.T, path string) map[string][]map[string]any {
 func TestInstall_HookOnCodex_UserScope_FreshFile(t *testing.T) {
 	codexHome := t.TempDir()
 	dotpackHome := t.TempDir()
-	configPath := codexHookInstall(t, codexHome, dotpackHome, "bash-guard.hook.json")
+	configPath := codexHookInstallHelper(t, codexHome, dotpackHome, "bash-guard.hook.json")
 
 	raw, err := os.ReadFile(configPath)
 	if err != nil {
@@ -281,7 +281,7 @@ command = "/usr/local/bin/read-guard.sh"
 		t.Fatal(err)
 	}
 
-	got := codexHookInstall(t, codexHome, dotpackHome, "bash-guard.hook.json")
+	got := codexHookInstallHelper(t, codexHome, dotpackHome, "bash-guard.hook.json")
 	if got != configPath {
 		t.Fatalf("unexpected config path: %s", got)
 	}
@@ -344,7 +344,7 @@ command = "/usr/local/bin/read-guard.sh"
 func TestInstall_HookOnCodex_MultiBinding_RoundTrip(t *testing.T) {
 	codexHome := t.TempDir()
 	dotpackHome := t.TempDir()
-	configPath := codexHookInstall(t, codexHome, dotpackHome, "multi-binding.hook.json")
+	configPath := codexHookInstallHelper(t, codexHome, dotpackHome, "multi-binding.hook.json")
 
 	hooks := readCodexHooks(t, configPath)
 	if len(hooks["PreToolUse"]) != 2 {
@@ -430,7 +430,7 @@ func TestInstall_HookOnCodex_MultiBinding_RoundTrip(t *testing.T) {
 func TestInstall_HookOnCodex_EnvField_HashStable(t *testing.T) {
 	codexHome := t.TempDir()
 	dotpackHome := t.TempDir()
-	configPath := codexHookInstall(t, codexHome, dotpackHome, "env-hook.hook.json")
+	configPath := codexHookInstallHelper(t, codexHome, dotpackHome, "env-hook.hook.json")
 
 	hooks := readCodexHooks(t, configPath)
 	if len(hooks["PreToolUse"]) != 1 {
@@ -462,7 +462,7 @@ func TestInstall_HookOnCodex_EnvField_HashStable(t *testing.T) {
 func TestInstall_HookOnCodex_UserEdit_DriftTolerantUninstall(t *testing.T) {
 	codexHome := t.TempDir()
 	dotpackHome := t.TempDir()
-	configPath := codexHookInstall(t, codexHome, dotpackHome, "bash-guard.hook.json")
+	configPath := codexHookInstallHelper(t, codexHome, dotpackHome, "bash-guard.hook.json")
 
 	// Mutate the dotpack-installed binding's command via a TOML-shape
 	// rewrite. Re-emit the whole file with the new command so we don't
@@ -503,7 +503,7 @@ command = "/usr/local/bin/USER-EDITED.sh"
 func TestInstall_HookOnCodex_ReInstall_ReplacesNotDuplicates(t *testing.T) {
 	codexHome := t.TempDir()
 	dotpackHome := t.TempDir()
-	configPath := codexHookInstall(t, codexHome, dotpackHome, "bash-guard.hook.json")
+	configPath := codexHookInstallHelper(t, codexHome, dotpackHome, "bash-guard.hook.json")
 
 	// Re-install with edited source under the same filename-derived
 	// name. Temp source file avoids touching the testdata fixture.
@@ -706,7 +706,7 @@ profile = "default"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	codexHookInstall(t, codexHome, dotpackHome, "bash-guard.hook.json")
+	codexHookInstallHelper(t, codexHome, dotpackHome, "bash-guard.hook.json")
 
 	raw, _ := os.ReadFile(configPath)
 	if !strings.Contains(string(raw), "version = 1.0") {
@@ -731,7 +731,7 @@ profile = "default"
 func TestInstall_HookOnCodex_OrderOfInstallsPreserved(t *testing.T) {
 	codexHome := t.TempDir()
 	dotpackHome := t.TempDir()
-	configPath := codexHookInstall(t, codexHome, dotpackHome, "bash-guard.hook.json")
+	configPath := codexHookInstallHelper(t, codexHome, dotpackHome, "bash-guard.hook.json")
 
 	// Install a second hook (different name = different ID) into the
 	// same event. Temp source file so we don't depend on testdata fixture
@@ -792,7 +792,7 @@ func TestInstall_HookOnCodex_OrderOfInstallsPreserved(t *testing.T) {
 func TestInstall_HookOnCodex_DuplicateContent_DifferentNameRefused(t *testing.T) {
 	codexHome := t.TempDir()
 	dotpackHome := t.TempDir()
-	codexHookInstall(t, codexHome, dotpackHome, "bash-guard.hook.json")
+	codexHookInstallHelper(t, codexHome, dotpackHome, "bash-guard.hook.json")
 
 	// Identical content under a different filename → different install
 	// ID, same content-hash.
@@ -835,7 +835,7 @@ func TestInstall_HookOnCodex_FileModePreservation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	codexHookInstall(t, codexHome, dotpackHome, "bash-guard.hook.json")
+	codexHookInstallHelper(t, codexHome, dotpackHome, "bash-guard.hook.json")
 
 	st, err := os.Stat(configPath)
 	if err != nil {
