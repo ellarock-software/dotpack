@@ -3,7 +3,7 @@
 //
 //   - skill + agent → internal/adapter/filedrop (one file written per
 //     resource; no config merging).
-//   - mcp-server   → internal/adapter/configfrag (one or more
+//   - mcp-server + hook → internal/adapter/configfrag (one or more
 //     (path, value) merges into a host config file; ADR-0016 §5–§7).
 //
 // Both modules implement adapter.Adapter; the shell's job is to declare
@@ -25,6 +25,14 @@
 // HomeDir field today, and the tracer-slice scope is project-only per
 // advisor. When user scope lands, configfragPolicy gains a User
 // resolver and tests follow.
+//
+// Hook paths: <ProjectHome>/.claude/settings.json (project) or
+// <ClaudeHome>/settings.json (user — settings.json IS inside
+// ClaudeHome, unlike mcp-server's ~/.claude.json sibling, so user
+// scope is wired from day 1). Hook installs append into $.hooks.<Event>
+// arrays per ADR-0016 §9; identity at uninstall time is a sha256
+// content-hash Selector persisted in manifest.MergedKey (numeric
+// indices are unstable when siblings come and go).
 package claudecode
 
 import (
@@ -97,6 +105,122 @@ func projectMCPFile(d dirs.Dirs) (string, error) {
 	return filepath.Join(d.ProjectHome, ".mcp.json"), nil
 }
 
+// projectSettingsFile returns <ProjectHome>/.claude/settings.json —
+// claude-code's project-scope target for hook installs per
+// schema/hook.yaml template.source_locations entry for host claude-code.
+func projectSettingsFile(d dirs.Dirs) (string, error) {
+	if d.ProjectHome == "" {
+		return "", fmt.Errorf("claude-code: project scope requires dirs.ProjectHome to be set")
+	}
+	return filepath.Join(d.ProjectHome, ".claude", "settings.json"), nil
+}
+
+// userSettingsFile returns <ClaudeHome>/settings.json — claude-code's
+// user-scope target for hook installs. Unlike mcp-server's ~/.claude.json
+// (sibling of ~/.claude/), settings.json IS inside ClaudeHome, so user
+// scope rides the existing dirs.ClaudeHome surface from day 1 — no
+// HomeDir field gap.
+func userSettingsFile(d dirs.Dirs) (string, error) {
+	if d.ClaudeHome == "" {
+		return "", fmt.Errorf("claude-code: user scope requires dirs.ClaudeHome to be set")
+	}
+	return filepath.Join(d.ClaudeHome, "settings.json"), nil
+}
+
+// emitHook turns a *resource.Hook into one MergedFragment per binding
+// across all the resource's events. Op=Append so the orchestrator
+// walker appends each binding to the host's $.hooks.<Event> array
+// rather than overwriting it; the manifest's sha256 Selector for each
+// fragment is computed by the orchestrator at install time and re-
+// derived at uninstall to find the right array element regardless of
+// sibling installs/reorders.
+//
+// Per-host divergence (claude-code identity for event names,
+// canonical-seconds timeout, no Gemini-only field re-emit) is the
+// trivial slice — claude's emit is the canonical shape ADR-0016 §5
+// designates. When gemini/codex land their hook configfrag policies,
+// each gets its own emit function with the per-host rewrites
+// (Gemini's BeforeTool/AfterTool + ms timeout; Codex identity for
+// most but its TOML walker for the apply step).
+//
+// Universal-core fields only; Gemini's async/once/name/description
+// extensions are either claude-code lossy (caught by orchestrator §8
+// aggregation when the umbrella widens) or pure-Gemini-bookkeeping
+// (lossy_when_dropped=false per schema/hook.yaml). When a claude-
+// specific extension surfaces in the corpus, this function gains a
+// HostKeepsExtension filter mirroring filedrop.encodeSkill's pattern.
+func emitHook(r resource.Resource) ([]configfrag.MergedFragment, error) {
+	h, ok := r.(*resource.Hook)
+	if !ok {
+		return nil, fmt.Errorf("emit hook: resource type %T is not *resource.Hook", r)
+	}
+	if len(h.Events) == 0 {
+		return nil, fmt.Errorf("emit hook: %s has no events", h.Name)
+	}
+	frags := make([]configfrag.MergedFragment, 0)
+	for _, ev := range h.Events {
+		for _, b := range ev.Bindings {
+			value := encodeBinding(b)
+			frags = append(frags, configfrag.MergedFragment{
+				Path:  "$.hooks." + ev.Event,
+				Value: value,
+				Op:    adapter.MergedKeyAppend,
+			})
+		}
+	}
+	return frags, nil
+}
+
+// encodeBinding serialises one Binding into the on-disk JSON shape
+// claude expects: { matcher, hooks: [...specs...] }. Optional fields
+// (matcher, hook-spec timeout/statusMessage/env) are omitted when
+// absent so the written bytes match what a hand-author would have
+// produced — readability matters for a file the user diffs by hand.
+//
+// Output uses map[string]any (not a typed struct) so json.Marshal
+// sorts keys lexicographically — same convention as
+// emitMCPServer/applyJSONMergedKey, which keeps cacheKey's hash
+// deterministic per the cacheKey docstring's
+// "emit returns map[string]any" guard.
+func encodeBinding(b resource.Binding) map[string]any {
+	out := map[string]any{}
+	if b.Matcher != "" {
+		out["matcher"] = b.Matcher
+	}
+	specs := make([]any, 0, len(b.Hooks))
+	for _, s := range b.Hooks {
+		specs = append(specs, encodeHookSpec(s))
+	}
+	out["hooks"] = specs
+	return out
+}
+
+// encodeHookSpec serialises one HookSpec leaf. type + command always
+// present; optional fields suppressed when absent.
+func encodeHookSpec(s resource.HookSpec) map[string]any {
+	out := map[string]any{
+		"type":    s.Type,
+		"command": s.Command,
+	}
+	if s.HasTimeout {
+		out["timeout"] = s.Timeout
+	}
+	if s.StatusMessage != "" {
+		out["statusMessage"] = s.StatusMessage
+	}
+	if len(s.Env) > 0 {
+		// Pass through as map[string]string. Go's json.Marshal sorts
+		// string-keyed map keys lexicographically regardless of value
+		// type, so map[string]string produces byte-identical output
+		// to map[string]any for the same string→string mapping. The
+		// selectorFor hash stays stable across install (this emit) and
+		// uninstall (where json.Unmarshal of the file produces a
+		// map[string]any with the same value bytes). Hostile-review #4.
+		out["env"] = s.Env
+	}
+	return out
+}
+
 // emitMCPServer turns a *resource.MCPServer into one (path, value)
 // fragment the configfrag adapter merges into .mcp.json. The path is
 // JSONPath-ish ($.mcpServers.<name>) — claude's .mcp.json uses
@@ -149,6 +273,14 @@ func configfragPolicy() configfrag.Policy {
 				},
 				Emit: emitMCPServer,
 			},
+			resource.KindHook: {
+				Format: configfrag.FormatJSON,
+				Files: configfrag.ScopeFiles{
+					Project: projectSettingsFile,
+					User:    userSettingsFile,
+				},
+				Emit: emitHook,
+			},
 		},
 	}
 }
@@ -186,7 +318,7 @@ func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.Instal
 	switch r.Kind() {
 	case resource.KindSkill, resource.KindAgent:
 		return a.filedrop.Plan(r, scope)
-	case resource.KindMCPServer:
+	case resource.KindMCPServer, resource.KindHook:
 		return a.configfrag.Plan(r, scope)
 	default:
 		// Both filedrop and configfrag would also return this shape —

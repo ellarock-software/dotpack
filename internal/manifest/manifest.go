@@ -22,16 +22,37 @@ import (
 // inferred from File's extension at apply / un-merge time so a path-
 // shape mismatch is caught at the format-walker layer, not silently.
 //
+// Op + Selector encode the array-append case for the hook kind (and
+// any future kind whose host config target is an array, not a leaf):
+//
+//   - Op="" (the default — leaf-set; mcp-server's shape): the Path
+//     names a leaf slot; install overwrites; uninstall deletes the
+//     leaf. Selector is empty.
+//   - Op="append": the Path names an ARRAY container; install appends
+//     Value; the orchestrator computes Selector as
+//     "sha256:<hex(json.Marshal(Value))>" at install time and
+//     persists it. Uninstall scans the array at Path, hashes each
+//     element, and removes the one whose hash matches Selector —
+//     stable across sibling installs/uninstalls and user reorders
+//     (per advisor: numeric indices are unstable; content-hash is
+//     the right identity). Drift-on-uninstall principle: if the user
+//     edited the dotpack-installed element so the hash no longer
+//     matches, uninstall is a no-op (leave the user's edit alone).
+//
 // Why a struct (vs the prior []string `"file#path"` shape this slice
 // replaces): separators safe in both halves are not universal (# is
 // rare in filenames but legal — macOS allows it), and uninstall
 // genuinely needs the file path tuple to drive its un-merge step
 // without re-deriving from the host or the schema. The placeholder
 // []string carried no production data, so the format change is
-// one-shot before adoption.
+// one-shot before adoption. Op + Selector were added with the hook
+// slice; the YAML omitempty keeps mcp-server records visually
+// unchanged on disk.
 type MergedKey struct {
-	File string `yaml:"file"`
-	Path string `yaml:"path"`
+	File     string `yaml:"file"`
+	Path     string `yaml:"path"`
+	Op       string `yaml:"op,omitempty"`
+	Selector string `yaml:"selector,omitempty"`
 }
 
 // Record is one install. Field set per ADR-0008's "{ id, source, kind,

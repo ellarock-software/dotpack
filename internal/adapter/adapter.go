@@ -34,14 +34,43 @@ type FileWrite struct {
 	Mode    fs.FileMode
 }
 
+// MergedKeyOp distinguishes the two merge semantics the orchestrator's
+// walker supports against the parsed path:
+//
+//   - "" (MergedKeySet, the default): the path leaf is a value to set —
+//     the host config has a single named slot the install fills, e.g.,
+//     $.mcpServers.github = {...}. Idempotent under re-install.
+//   - "append" (MergedKeyAppend): the path target is an ARRAY the
+//     install appends to, e.g., $.hooks.PreToolUse += {matcher, hooks}.
+//     The manifest records a content-hash Selector at install time so
+//     uninstall identifies the install's element by hash rather than
+//     by numeric index (which moves when siblings come and go).
+//
+// The empty string default keeps the prior mcp-server install path
+// shape-unchanged when YAML-decoded from manifests written before this
+// field existed.
+type MergedKeyOp string
+
+const (
+	MergedKeySet    MergedKeyOp = ""
+	MergedKeyAppend MergedKeyOp = "append"
+)
+
 // MergedKeyWrite represents one key (or array element) the adapter
 // wants merged into a host config file. Path is a JSONPath or
 // TOMLPath depending on the target file's format. Populates the
 // manifest's merged_keys list per ADR-0008.
+//
+// Op selects between set-leaf (mcp-server's $.mcpServers.<name>
+// semantics) and append-to-array (hook's $.hooks.<event> semantics
+// per ADR-0016 §9). The zero value (MergedKeySet) preserves the
+// pre-Op behaviour so existing mcp-server emit functions stay
+// shape-unchanged.
 type MergedKeyWrite struct {
-	File string
-	Path string
+	File  string
+	Path  string
 	Value any
+	Op    MergedKeyOp
 }
 
 // LossyReason is one field the adapter would drop on install. Surfaced

@@ -104,9 +104,18 @@ type KindConfig struct {
 // emit in the format the file uses, the orchestrator's walker consumes
 // in that same format. Per ADR-0016 §5 the path keys are
 // schema-declared (see schema/<kind>.yaml's template.source_locations).
+//
+// Op selects between set-leaf (mcp-server's default — the path names a
+// slot the install fills) and append-to-array (hook's $.hooks.<event> —
+// the path names an array the install appends to). The zero value
+// (adapter.MergedKeySet) keeps mcp-server emit shape-unchanged; hook
+// emit sets Op = adapter.MergedKeyAppend. Walker semantics + manifest
+// persistence (sha256 Selector for the append case) live in the
+// orchestrator per the adapter-free uninstall contract.
 type MergedFragment struct {
 	Path  string
 	Value any
+	Op    adapter.MergedKeyOp
 }
 
 // Policy is the per-host data the deep configfrag module dispatches on.
@@ -194,6 +203,7 @@ func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.Instal
 			File:  file,
 			Path:  frag.Path,
 			Value: frag.Value,
+			Op:    frag.Op,
 		})
 	}
 	return adapter.InstallPlan{MergedKeys: mks}, nil

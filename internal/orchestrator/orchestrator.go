@@ -228,6 +228,19 @@ func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts Insta
 	// M+1 fails after files 0..K and merged keys 0..M succeeded, the
 	// host config file has M+1 entries the manifest doesn't track.
 	// Re-install preflight catches them; uninstall-by-ID does not.
+	//
+	// Re-install handling for Op=Append: if a record with the same ID
+	// already exists, un-merge its existing Op=Append entries BEFORE
+	// applying the new plan. Without this step a re-install of a hook
+	// whose value changed would leave the OLD array element in place
+	// and APPEND the new value — array would contain both. For Op=Set
+	// the apply overwrites the leaf so no pre-clean is needed; we
+	// scope the un-merge to Op=Append entries only. The manifest
+	// upsert at the end of Install carries the new selectors so a
+	// subsequent uninstall finds the new content.
+	if err := unmergeExistingAppendsForID(i.manifest, rec.ID); err != nil {
+		return InstallResult{}, fmt.Errorf("re-install cleanup: %w", err)
+	}
 	for _, fw := range plan.Files {
 		if err := writeAtomic(fw); err != nil {
 			return InstallResult{}, fmt.Errorf("apply file %s: %w", fw.Path, err)
@@ -363,7 +376,12 @@ func (r *Reader) Uninstall(id string) (UninstallResult, error) {
 	// (uninstall is idempotent across already-cleaned state); other
 	// I/O or parse errors short-circuit with a wrapped error.
 	for _, mk := range rec.MergedKeys {
-		if err := unmergeKey(adapter.MergedKeyWrite{File: mk.File, Path: mk.Path}); err != nil {
+		if err := unmergeKey(MergedKeySelector{
+			File:     mk.File,
+			Path:     mk.Path,
+			Op:       adapter.MergedKeyOp(mk.Op),
+			Selector: mk.Selector,
+		}); err != nil {
 			return UninstallResult{}, fmt.Errorf("un-merge key %s in %s: %w", mk.Path, mk.File, err)
 		}
 	}
@@ -515,13 +533,37 @@ func buildRecord(host string, r resource.Resource, scope adapter.Scope, plan ada
 
 	mks := make([]manifest.MergedKey, 0, len(plan.MergedKeys))
 	for _, mk := range plan.MergedKeys {
-		mks = append(mks, manifest.MergedKey{File: mk.File, Path: mk.Path})
+		entry := manifest.MergedKey{
+			File: mk.File,
+			Path: mk.Path,
+			Op:   string(mk.Op),
+		}
+		// For Op=Append the manifest needs a content-hash Selector so
+		// uninstall can identify the install's array element by hash
+		// rather than by numeric index (which is unstable across
+		// sibling installs and user reorders per advisor). The hash is
+		// computed once at install time and re-derived at uninstall by
+		// walking the array — see selectorFor.
+		if mk.Op == adapter.MergedKeyAppend {
+			selector, err := selectorFor(mk.Value)
+			if err != nil {
+				return manifest.Record{}, fmt.Errorf("compute selector for %s#%s: %w", mk.File, mk.Path, err)
+			}
+			entry.Selector = selector
+		}
+		mks = append(mks, entry)
 	}
 	sort.Slice(mks, func(i, j int) bool {
 		if mks[i].File != mks[j].File {
 			return mks[i].File < mks[j].File
 		}
-		return mks[i].Path < mks[j].Path
+		if mks[i].Path != mks[j].Path {
+			return mks[i].Path < mks[j].Path
+		}
+		// Multiple Op=Append entries can share (File, Path) — one per
+		// binding in a multi-binding hook resource. Selector
+		// disambiguates so the slot order on disk stays deterministic.
+		return mks[i].Selector < mks[j].Selector
 	})
 
 	return manifest.Record{

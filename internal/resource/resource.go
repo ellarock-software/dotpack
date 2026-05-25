@@ -50,3 +50,13 @@ func (s *Skill) Kind() Kind { return KindSkill }
 
 // ResourceName returns the skill's name field (Named interface).
 func (s *Skill) ResourceName() string { return s.Name }
+
+// Kind returns KindHook so *Hook satisfies the Resource interface.
+// Extensions() lives in hook.go alongside its backing field.
+func (h *Hook) Kind() Kind { return KindHook }
+
+// ResourceName returns the hook bundle's name (filename-derived per
+// loadResource — hook source has no in-source name field, mirroring
+// mcp-server's map-key identity but with the filesystem as the
+// identity carrier when the source format does not encode one).
+func (h *Hook) ResourceName() string { return h.Name }

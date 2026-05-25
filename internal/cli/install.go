@@ -234,7 +234,9 @@ func resolveKind(explicit, sourcePath string) (resource.Kind, error) {
 			return resource.KindAgent, nil
 		case resource.KindMCPServer:
 			return resource.KindMCPServer, nil
-		case resource.KindCommand, resource.KindMemory, resource.KindHook:
+		case resource.KindHook:
+			return resource.KindHook, nil
+		case resource.KindCommand, resource.KindMemory:
 			return "", fmt.Errorf("kind %q not yet supported", explicit)
 		default:
 			return "", fmt.Errorf("unknown kind %q", explicit)
@@ -284,9 +286,42 @@ func loadResource(kind resource.Kind, source string) (resource.Resource, error) 
 			return nil, validationError(errs)
 		}
 		return mcp, nil
+	case resource.KindHook:
+		hook, err := resource.ParseHook(raw)
+		if err != nil {
+			return nil, err
+		}
+		// Hook source has no in-source name field (no frontmatter, no
+		// map-key wrapper). The filesystem encodes identity: strip the
+		// .hook.json / .json / .hook suffix from the basename and use
+		// the stem as the install name. Mirrors how skill/agent get
+		// names from frontmatter (which hooks lack); the validator
+		// then gates on the kebab shape.
+		hook.WithName(hookNameFromPath(source))
+		if errs := validator.ValidateHook(hook); len(errs) > 0 {
+			return nil, validationError(errs)
+		}
+		return hook, nil
 	default:
 		return nil, fmt.Errorf("kind %q not supported", kind)
 	}
+}
+
+// hookNameFromPath derives the install name for a hook resource from
+// its source filename. Strips a layered suffix: .hook.json → "" (a
+// double-extension), then .json or .hook from whatever remains, then
+// returns the basename's stem. Matches the most common naming pattern
+// in the corpus (e.g., `bash-guard.hook.json` → "bash-guard"); a
+// non-conforming filename (`hook.json`) yields the bare stem and gets
+// rejected by hookNameRE downstream.
+func hookNameFromPath(source string) string {
+	base := filepath.Base(source)
+	for _, suffix := range []string{".hook.json", ".hook.yaml", ".hook.yml", ".json", ".yaml", ".yml", ".hook"} {
+		if strings.HasSuffix(base, suffix) {
+			return base[:len(base)-len(suffix)]
+		}
+	}
+	return base
 }
 
 // validationError formats a slice of validator errors as a single
