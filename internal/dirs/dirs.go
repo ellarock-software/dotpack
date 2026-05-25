@@ -15,6 +15,12 @@ import (
 
 // Dirs holds the resolved filesystem roots dotpack operates against.
 type Dirs struct {
+	// HomeDir is the user's home directory, used for host config files
+	// that are siblings of a host-specific config directory. Claude
+	// Code's user-scope MCP file is ~/.claude.json, which cannot be
+	// derived safely from ClaudeHome in tests.
+	HomeDir string
+
 	// ClaudeHome is the root of Claude Code's user config, e.g.
 	// ~/.claude. The claude-code adapter writes user-scope skills to
 	// ClaudeHome/skills/<name>/SKILL.md (per ADR-0009).
@@ -61,10 +67,10 @@ type Dirs struct {
 }
 
 // FromEnv resolves Dirs from the user's environment, with overrides for
-// tests: DOTPACK_CLAUDE_HOME / DOTPACK_GEMINI_HOME / DOTPACK_AGENTS_HOME
-// / DOTPACK_CODEX_HOME / DOTPACK_DOTPACK_HOME / DOTPACK_PROJECT_HOME (the
-// *_HOME suffixes are deliberately verbose so they're never confused with
-// PATH-like things).
+// tests: DOTPACK_USER_HOME / DOTPACK_CLAUDE_HOME / DOTPACK_GEMINI_HOME /
+// DOTPACK_AGENTS_HOME / DOTPACK_CODEX_HOME / DOTPACK_DOTPACK_HOME /
+// DOTPACK_PROJECT_HOME (the *_HOME suffixes are deliberately verbose so
+// they're never confused with PATH-like things).
 // Returns an error if HOME cannot be resolved AND no overrides are set.
 //
 // All env vars, when set, are normalised to absolute paths
@@ -94,6 +100,7 @@ type Dirs struct {
 // the value.
 func FromEnv() (Dirs, error) {
 	d := Dirs{
+		HomeDir:     os.Getenv("DOTPACK_USER_HOME"),
 		ClaudeHome:  os.Getenv("DOTPACK_CLAUDE_HOME"),
 		GeminiHome:  os.Getenv("DOTPACK_GEMINI_HOME"),
 		AgentsHome:  os.Getenv("DOTPACK_AGENTS_HOME"),
@@ -102,10 +109,13 @@ func FromEnv() (Dirs, error) {
 		ProjectHome: os.Getenv("DOTPACK_PROJECT_HOME"),
 	}
 
-	if d.ClaudeHome == "" || d.GeminiHome == "" || d.AgentsHome == "" || d.CodexHome == "" || d.DotpackHome == "" {
+	if d.HomeDir == "" || d.ClaudeHome == "" || d.GeminiHome == "" || d.AgentsHome == "" || d.CodexHome == "" || d.DotpackHome == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return Dirs{}, fmt.Errorf("resolve $HOME: %w", err)
+		}
+		if d.HomeDir == "" {
+			d.HomeDir = home
 		}
 		if d.ClaudeHome == "" {
 			d.ClaudeHome = filepath.Join(home, ".claude")
@@ -126,6 +136,11 @@ func FromEnv() (Dirs, error) {
 
 	// Normalise write-target env vars to absolute. No existence
 	// requirement — install creates these on first use.
+	if abs, err := filepath.Abs(d.HomeDir); err == nil {
+		d.HomeDir = abs
+	} else {
+		return Dirs{}, fmt.Errorf("DOTPACK_USER_HOME=%q: resolve abs: %w", d.HomeDir, err)
+	}
 	if abs, err := filepath.Abs(d.ClaudeHome); err == nil {
 		d.ClaudeHome = abs
 	} else {

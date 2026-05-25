@@ -169,9 +169,11 @@ deliberately_excluded:
   # Per ADR-0016 §8, each deliberately_excluded entry declares a
   # canonical_concept + aliases [{host, field_name}, ...]. Orchestrator's
   # per-instance lossy detection: if a resource's Extensions carry a field
-  # listed under aliases[].field_name, install is lossy on hosts NOT in
-  # aliases[].host. Entries with aliases: [] are pass-through metadata —
-  # never lossy because no host parses them as load-bearing.
+  # listed under aliases[].field_name (hosted concepts) or field_names[]
+  # (pass-through concepts), install is lossy on hosts NOT in
+  # aliases[].host. Entries with field_names and lossy_when_dropped:
+  # false are pass-through metadata — never lossy because no host parses
+  # them as load-bearing.
   #
   # This block originally lumped 19 host-specific extensions into one
   # entry; split into per-concept entries per ADR-0016 #10 (schema as
@@ -179,6 +181,7 @@ deliberately_excluded:
 
   - canonical_concept: transport_type_marker
     aliases: []
+    field_names: ["type"]
     lossy_when_dropped: false       # No host's runtime depends on `type`; dropping is a no-op.
     appeared_in: 13/25 entries
     reason: |

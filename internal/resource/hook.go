@@ -51,8 +51,9 @@ type EventBinding struct {
 // tool name (or tool name / file path for Gemini); absence is "match
 // everything" per schema.binding.fields[0].notes.
 type Binding struct {
-	Matcher string
-	Hooks   []HookSpec
+	Matcher    string
+	Hooks      []HookSpec
+	Extensions map[string]any
 }
 
 // HookSpec is the leaf handler. Type is always "command" in the
@@ -67,6 +68,7 @@ type HookSpec struct {
 	HasTimeout    bool // distinguishes "explicit 0" from "absent"
 	StatusMessage string
 	Env           map[string]string
+	Extensions    map[string]any
 }
 
 // Extensions returns the host-extension fields the schema's §8 lossy
@@ -234,6 +236,9 @@ func parseBinding(event string, idx int, b map[string]any) (Binding, map[string]
 			ext[k] = v
 		}
 	}
+	if len(ext) > 0 {
+		binding.Extensions = ext
+	}
 	if len(binding.Hooks) == 0 {
 		return Binding{}, nil, fmt.Errorf("hook: %s[%d].hooks is required and must contain at least one hook-spec", event, idx)
 	}
@@ -296,6 +301,9 @@ func parseHookSpec(event string, bindIdx, specIdx int, m map[string]any) (HookSp
 			// description per schema/hook.yaml).
 			ext[k] = v
 		}
+	}
+	if len(ext) > 0 {
+		spec.Extensions = ext
 	}
 	return spec, ext, nil
 }

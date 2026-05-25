@@ -34,20 +34,13 @@
 // documented native skill root. Gemini CLI ALSO reads ~/.agents/skills/
 // as a convergence path, but the gemini-cli adapter writes to its
 // host-specific path so `--agent codex` and `--agent gemini-cli` don't
-// collide here today. The future `--agent agents-cli` umbrella flag
-// (ADR-0016 §1) will write to AgentsHome/skills/ as its write-once
+// collide here today. The `--agent agents-cli` umbrella flag
+// (ADR-0016 §1) writes to AgentsHome/skills/ as its write-once
 // convergence; collision handling is owned by that umbrella's CLI-flag-
-// to-adapter-set special case when it lands.
+// to-adapter-set special case.
 //
-// MCP-server paths: <CodexHome>/config.toml (user — codex spec's
-// canonical location per schema/mcp-server.yaml's source_locations).
-// Project scope (<ProjectHome>/.codex/config.toml — codex's documented
-// alternate) is deferred; the schema notes both paths as valid but the
-// user-scope file is the more common pattern in the corpus and matches
-// codex's own docs at developers.openai.com/codex/config-reference. The
-// configfrag adapter's ScopeFiles.Project remains nil today so a Plan
-// with scope=project returns a structured "scope not supported" error;
-// project scope wires when a slice has reason to touch ~/.codex/.
+// MCP-server and hook paths: <CodexHome>/config.toml (user) or
+// <ProjectHome>/.codex/config.toml (project) per schema source_locations.
 package codex
 
 import (
@@ -90,13 +83,22 @@ func userConfigTomlFile(d dirs.Dirs) (string, error) {
 	return filepath.Join(d.CodexHome, "config.toml"), nil
 }
 
+// projectConfigTomlFile returns <ProjectHome>/.codex/config.toml —
+// codex's project-scope target for mcp-server and hook installs.
+func projectConfigTomlFile(d dirs.Dirs) (string, error) {
+	if d.ProjectHome == "" {
+		return "", fmt.Errorf("codex: project scope requires dirs.ProjectHome to be set")
+	}
+	return filepath.Join(d.ProjectHome, ".codex", "config.toml"), nil
+}
+
 // Policy is the codex per-host filedrop policy (skill kind only).
 // KindAgent is INTENTIONALLY ABSENT from Layouts — codex CLI documents
 // no native agent loading directory per developers.openai.com/codex (a
 // deliberate decision, not an oversight). filedrop.Plan returns "kind
 // agent not yet supported" for any Plan(KindAgent) call as a result.
 // AgentToolsShape is intentionally left at zero value (ToolsShapeUnused)
-// because no agent Layout exists. Mcp-server (and future hook) live in
+// because no agent Layout exists. Mcp-server and hook live in
 // configfragPolicy(); they're config-fragment kinds, not file-drop, so
 // they ride a separate policy structure.
 var Policy = filedrop.Policy{
@@ -310,21 +312,16 @@ func configfragPolicy() configfrag.Policy {
 			resource.KindMCPServer: {
 				Format: configfrag.FormatTOML,
 				Files: configfrag.ScopeFiles{
-					User: userConfigTomlFile,
-					// Project: deferred — see package docstring on
-					// <ProjectHome>/.codex/config.toml as a documented
-					// alternate codex doesn't promote to canonical.
+					User:    userConfigTomlFile,
+					Project: projectConfigTomlFile,
 				},
 				Emit: emitMCPServerCodex,
 			},
 			resource.KindHook: {
 				Format: configfrag.FormatTOML,
 				Files: configfrag.ScopeFiles{
-					User: userConfigTomlFile,
-					// Project: deferred — same rationale as mcp-server
-					// (codex documents user scope as the canonical hook
-					// location per developers.openai.com/codex docs;
-					// project scope wires when a slice has reason).
+					User:    userConfigTomlFile,
+					Project: projectConfigTomlFile,
 				},
 				Emit: emitHookCodex,
 			},
@@ -356,8 +353,8 @@ func New(d dirs.Dirs) *Adapter {
 func (a *Adapter) HostID() string { return hostID }
 
 // Plan dispatches by Kind. File-drop kinds (skill) go to the filedrop
-// adapter; config-fragment kinds (mcp-server today, hook when it lands)
-// go to the configfrag adapter. Kinds neither adapter supports surface
+// adapter; config-fragment kinds (mcp-server, hook) go to the
+// configfrag adapter. Kinds neither adapter supports surface
 // as a structured "not yet supported" error — the per-adapter Plan
 // paths already produce that message, so we delegate.
 func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.InstallPlan, error) {

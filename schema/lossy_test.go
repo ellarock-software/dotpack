@@ -91,6 +91,23 @@ func TestLossyExtensions_PassThroughMetadata_NeverLossy(t *testing.T) {
 	}
 }
 
+func TestLossyExtensions_MCPServerTypeMarker_NeverLossy(t *testing.T) {
+	// schema/mcp-server.yaml documents `type` as pass-through metadata:
+	// it is useful source annotation but not a load-bearing transport
+	// discriminator on any host. The field must be bound via field_names
+	// so lossy detection does not treat it as an unknown extension.
+	for _, host := range []string{"claude-code", "gemini-cli", "codex", "made-up-host"} {
+		got, err := schema.LossyExtensions(resource.KindMCPServer, host,
+			map[string]any{"type": "stdio"})
+		if err != nil {
+			t.Fatalf("LossyExtensions(type) on %s: %v", host, err)
+		}
+		if len(got) != 0 {
+			t.Errorf("host=%s type: expected no lossy (pass-through); got %+v", host, got)
+		}
+	}
+}
+
 func TestConcept_CanonicalisesTo_RoundTripsThroughLoad(t *testing.T) {
 	// ADR-0017 Scenario B anchor: the schema parser must preserve
 	// `canonicalises_to:` on Concept even when no current schema entry

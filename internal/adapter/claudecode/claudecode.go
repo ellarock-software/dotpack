@@ -20,11 +20,9 @@
 // the per-name subdir); agents are flat (shared dir, not reclaimed by
 // uninstall).
 //
-// MCP-server paths: <ProjectHome>/.mcp.json (project). User scope
-// (~/.claude.json sibling to ~/.claude/) is deferred — dirs.Dirs has no
-// HomeDir field today, and the tracer-slice scope is project-only per
-// advisor. When user scope lands, configfragPolicy gains a User
-// resolver and tests follow.
+// MCP-server paths: <ProjectHome>/.mcp.json (project) or
+// <HomeDir>/.claude.json (user — sibling to ~/.claude/ per
+// schema/mcp-server.yaml).
 //
 // Hook paths: <ProjectHome>/.claude/settings.json (project) or
 // <ClaudeHome>/settings.json (user — settings.json IS inside
@@ -66,7 +64,7 @@ func userRoot(d dirs.Dirs) (string, error) {
 // kinds). Exported (not unexported `policy`) so future cross-adapter
 // machinery — agents-cli umbrella (ADR-0016 §1), batch capability
 // queries — can read it without importing through New(d). Mcp-server
-// (and future hook) live in configfragPolicy(); they're config-fragment
+// and hook live in configfragPolicy(); they're config-fragment
 // kinds, not file-drop, so they ride a separate policy structure.
 var Policy = filedrop.Policy{
 	HostID: hostID,
@@ -88,16 +86,21 @@ var Policy = filedrop.Policy{
 	AgentToolsShape: filedrop.ToolsCommaString,
 }
 
+// userMCPFile returns <HomeDir>/.claude.json — claude-code's user-scope
+// target for mcp-server installs per schema/mcp-server.yaml. It uses
+// dirs.HomeDir rather than deriving a parent from ClaudeHome because
+// ClaudeHome may be an arbitrary test temp dir, not necessarily
+// <HomeDir>/.claude.
+func userMCPFile(d dirs.Dirs) (string, error) {
+	if d.HomeDir == "" {
+		return "", fmt.Errorf("claude-code: user scope requires dirs.HomeDir to be set")
+	}
+	return filepath.Join(d.HomeDir, ".claude.json"), nil
+}
+
 // projectMCPFile returns <ProjectHome>/.mcp.json — claude-code's
 // project-scope target for mcp-server installs per schema/mcp-server.yaml's
 // template.source_locations entry for host claude-code.
-//
-// Note: claude has a per-user alternate at ~/.claude.json (NOT inside
-// ~/.claude/). User scope is deferred because dirs.Dirs has no HomeDir
-// field; resolving "~/.claude.json" from ClaudeHome by going up a
-// directory would be fragile in tests (t.TempDir() is not parented by
-// a ".claude"-suffixed path). When user scope is wired, add a
-// userMCPFile resolver here and a corresponding test.
 func projectMCPFile(d dirs.Dirs) (string, error) {
 	if d.ProjectHome == "" {
 		return "", fmt.Errorf("claude-code: project scope requires dirs.ProjectHome to be set")
@@ -138,10 +141,10 @@ func userSettingsFile(d dirs.Dirs) (string, error) {
 // Per-host divergence (claude-code identity for event names,
 // canonical-seconds timeout, no Gemini-only field re-emit) is the
 // trivial slice — claude's emit is the canonical shape ADR-0016 §5
-// designates. When gemini/codex land their hook configfrag policies,
-// each gets its own emit function with the per-host rewrites
+// designates. Gemini and Codex each have their own emit function with
+// the per-host rewrites
 // (Gemini's BeforeTool/AfterTool + ms timeout; Codex identity for
-// most but its TOML walker for the apply step).
+// most events but its TOML walker for the apply step).
 //
 // Universal-core fields only; Gemini's async/once/name/description
 // extensions are either claude-code lossy (caught by orchestrator §8
@@ -268,8 +271,8 @@ func configfragPolicy() configfrag.Policy {
 			resource.KindMCPServer: {
 				Format: configfrag.FormatJSON,
 				Files: configfrag.ScopeFiles{
+					User:    userMCPFile,
 					Project: projectMCPFile,
-					// User: deferred — see projectMCPFile docstring.
 				},
 				Emit: emitMCPServer,
 			},

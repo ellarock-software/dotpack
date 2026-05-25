@@ -120,9 +120,8 @@ type MergedFragment struct {
 
 // Policy is the per-host data the deep configfrag module dispatches on.
 // HostID matches the schema-side host alias. Kinds is the kind →
-// KindConfig map; absent kinds are unsupported (the codex-no-hook case
-// when it lands, generalised — map membership replaces a separate
-// "supports?" flag, matching filedrop's Layouts convention).
+// KindConfig map; absent kinds are unsupported — map membership replaces
+// a separate "supports?" flag, matching filedrop's Layouts convention.
 type Policy struct {
 	HostID string
 	Kinds  map[resource.Kind]KindConfig

@@ -241,32 +241,3 @@ func TestInstall_MCPServerOnClaudeCode_ParserRejectsMultiEntrySource(t *testing.
 		t.Errorf("parser error should name the one-resource-one-server rule; got %v", err)
 	}
 }
-
-// TestInstall_MCPServerOnAgentsCli_NotSupportedUnderUmbrella pins the
-// agents-cli umbrella's deliberate refusal of mcp-server kind today.
-// Per ADR-0016 §1c gating-conditions #1 + #2 the umbrella's
-// configuration needs widening before mcp-server can fan out across
-// gemini-cli + codex; until that widening lands, the umbrella refuses
-// with "kind not supported under umbrella".
-func TestInstall_MCPServerOnAgentsCli_NotSupportedUnderUmbrella(t *testing.T) {
-	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
-	t.Setenv("DOTPACK_AGENTS_HOME", t.TempDir())
-	t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
-	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
-
-	src := filepath.Join("..", "resource", "testdata", "mcp-servers", "github.mcp.json")
-	cmd := NewRootCmd()
-	cmd.SetOut(io_DiscardWriter())
-	cmd.SetErr(io_DiscardWriter())
-	cmd.SetArgs([]string{
-		"install", src,
-		"--agent", "agents-cli", "--kind", "mcp-server", "--scope", "user",
-	})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected agents-cli umbrella to refuse mcp-server (writers map intentionally absent); got nil")
-	}
-	if !strings.Contains(err.Error(), "not supported under umbrella") {
-		t.Errorf("error should name the umbrella refusal; got %v", err)
-	}
-}

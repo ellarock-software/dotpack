@@ -172,12 +172,14 @@ ecosystem_notes:
     install on current Codex — the spec only documents the nested form
     surveyed here. Translator should accept them as IMPORTS for legacy
     interop but EMIT the canonical nested form."
-  - "Gemini introduces a top-level `enabled: [hook-name, ...]` registry
-    (corpus file 5) that selectively activates named hooks. Claude and
-    Codex have no such concept — bindings are active when present.
-    dotpack's universal kind does not adopt `enabled`; the Gemini adapter
-    handles it when emitting. The Gemini-only `name` field on hook-spec
-    serves this registry; not adopted universally."
+  - "Gemini's current settings schema stores hook bindings under the
+    top-level `hooks` object (`hooks.BeforeTool`, `hooks.AfterTool`,
+    ...), with `hooksConfig.enabled` as a global boolean and
+    `hooksConfig.disabled` as the per-name disable list. The older
+    corpus file used a top-level `enabled: [hook-name, ...]` registry;
+    dotpack does NOT emit that legacy registry. The Gemini-only `name`
+    field on hook-spec remains useful for logs and disabled-list
+    targeting, but is not adopted universally."
 
 deliberately_excluded:
   # Per ADR-0016 §8, each deliberately_excluded entry declares a
@@ -213,21 +215,22 @@ deliberately_excluded:
         field_name: name
       - host: gemini-cli
         field_name: description
-    lossy_when_dropped: false       # Bookkeeping for Gemini's `enabled` registry; no runtime effect on Claude/Codex.
+    lossy_when_dropped: false       # Gemini log/disabled-list metadata; no runtime effect on Claude/Codex.
     appeared_in: 1/7 files (Gemini only)
     reason: |
-      Gemini-specific identifying fields used by the top-level `enabled:
-      [hook-name, ...]` registry (see ecosystem_notes — Gemini's
-      enabled-list activates named hooks). Claude and Codex have no
-      equivalent registry; bindings are active when present. Adapter
-      behaviour:
-      - gemini-cli adapter: emit natively when present; also write the
-        corresponding `enabled` registry entry.
+      Gemini-specific identifying fields used in hook logs and by
+      Gemini's `hooksConfig.disabled` list. Claude and Codex have no
+      equivalent hook-name control surface; bindings are active when
+      present. Adapter behaviour:
+      - gemini-cli adapter: emit natively when present. When absent,
+        the adapter may synthesize a stable name from the dotpack hook
+        resource name so Gemini users can later target it in
+        `hooksConfig.disabled`.
       - non-gemini adapters: drop silently. These fields are pure
-        registry metadata with no runtime effect on hosts that don't
-        have the registry. NOT lossy (lossy_when_dropped: false) —
+        identification metadata with no runtime effect on hosts that
+        don't parse hook names. NOT lossy (lossy_when_dropped: false) —
         dropping them on Claude/Codex does not change install behaviour.
       This is the canonical example for the `lossy_when_dropped: false`
       escape hatch introduced in ADR-0016 §8. If a future host introduces
-      a hook-registry concept and would parse these fields, add it to
+      a hook-name control concept and would parse these fields, add it to
       `aliases` and flip lossy_when_dropped to true.

@@ -30,6 +30,8 @@ The `hook` kind is a CONFIG FRAGMENT — a slice of host configuration that gets
 
 **`PostToolUseFailure` added to canonical events even though it's not in the Codex spec table.** 3/7 files (2 Claude + 1 Codex) use it. Cross-host adoption clears the floor; adapter docs should flag that Codex parser behavior on this event name is undocumented (may or may not fire).
 
+**Gemini hook activation uses the current `hooks` / `hooksConfig` shape.** The original Gemini corpus sample had a top-level `enabled: [hook-name, ...]` registry. Current Gemini CLI settings document hooks under `hooks.<Event>` and a separate `hooksConfig` object with `enabled` as a global boolean plus `disabled` as the per-name exclusion list. dotpack emits into `hooks.<Event>` and does not write the legacy top-level `enabled` registry. Gemini hook-spec `name` stays Gemini-native metadata so users can target generated hooks in `hooksConfig.disabled`.
+
 **Methodology — floor rule held, BUT shape regression caught only by hand.** Survey agent flattened the nested structure to a 6-field list, same failure mode as the original survey of this kind. The methodology lesson stands: nested-structure kinds (hook, mcp-server with deep `tools.{id}` nesting) require human reshape after the survey. The agent's per-leaf counts were close to correct (off by one — 66 vs 67) but useless without the structure.
 
 ## Consequences
@@ -40,7 +42,7 @@ The `hook` kind is a CONFIG FRAGMENT — a slice of host configuration that gets
 
 **Adapter capability matrix entries.**
 - `claude-code`: native. Merges into `.claude/settings.json $.hooks`. Timeout in seconds. Manifest tracks merged keys.
-- `agents-cli/gemini`: native. Merges into `.gemini/settings.json $.hooks`. Timeout in milliseconds. `enabled` registry handling.
+- `agents-cli/gemini`: native. Merges into `.gemini/settings.json $.hooks`. Timeout in milliseconds. Emits Gemini hook-spec `name` metadata for disabled-list targeting; does not emit the legacy top-level `enabled` registry.
 - `agents-cli/codex`: **native (upgraded from unsupported)**. Merges into `~/.codex/config.toml hooks`. Timeout in seconds. Same nested matcher-group shape as Claude. PostToolUseFailure may be silently dropped by Codex parser — adapter docs flag.
 
 ## Artefacts

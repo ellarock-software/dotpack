@@ -19,26 +19,20 @@
 // manifest) pair; --agent agents-cli fan-out is a higher layer") is
 // kept literal by this split — UmbrellaInstaller IS that higher layer.
 //
-// For the slice that introduces this type (agents-cli, skill kind only),
-// the file-drop "fan-out" is actually a write-once convergence: gemini-cli
-// and codex both honour ~/.agents/skills/, so the umbrella picks codex
-// (the documented canonical writer per developers.openai.com/codex/skills)
-// to produce the InstallPlan, and the single SKILL.md written there is
-// read by both runtimes. ADR-0016 §1: "for file-drop kinds the
-// orchestrator special-cases the flag to write `.agents/` once rather
-// than invoking both sub-adapters with redundant writes". The per-kind
-// canonical-writer choice lives in the CLI layer's umbrellaFactories
-// (see internal/cli/install.go) so this type is umbrella-agnostic — a
-// future "all" or "cursor-ish" umbrella plugs in by declaring its own
+// For file-drop convergence, the "fan-out" is actually write-once:
+// gemini-cli and codex both honour ~/.agents/skills/, so the umbrella
+// picks codex (the documented canonical writer per
+// developers.openai.com/codex/skills) to produce the InstallPlan, and
+// the single SKILL.md written there is read by both runtimes. ADR-0016
+// §1: "for file-drop kinds the orchestrator special-cases the flag to
+// write `.agents/` once rather than invoking both sub-adapters with
+// redundant writes". Config-fragment kinds are different: each
+// sub-adapter writes its own host config file, and this type aggregates
+// those MergedKeys into one umbrella manifest record. The per-kind
+// writer list lives in the CLI layer's umbrellaFactories (see
+// internal/cli/install.go) so this type is umbrella-agnostic — a future
+// "all" or "cursor-ish" umbrella plugs in by declaring its own
 // (subAdapters, writers, label) triple.
-//
-// Future hook + mcp-server kinds (ADR-0016 §5–§7) are NOT file-drop —
-// each sub-adapter genuinely writes to its own host config file. When
-// they land, the per-kind writer map becomes a per-kind WRITERS map
-// (multiple plans aggregated per kind), and Install's apply loop walks
-// the multi-plan output. The (subAdapters, label) shape on this type
-// doesn't need to change for that — only the per-kind dispatch inside
-// Install does.
 package orchestrator
 
 import (
@@ -70,13 +64,13 @@ type UmbrellaInstaller struct {
 	dirs        dirs.Dirs
 	label       string
 	subAdapters []adapter.Adapter
-	writers     map[resource.Kind]adapter.Adapter
+	writers     map[resource.Kind][]adapter.Adapter
 	manifest    *manifest.Store
 	now         func() time.Time
 }
 
 // NewUmbrellaInstaller wires the umbrella with its sub-adapter set and
-// per-kind canonical writers.
+// per-kind writer lists.
 //
 //   - subAdapters MUST contain every adapter the umbrella resolves to.
 //     Lossy aggregation iterates this set; a missing sub-adapter
@@ -92,7 +86,7 @@ type UmbrellaInstaller struct {
 //     Double-checking it here would be belt-and-suspenders — by the
 //     time NewUmbrellaInstaller runs, init has already validated. This
 //     constructor trusts that contract.
-func NewUmbrellaInstaller(d dirs.Dirs, label string, subAdapters []adapter.Adapter, writers map[resource.Kind]adapter.Adapter, m *manifest.Store) *UmbrellaInstaller {
+func NewUmbrellaInstaller(d dirs.Dirs, label string, subAdapters []adapter.Adapter, writers map[resource.Kind][]adapter.Adapter, m *manifest.Store) *UmbrellaInstaller {
 	return &UmbrellaInstaller{
 		dirs:        d,
 		label:       label,
@@ -105,10 +99,10 @@ func NewUmbrellaInstaller(d dirs.Dirs, label string, subAdapters []adapter.Adapt
 
 // Install runs the umbrella install for one resource. The flow:
 //
-//  1. Resolve the canonical writer for the kind. Absent → structured
+//  1. Resolve the writer list for the kind. Absent → structured
 //     "kind not supported under umbrella" error.
-//  2. Get the writer's InstallPlan. Errors propagate (the writer's Plan
-//     enforces per-host kind support — see filedrop.Adapter.Plan).
+//  2. Aggregate the writers' InstallPlans. Errors propagate (each
+//     writer's Plan enforces per-host kind support).
 //  3. Aggregate per-instance lossy reasons across ALL sub-adapters per
 //     ADR-0016 §8 fan-out semantics. A LossyReason is recorded if ANY
 //     sub-adapter would drop the field whose concept is
@@ -123,7 +117,7 @@ func NewUmbrellaInstaller(d dirs.Dirs, label string, subAdapters []adapter.Adapt
 //     decision (Option A), the user-typed umbrella IS the record's
 //     identity; sub-adapter HostIDs do not surface on the record.
 //  5. Pre-flight collision check (shared with per-host Installer) — if
-//     the writer's target path exists on disk under a DIFFERENT manifest
+//     a writer target path exists on disk under a DIFFERENT manifest
 //     ID, refuse with CollisionError + --force hint. Same protection as
 //     Installer: the umbrella's identity (option A) means an existing
 //     --agent codex install of the same skill collides with a fresh
@@ -131,29 +125,19 @@ func NewUmbrellaInstaller(d dirs.Dirs, label string, subAdapters []adapter.Adapt
 //  6. Apply file writes (re-uses writeAtomic from orchestrator.go) and
 //     persist the record.
 //
-// The umbrella's write-once contract for file-drop kinds: exactly one
-// canonical writer's Plan is applied. Sub-adapters NOT chosen as the
-// writer are consulted only for lossy aggregation; their FileWrites are
-// never generated. This is intentional per ADR-0016 §1's "rather than
-// invoking both sub-adapters with redundant writes" — and it's what the
-// agents-cli umbrella tests pin (no mirror at GeminiHome/skills/ when
-// the writer is codex).
-//
-// Future per-kind fan-out for hook/mcp-server (ADR-0016 §5–§7) extends
-// this method to iterate multiple writers per kind and aggregate their
-// MergedKeys into one record. The (subAdapters, label) shape doesn't
-// change; only the writers map's per-kind value type widens from "one
-// canonical writer" to "ordered list of writers". That change is
-// deferred to the slice that introduces hook + mcp-server kinds.
+// File-drop kinds still use a single canonical writer so the umbrella
+// does not generate redundant file writes. Config-fragment kinds use
+// multiple writers so each host gets its native config file touched and
+// the manifest records every merged key in one install row.
 func (u *UmbrellaInstaller) Install(r resource.Resource, scope adapter.Scope, opts InstallOptions) (InstallResult, error) {
-	writer, ok := u.writers[r.Kind()]
-	if !ok {
+	writers, ok := u.writers[r.Kind()]
+	if !ok || len(writers) == 0 {
 		return InstallResult{}, fmt.Errorf("%s: kind %q not supported under umbrella (no documented cross-host convergence path; add a writer to umbrellaFactories when one is documented)", u.label, r.Kind())
 	}
 
-	plan, err := writer.Plan(r, scope)
+	plan, err := u.aggregatePlans(r, scope, writers)
 	if err != nil {
-		return InstallResult{}, fmt.Errorf("plan (%s sub-adapter %s): %w", u.label, writer.HostID(), err)
+		return InstallResult{}, err
 	}
 
 	reasons, err := u.aggregateLossy(r)
@@ -177,11 +161,26 @@ func (u *UmbrellaInstaller) Install(r resource.Resource, scope adapter.Scope, op
 		if len(collisions) > 0 {
 			return InstallResult{}, &CollisionError{Paths: collisions}
 		}
+		mkCollisions, err := preflightMergedKeyCollisions(u.manifest, rec.ID, plan.MergedKeys)
+		if err != nil {
+			return InstallResult{}, fmt.Errorf("merged-key collision check: %w", err)
+		}
+		if len(mkCollisions) > 0 {
+			return InstallResult{}, &CollisionError{Paths: mkCollisions}
+		}
 	}
 
+	if err := unmergeExistingAppendsForID(u.manifest, rec.ID); err != nil {
+		return InstallResult{}, fmt.Errorf("re-install cleanup: %w", err)
+	}
 	for _, fw := range plan.Files {
 		if err := writeAtomic(fw); err != nil {
 			return InstallResult{}, fmt.Errorf("apply file %s: %w", fw.Path, err)
+		}
+	}
+	for _, mk := range plan.MergedKeys {
+		if err := applyMergedKey(mk); err != nil {
+			return InstallResult{}, fmt.Errorf("apply merged key %s in %s: %w", mk.Path, mk.File, err)
 		}
 	}
 
@@ -190,6 +189,29 @@ func (u *UmbrellaInstaller) Install(r resource.Resource, scope adapter.Scope, op
 	}
 
 	return InstallResult{Plan: plan, Record: rec, LossyReasons: reasons}, nil
+}
+
+func (u *UmbrellaInstaller) aggregatePlans(r resource.Resource, scope adapter.Scope, writers []adapter.Adapter) (adapter.InstallPlan, error) {
+	var out adapter.InstallPlan
+	for _, writer := range writers {
+		plan, err := writer.Plan(r, scope)
+		if err != nil {
+			return adapter.InstallPlan{}, fmt.Errorf("plan (%s sub-adapter %s): %w", u.label, writer.HostID(), err)
+		}
+		out.Files = append(out.Files, plan.Files...)
+		out.MergedKeys = append(out.MergedKeys, plan.MergedKeys...)
+		if plan.TargetDir == "" {
+			continue
+		}
+		if out.TargetDir == "" {
+			out.TargetDir = plan.TargetDir
+			continue
+		}
+		if out.TargetDir != plan.TargetDir {
+			return adapter.InstallPlan{}, fmt.Errorf("plan (%s sub-adapter %s): multiple target dirs for umbrella install (%s and %s)", u.label, writer.HostID(), out.TargetDir, plan.TargetDir)
+		}
+	}
+	return out, nil
 }
 
 // aggregateLossy walks every sub-adapter and unions their LossyReasons
@@ -271,4 +293,3 @@ func (u *UmbrellaInstaller) aggregateLossy(r resource.Resource) ([]adapter.Lossy
 // list` UX. The line "rec, err := buildRecord(u.label, ...)" is the
 // load-bearing one; protect it from future "let's use the writer's
 // HostID for consistency with Installer" edits.
-

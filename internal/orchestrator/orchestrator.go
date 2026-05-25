@@ -217,17 +217,18 @@ func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts Insta
 		}
 	}
 
-	// Partial-write orphan handling deferred: if file K of N fails
-	// mid-loop, files 1..K-1 are on disk with no manifest record.
-	// Pre-flight on re-install will (correctly) flag them as collisions
-	// so the user can recover via --force. Uninstall (#5) does NOT
-	// close this gap — there's no ID to look up for record-less files.
-	// A future `dotpack prune` / `reconcile` subcommand is the owner.
+	// Partial-write orphan handling: if file K of N fails mid-loop,
+	// files 1..K-1 are on disk with no manifest record. Pre-flight on
+	// re-install will (correctly) flag them as collisions so the user can
+	// recover via --force. Uninstall cannot close this gap — there's no
+	// ID to look up for record-less files — and prune/reconcile stay
+	// provenance-driven rather than guessing ownership of untracked paths.
 	//
 	// Same gap extends to merged keys (hostile-review #7): if merged-key
 	// M+1 fails after files 0..K and merged keys 0..M succeeded, the
 	// host config file has M+1 entries the manifest doesn't track.
-	// Re-install preflight catches them; uninstall-by-ID does not.
+	// Re-install preflight catches them; uninstall-by-ID and prune do not
+	// remove unmarked config fragments.
 	//
 	// Re-install handling for Op=Append: if a record with the same ID
 	// already exists, un-merge its existing Op=Append entries BEFORE
@@ -300,12 +301,12 @@ type UninstallResult struct {
 // from "uninstall"; this is not symmetric with install's collision
 // protection.
 //
-// Orphan cleanup gap (advisor #4 + writeAtomic TODO): a partial
+// Orphan cleanup boundary (advisor #4 + writeAtomic TODO): a partial
 // install (file K of N written, then crash before manifest.Upsert)
 // leaves files with no record. Uninstall-by-ID can NOT clean those up
-// — there's no ID to look up. A future `dotpack prune` or `reconcile`
-// subcommand is the owner. The TODO comment at the install loop has
-// been updated to reflect that #5 does NOT close this gap.
+// — there's no ID to look up. Reconcile/prune are manifest-backed and
+// clean stale records whose claims disappeared; they deliberately do
+// not delete record-less files or config fragments.
 func (r *Reader) Uninstall(id string) (UninstallResult, error) {
 	m, err := r.manifest.Load()
 	if err != nil {

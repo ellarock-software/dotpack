@@ -1,7 +1,7 @@
 // Package manifest persists install provenance to ~/.dotpack/installs.yaml,
-// the source of truth for uninstall / list / reconcile per ADR-0008.
-// Load + Upsert + Remove ship with their CLI subcommands (install /
-// uninstall / list); reconcile lands when its slice does.
+// the source of truth for uninstall / list / reconcile / prune per ADR-0008.
+// Load + Upsert + Remove are intentionally small primitives; higher-level
+// workflows decide when a record is stale enough to remove.
 package manifest
 
 import (

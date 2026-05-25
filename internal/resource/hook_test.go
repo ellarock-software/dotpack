@@ -78,6 +78,17 @@ func TestParseHook_ExtensionFieldsHoisted(t *testing.T) {
 	if ext["description"] != "fancy" {
 		t.Errorf("ext[description] = %v; want fancy", ext["description"])
 	}
+	binding := h.Events[0].Bindings[0]
+	if binding.Extensions["async"] != true {
+		t.Errorf("binding.Extensions[async] = %v; want true", binding.Extensions["async"])
+	}
+	if binding.Extensions["name"] != "my-hook" {
+		t.Errorf("binding.Extensions[name] = %v; want my-hook", binding.Extensions["name"])
+	}
+	spec := binding.Hooks[0]
+	if spec.Extensions["description"] != "fancy" {
+		t.Errorf("spec.Extensions[description] = %v; want fancy", spec.Extensions["description"])
+	}
 }
 
 func TestParseHook_Rejections(t *testing.T) {

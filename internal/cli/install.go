@@ -33,22 +33,20 @@ func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <source-path>",
 		Short: "Install a resource into an agent host",
-		Long: `Install a single resource (skill or agent) into the named agent host.
+		Long: `Install a single resource into the named agent host.
 
 Supported today:
-  --agent claude-code | gemini-cli | codex
-  --kind  skill | agent (skill is inferred when the source is named SKILL.md;
-          agent requires --kind agent explicitly. Codex supports skill only —
-          --kind agent --agent codex returns an error per ADR-0007's
-          default-deny posture since codex CLI documents no native agent
-          loading directory.)
+  --agent claude-code | gemini-cli | codex | agents-cli
+  --kind  skill | agent | mcp-server | hook (skill is inferred when the
+          source is named SKILL.md; agent/mcp-server/hook require --kind
+          explicitly. Codex does not support agent because codex CLI
+          documents no native agent loading directory.)
   --scope user | project
 
 User scope writes to $DOTPACK_CLAUDE_HOME / ~/.claude,
 $DOTPACK_GEMINI_HOME / ~/.gemini, or $DOTPACK_AGENTS_HOME / ~/.agents
-(codex's only documented native skill root per
-developers.openai.com/codex/skills). Project scope writes under
-$DOTPACK_PROJECT_HOME / CWD.
+for file-drop resources, and to each host's config file for mcp-server
+and hook resources. Project scope writes under $DOTPACK_PROJECT_HOME / CWD.
 
 When --agent is omitted and the manifest already has a matching
 (kind, name) on a different host, install refuses with a
@@ -57,21 +55,22 @@ When --agent is omitted and the manifest already has a matching
 uninstall surfaces when a short-name lookup misses on the defaulted
 host.
 
-Use --agent agents-cli for the umbrella flag (write-once convergence to
-~/.agents/skills/ for the skill kind across gemini-cli + codex per
-ADR-0016 §1). The manifest record carries Agent="agents-cli" so the
-user-typed umbrella identity is preserved through ` + "`dotpack list`" + ` and
-uninstall. Lossy aggregation across the sub-adapter set is the strict
-union per ADR-0016 §8: a field whose canonical_concept is unsupported by
-ANY sub-adapter requires --allow-lossy. Sub-adapter set and per-kind
-canonical writer are declared in umbrellaFactories (this file).`,
+Use --agent agents-cli for the umbrella flag. Skill installs use write-once
+convergence to ~/.agents/skills/ across gemini-cli + codex; mcp-server and
+hook installs fan out to each host's config file. The manifest record
+carries Agent="agents-cli" so the user-typed umbrella identity is preserved
+through ` + "`dotpack list`" + ` and uninstall. Lossy aggregation across the
+sub-adapter set is the strict union per ADR-0016 §8: a field whose
+canonical_concept is unsupported by ANY sub-adapter requires --allow-lossy.
+Sub-adapter set and per-kind writer lists are declared in umbrellaFactories
+(this file).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInstall(cmd, args[0], agentName, kindName, scopeName, allowLossy, force)
 		},
 	}
 
-	cmd.Flags().StringVar(&agentName, "agent", "claude-code", "Target host adapter (claude-code | gemini-cli | codex)")
+	cmd.Flags().StringVar(&agentName, "agent", "claude-code", "Target host adapter (claude-code | gemini-cli | codex | agents-cli)")
 	cmd.Flags().StringVar(&kindName, "kind", "", "Resource kind; inferred from filename when omitted (SKILL.md → skill)")
 	cmd.Flags().StringVar(&scopeName, "scope", "user", "Install scope (user|project)")
 	cmd.Flags().BoolVar(&allowLossy, "allow-lossy", false, "Proceed even if the adapter cannot honour all source fields")
@@ -171,7 +170,7 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 }
 
 // runUmbrellaInstall is the per-umbrella install dispatch. Resolves the
-// umbrella's sub-adapter set + per-kind canonical writer from
+// umbrella's sub-adapter set + per-kind writer list from
 // umbrellaFactories, constructs an UmbrellaInstaller, and runs the
 // install. The error-handling shape mirrors runInstall's per-host branch
 // (LossyError / CollisionError pass through unwrapped) so users see the
@@ -368,13 +367,11 @@ var adapterFactories = map[string]func(dirs.Dirs) adapter.Adapter{
 //     panics at process start via validateUmbrellaFactories below).
 //   - writers: per-kind canonical writer HostID. The umbrella's
 //     write-once contract for file-drop kinds picks ONE sub-adapter to
-//     supply the InstallPlan; the schema's ecosystem_notes documents
-//     the cross-host convergence path that justifies the choice (for
-//     skill: codex's AgentsHome/skills/ is read by gemini-cli too per
-//     schema/skill.yaml). Kinds absent from writers are explicitly
-//     unsupported under the umbrella — UmbrellaInstaller.Install
-//     returns a structured "kind not supported under umbrella" error
-//     rather than silently picking a default sub-adapter.
+//     supply the InstallPlan; config-fragment kinds list every sub-
+//     adapter that must write its own host config file. Kinds absent
+//     from writers are explicitly unsupported under the umbrella —
+//     UmbrellaInstaller.Install returns a structured "kind not supported
+//     under umbrella" error rather than silently picking a default.
 //
 // To add a new umbrella (e.g., "all", "cursor-ish" per ADR-0016 §10's
 // future-note): append an entry here, add per-kind writers as
@@ -382,22 +379,21 @@ var adapterFactories = map[string]func(dirs.Dirs) adapter.Adapter{
 // hint, install dispatch, and uninstall round-tripping all work without
 // per-umbrella code). The agents-cli pattern is the template.
 //
-// To add a new kind to an existing umbrella: extend writers with the
-// canonical writer HostID for that kind, after the schema's
-// ecosystem_notes documents the cross-host convergence path. Adding a
-// writer WITHOUT a documented convergence is the failure mode the
-// "kind not supported" error guards against — don't bypass.
+// To add a new kind to an existing umbrella: extend writers with either
+// one canonical writer for documented file-drop convergence or an
+// ordered writer list for config fragments where each sub-adapter owns a
+// distinct host config file.
 var umbrellaFactories = map[string]umbrellaConfig{
 	"agents-cli": {
 		subs: []string{"gemini-cli", "codex"},
-		writers: map[resource.Kind]string{
+		writers: map[resource.Kind][]string{
 			// Skill: codex writes to AgentsHome/skills/<name>/SKILL.md
 			// per developers.openai.com/codex/skills. Gemini CLI ALSO
 			// reads ~/.agents/skills/ per schema/skill.yaml's
 			// ecosystem_notes, so codex's single write is consumed by
 			// both runtimes — the file-drop write-once convergence
 			// per ADR-0016 §1.
-			resource.KindSkill: "codex",
+			resource.KindSkill: {"codex"},
 
 			// Agent kind: INTENTIONALLY ABSENT. No documented cross-
 			// host convergence path for agent — gemini-cli writes to
@@ -408,32 +404,11 @@ var umbrellaFactories = map[string]umbrellaConfig{
 			// TestInstall_AgentKindOnAgentsCli_Unsupported. Add a
 			// writer here ONLY when a documented convergence emerges.
 			//
-			// Command/memory/hook kinds: not yet supported on ANY
-			// adapter today. When they land, decide per-kind whether
-			// the umbrella supports them and what the canonical writer
-			// is.
-			//
-			// MCP-server kind: per-host adapter support landed in the
-			// configfrag slice (claudecode today), but is INTENTIONALLY
-			// ABSENT from the agents-cli umbrella's writers map. Per
-			// ADR-0016 §1c gating-condition #2, the umbrella's fan-out
-			// shape for config-fragment kinds is FUNDAMENTALLY DIFFERENT
-			// from file-drop: each sub-adapter writes to its OWN config
-			// file (gemini → .gemini/settings.json, codex →
-			// ~/.codex/config.toml), so the writers map widens from
-			// "one canonical writer per kind" to "ordered list of
-			// writers per kind" and UmbrellaInstaller.Install needs a
-			// per-kind dispatch widening. Per ADR-0016 §1c gating-
-			// condition #1, mcp-server is also the canonical case
-			// where literal-§8 lossy aggregation MAY diverge from
-			// convergence-write semantics (codex's mcp-server is a
-			// ~18-field superset of gemini's per ADR-0014). Adding
-			// mcp-server here without widening would silently route
-			// to a single sub-adapter, dropping the other host's
-			// install — that's the failure mode the absence guards
-			// against. Widening + the §1c-#1 refinement is the next
-			// slice; until then, --agent agents-cli foo.mcp.json
-			// fails fast with "kind not supported under umbrella".
+			// Config-fragment kinds fan out: each sub-adapter writes
+			// to its own config file and the single umbrella manifest
+			// record aggregates both merged-key tuples.
+			resource.KindMCPServer: {"gemini-cli", "codex"},
+			resource.KindHook:      {"gemini-cli", "codex"},
 		},
 	},
 }
@@ -443,7 +418,7 @@ var umbrellaFactories = map[string]umbrellaConfig{
 // entries (validated at process start by validateUmbrellaFactories).
 type umbrellaConfig struct {
 	subs    []string
-	writers map[resource.Kind]string
+	writers map[resource.Kind][]string
 }
 
 // init validates umbrellaFactories at process start. A typo in a sub
@@ -457,25 +432,30 @@ func init() {
 				panic(fmt.Sprintf("cli: umbrellaFactories[%q] references unknown sub-adapter %q (not in adapterFactories)", name, sub))
 			}
 		}
-		for kind, writer := range cfg.writers {
-			if _, ok := adapterFactories[writer]; !ok {
-				panic(fmt.Sprintf("cli: umbrellaFactories[%q].writers[%q] = %q is unknown (not in adapterFactories)", name, kind, writer))
+		for kind, writers := range cfg.writers {
+			if len(writers) == 0 {
+				panic(fmt.Sprintf("cli: umbrellaFactories[%q].writers[%q] has no writers", name, kind))
 			}
-			// Writer must also be a sub-adapter so lossy aggregation
-			// covers its emits. Otherwise the orchestrator's
-			// NewUmbrellaInstaller validation fires at runtime — moving
-			// it to init keeps user-facing failures away from this
-			// programmer error.
-			inSubs := false
-			for _, sub := range cfg.subs {
-				if sub == writer {
-					inSubs = true
-					break
+			for _, writer := range writers {
+				if _, ok := adapterFactories[writer]; !ok {
+					panic(fmt.Sprintf("cli: umbrellaFactories[%q].writers[%q] includes %q which is unknown (not in adapterFactories)", name, kind, writer))
 				}
-			}
-			if !inSubs {
-				panic(fmt.Sprintf("cli: umbrellaFactories[%q].writers[%q] = %q is not in subs %v — lossy aggregation would not cover the writer's emits",
-					name, kind, writer, cfg.subs))
+				// Writer must also be a sub-adapter so lossy aggregation
+				// covers its emits. Otherwise the orchestrator's
+				// NewUmbrellaInstaller validation fires at runtime — moving
+				// it to init keeps user-facing failures away from this
+				// programmer error.
+				inSubs := false
+				for _, sub := range cfg.subs {
+					if sub == writer {
+						inSubs = true
+						break
+					}
+				}
+				if !inSubs {
+					panic(fmt.Sprintf("cli: umbrellaFactories[%q].writers[%q] includes %q which is not in subs %v — lossy aggregation would not cover the writer's emits",
+						name, kind, writer, cfg.subs))
+				}
 			}
 		}
 	}
@@ -501,7 +481,7 @@ func buildAdapter(name string, d dirs.Dirs) (adapter.Adapter, error) {
 // guaranteed by runInstall's umbrellaFactories check, so a missing
 // entry here is an internal-error path that should never fire in
 // production (umbrella names are hardcoded).
-func buildUmbrella(name string, d dirs.Dirs) ([]adapter.Adapter, map[resource.Kind]adapter.Adapter, error) {
+func buildUmbrella(name string, d dirs.Dirs) ([]adapter.Adapter, map[resource.Kind][]adapter.Adapter, error) {
 	cfg, ok := umbrellaFactories[name]
 	if !ok {
 		return nil, nil, fmt.Errorf("internal: umbrella %q not found in umbrellaFactories", name)
@@ -511,10 +491,12 @@ func buildUmbrella(name string, d dirs.Dirs) ([]adapter.Adapter, map[resource.Ki
 		factory := adapterFactories[hostID] // existence guaranteed by init
 		subs = append(subs, factory(d))
 	}
-	writers := make(map[resource.Kind]adapter.Adapter, len(cfg.writers))
-	for kind, hostID := range cfg.writers {
-		factory := adapterFactories[hostID] // existence guaranteed by init
-		writers[kind] = factory(d)
+	writers := make(map[resource.Kind][]adapter.Adapter, len(cfg.writers))
+	for kind, hostIDs := range cfg.writers {
+		for _, hostID := range hostIDs {
+			factory := adapterFactories[hostID] // existence guaranteed by init
+			writers[kind] = append(writers[kind], factory(d))
+		}
 	}
 	return subs, writers, nil
 }
