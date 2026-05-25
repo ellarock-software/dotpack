@@ -57,8 +57,14 @@ When --agent is omitted and the manifest already has a matching
 uninstall surfaces when a short-name lookup misses on the defaulted
 host.
 
-Future slices add the agents-cli umbrella flag (write-once convergence
-to ~/.agents/skills/ across gemini-cli + codex per ADR-0016 §1).`,
+Use --agent agents-cli for the umbrella flag (write-once convergence to
+~/.agents/skills/ for the skill kind across gemini-cli + codex per
+ADR-0016 §1). The manifest record carries Agent="agents-cli" so the
+user-typed umbrella identity is preserved through ` + "`dotpack list`" + ` and
+uninstall. Lossy aggregation across the sub-adapter set is the strict
+union per ADR-0016 §8: a field whose canonical_concept is unsupported by
+ANY sub-adapter requires --allow-lossy. Sub-adapter set and per-kind
+canonical writer are declared in umbrellaFactories (this file).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInstall(cmd, args[0], agentName, kindName, scopeName, allowLossy, force)
@@ -89,11 +95,6 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 		return err
 	}
 
-	a, err := buildAdapter(agentName, d)
-	if err != nil {
-		return err
-	}
-
 	scope, err := parseScope(scopeName)
 	if err != nil {
 		return err
@@ -108,10 +109,31 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 	// not know about. Match is on the (kind, name) TUPLE (sharper than
 	// uninstall's bare short-name) because install always knows the
 	// resource's Kind() from resolveKind/loadResource.
+	//
+	// The hint check runs BEFORE the agentName branch on umbrella vs
+	// per-host, so a user defaulting to --agent claude-code with an
+	// existing agents-cli record gets "did you mean --agent agents-cli?"
+	// — checkDefaultAgentMisroute treats umbrella names as buildable
+	// suggestions via the isBuildableAgent helper (see its docstring).
 	if !cmd.Flags().Changed("agent") {
 		if err := checkDefaultAgentMisroute(res, agentName, mf); err != nil {
 			return err
 		}
+	}
+
+	// Umbrella branch — agents-cli (and any future umbrella name in
+	// umbrellaFactories) routes to orchestrator.UmbrellaInstaller per
+	// ADR-0016 §1. The per-host buildAdapter path is unchanged; the
+	// umbrella branch is the orchestrator-side fan-out the ADR calls
+	// for, kept narrow so per-host installs aren't paying for the
+	// umbrella machinery they don't use.
+	if _, ok := umbrellaFactories[agentName]; ok {
+		return runUmbrellaInstall(cmd, source, agentName, kind, res, scope, allowLossy, force, d, mf)
+	}
+
+	a, err := buildAdapter(agentName, d)
+	if err != nil {
+		return err
 	}
 
 	inst := orchestrator.NewInstaller(d, a, mf)
@@ -127,6 +149,50 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 		// actionable message (per-field reasons / colliding paths +
 		// the relevant bypass flag). Return as-is so cobra prints
 		// the structured text rather than wrapping it.
+		var le *orchestrator.LossyError
+		if errors.As(err, &le) {
+			return le
+		}
+		var ce *orchestrator.CollisionError
+		if errors.As(err, &ce) {
+			return ce
+		}
+		return err
+	}
+
+	cmd.Printf("Installed %s onto %s\n", result.Record.ID, agentName)
+	for _, f := range result.Plan.Files {
+		cmd.Printf("  wrote %s\n", f.Path)
+	}
+	return nil
+}
+
+// runUmbrellaInstall is the per-umbrella install dispatch. Resolves the
+// umbrella's sub-adapter set + per-kind canonical writer from
+// umbrellaFactories, constructs an UmbrellaInstaller, and runs the
+// install. The error-handling shape mirrors runInstall's per-host branch
+// (LossyError / CollisionError pass through unwrapped) so users see the
+// same actionable failure messages regardless of which --agent flag
+// they typed.
+//
+// The split keeps runInstall's signature stable (a future umbrella
+// doesn't reshape the per-host path) and isolates umbrella concerns
+// behind one branch — easy to grep for "where do umbrellas execute?".
+func runUmbrellaInstall(cmd *cobra.Command, source, agentName string, kind resource.Kind, res resource.Resource, scope adapter.Scope, allowLossy, force bool, d dirs.Dirs, mf *manifest.Store) error {
+	subs, writers, err := buildUmbrella(agentName, d)
+	if err != nil {
+		return err
+	}
+
+	ui := orchestrator.NewUmbrellaInstaller(d, agentName, subs, writers, mf)
+
+	absSrc, _ := filepath.Abs(source)
+	result, err := ui.Install(res, scope, orchestrator.InstallOptions{
+		Source:     "file://" + absSrc,
+		AllowLossy: allowLossy,
+		Force:      force,
+	})
+	if err != nil {
 		var le *orchestrator.LossyError
 		if errors.As(err, &le) {
 			return le
@@ -212,35 +278,182 @@ func validationError(errs []validator.ValidationError) error {
 	return fmt.Errorf("validation: %s", strings.Join(msgs, "; "))
 }
 
-// adapterFactories is the single registry of buildable --agent values.
+// adapterFactories is the per-host registry of buildable --agent values.
 // Driving both buildAdapter dispatch AND checkDefaultAgentMisroute's
-// "is this host buildable?" filter from the same map removes the
-// keep-in-sync hazard the prior pair of switch + map literal carried.
-// Closures wrap the per-host New(d) constructors because each returns
-// the concrete *filedrop.Adapter, not adapter.Adapter — Go's lack of
-// return-type variance means the wrappers are mandatory for a uniform
-// map value type.
+// "is this host buildable?" filter (via isBuildableAgent) from the same
+// map removes the keep-in-sync hazard the prior pair of switch + map
+// literal carried. Closures wrap the per-host New(d) constructors
+// because each returns the concrete *filedrop.Adapter, not
+// adapter.Adapter — Go's lack of return-type variance means the
+// wrappers are mandatory for a uniform map value type.
 //
-// agents-cli is intentionally NOT in this map: it's a recognised name
-// the CLI rejects with a distinct "not yet implemented" message rather
-// than the generic "unknown agent" error. The buildAdapter sentinel
-// branch (kept separate from this map) carries that affordance. When
-// the agents-cli umbrella flag lands per ADR-0016 §1, add a factory
-// here and drop the sentinel branch.
+// adapterFactories is per-HOST: one entry per per-host Adapter that the
+// orchestrator's Installer (host, manifest) pair can run. Umbrella names
+// (agents-cli) live in the sibling umbrellaFactories map and dispatch
+// through runUmbrellaInstall / orchestrator.UmbrellaInstaller — NOT
+// through this map. The split keeps the per-host install path narrow
+// and isolates umbrella machinery behind one branch in runInstall. The
+// misroute hint treats both registries as buildable via
+// isBuildableAgent so users see umbrella suggestions when an umbrella
+// install matches their (kind, name) tuple.
 var adapterFactories = map[string]func(dirs.Dirs) adapter.Adapter{
 	"claude-code": func(d dirs.Dirs) adapter.Adapter { return claudecode.New(d) },
 	"gemini-cli":  func(d dirs.Dirs) adapter.Adapter { return gemini.New(d) },
 	"codex":       func(d dirs.Dirs) adapter.Adapter { return codex.New(d) },
 }
 
+// umbrellaFactories is the per-umbrella registry of CLI-flag-to-adapter-
+// set aliases per ADR-0016 §1 + §10. Each umbrella declares:
+//
+//   - subs: the sub-adapter HostID set the umbrella fans out to for
+//     lossy aggregation (resolved against adapterFactories at install
+//     time; a HostID not in adapterFactories is a programmer error and
+//     panics at process start via validateUmbrellaFactories below).
+//   - writers: per-kind canonical writer HostID. The umbrella's
+//     write-once contract for file-drop kinds picks ONE sub-adapter to
+//     supply the InstallPlan; the schema's ecosystem_notes documents
+//     the cross-host convergence path that justifies the choice (for
+//     skill: codex's AgentsHome/skills/ is read by gemini-cli too per
+//     schema/skill.yaml). Kinds absent from writers are explicitly
+//     unsupported under the umbrella — UmbrellaInstaller.Install
+//     returns a structured "kind not supported under umbrella" error
+//     rather than silently picking a default sub-adapter.
+//
+// To add a new umbrella (e.g., "all", "cursor-ish" per ADR-0016 §10's
+// future-note): append an entry here, add per-kind writers as
+// convergence paths get documented, and the rest is mechanical (misroute
+// hint, install dispatch, and uninstall round-tripping all work without
+// per-umbrella code). The agents-cli pattern is the template.
+//
+// To add a new kind to an existing umbrella: extend writers with the
+// canonical writer HostID for that kind, after the schema's
+// ecosystem_notes documents the cross-host convergence path. Adding a
+// writer WITHOUT a documented convergence is the failure mode the
+// "kind not supported" error guards against — don't bypass.
+var umbrellaFactories = map[string]umbrellaConfig{
+	"agents-cli": {
+		subs: []string{"gemini-cli", "codex"},
+		writers: map[resource.Kind]string{
+			// Skill: codex writes to AgentsHome/skills/<name>/SKILL.md
+			// per developers.openai.com/codex/skills. Gemini CLI ALSO
+			// reads ~/.agents/skills/ per schema/skill.yaml's
+			// ecosystem_notes, so codex's single write is consumed by
+			// both runtimes — the file-drop write-once convergence
+			// per ADR-0016 §1.
+			resource.KindSkill: "codex",
+
+			// Agent kind: INTENTIONALLY ABSENT. No documented cross-
+			// host convergence path for agent — gemini-cli writes to
+			// GeminiHome/agents/, codex has no native agent loading
+			// directory at all. Surface as "kind not supported under
+			// umbrella" rather than silently picking gemini-cli's
+			// path (which codex would never see). See
+			// TestInstall_AgentKindOnAgentsCli_Unsupported. Add a
+			// writer here ONLY when a documented convergence emerges.
+			//
+			// Command/memory/hook/mcp-server kinds: not yet supported
+			// on ANY adapter today (filedrop.Plan returns "kind X not
+			// yet supported"). When they land, decide per-kind whether
+			// the umbrella supports them and what the canonical writer
+			// is.
+		},
+	},
+}
+
+// umbrellaConfig is the per-umbrella declaration — see umbrellaFactories
+// for full semantics. Sub-adapter HostIDs reference adapterFactories
+// entries (validated at process start by validateUmbrellaFactories).
+type umbrellaConfig struct {
+	subs    []string
+	writers map[resource.Kind]string
+}
+
+// init validates umbrellaFactories at process start. A typo in a sub
+// HostID or a writer HostID would otherwise surface only when a user
+// runs an umbrella install — failing fast at binary-startup time
+// catches the mistake during CI/dev before users see it.
+func init() {
+	for name, cfg := range umbrellaFactories {
+		for _, sub := range cfg.subs {
+			if _, ok := adapterFactories[sub]; !ok {
+				panic(fmt.Sprintf("cli: umbrellaFactories[%q] references unknown sub-adapter %q (not in adapterFactories)", name, sub))
+			}
+		}
+		for kind, writer := range cfg.writers {
+			if _, ok := adapterFactories[writer]; !ok {
+				panic(fmt.Sprintf("cli: umbrellaFactories[%q].writers[%q] = %q is unknown (not in adapterFactories)", name, kind, writer))
+			}
+			// Writer must also be a sub-adapter so lossy aggregation
+			// covers its emits. Otherwise the orchestrator's
+			// NewUmbrellaInstaller validation fires at runtime — moving
+			// it to init keeps user-facing failures away from this
+			// programmer error.
+			inSubs := false
+			for _, sub := range cfg.subs {
+				if sub == writer {
+					inSubs = true
+					break
+				}
+			}
+			if !inSubs {
+				panic(fmt.Sprintf("cli: umbrellaFactories[%q].writers[%q] = %q is not in subs %v — lossy aggregation would not cover the writer's emits",
+					name, kind, writer, cfg.subs))
+			}
+		}
+	}
+}
+
+// buildAdapter constructs a single per-host adapter. Umbrellas are NOT
+// resolved here — runInstall recognizes umbrella names from
+// umbrellaFactories before calling buildAdapter. An umbrella name that
+// reaches buildAdapter would surface as "unknown agent X" — fine, since
+// the only path that reaches here for an umbrella name is a programmer
+// bug in runInstall's branching, and "unknown agent" is a clear-enough
+// failure mode that any user-facing error in that hypothetical reads
+// as "we lost the umbrella before you ran the install".
 func buildAdapter(name string, d dirs.Dirs) (adapter.Adapter, error) {
 	if f, ok := adapterFactories[name]; ok {
 		return f(d), nil
 	}
-	if name == "agents-cli" {
-		return nil, fmt.Errorf("agent %q not yet implemented", name)
-	}
 	return nil, fmt.Errorf("unknown agent %q", name)
+}
+
+// buildUmbrella resolves an umbrella name to (subAdapters, writers)
+// via adapterFactories. Caller is runUmbrellaInstall; the lookup is
+// guaranteed by runInstall's umbrellaFactories check, so a missing
+// entry here is an internal-error path that should never fire in
+// production (umbrella names are hardcoded).
+func buildUmbrella(name string, d dirs.Dirs) ([]adapter.Adapter, map[resource.Kind]adapter.Adapter, error) {
+	cfg, ok := umbrellaFactories[name]
+	if !ok {
+		return nil, nil, fmt.Errorf("internal: umbrella %q not found in umbrellaFactories", name)
+	}
+	subs := make([]adapter.Adapter, 0, len(cfg.subs))
+	for _, hostID := range cfg.subs {
+		factory := adapterFactories[hostID] // existence guaranteed by init
+		subs = append(subs, factory(d))
+	}
+	writers := make(map[resource.Kind]adapter.Adapter, len(cfg.writers))
+	for kind, hostID := range cfg.writers {
+		factory := adapterFactories[hostID] // existence guaranteed by init
+		writers[kind] = factory(d)
+	}
+	return subs, writers, nil
+}
+
+// isBuildableAgent reports whether name is a constructible --agent
+// value — either a per-host adapter (adapterFactories) or an umbrella
+// (umbrellaFactories). checkDefaultAgentMisroute uses this to filter
+// the manifest's record set so the "did you mean --agent X?" suggestion
+// only names hosts/umbrellas this binary can actually run.
+func isBuildableAgent(name string) bool {
+	if _, ok := adapterFactories[name]; ok {
+		return true
+	}
+	if _, ok := umbrellaFactories[name]; ok {
+		return true
+	}
+	return false
 }
 
 // checkDefaultAgentMisroute returns a "did you mean --agent X?" error
@@ -318,12 +531,16 @@ func checkDefaultAgentMisroute(res resource.Resource, target string, mf *manifes
 		// Drop hosts the current binary cannot build. Surfacing a stale
 		// or removed adapter name as a --agent suggestion would move
 		// the user from this error to "unknown agent X" with no
-		// progress. adapterFactories is the single buildable-host
-		// registry — see its docstring for the agents-cli exclusion
-		// rationale. Pinned by
+		// progress. isBuildableAgent treats both per-host adapters AND
+		// umbrellas (agents-cli) as buildable, so a user defaulting to
+		// claude-code with an existing agents-cli record gets the
+		// umbrella suggestion. Pinned by
 		// TestInstall_DefaultAgent_StaleManifestHost_OnlyMatch_NoHint
-		// and TestInstall_DefaultAgent_MixedStaleAndBuildableHosts_HintsOnlyBuildable.
-		if _, ok := adapterFactories[rec.Agent]; !ok {
+		// and TestInstall_DefaultAgent_MixedStaleAndBuildableHosts_HintsOnlyBuildable
+		// (per-host filtering) plus
+		// TestInstall_DefaultAgent_AgentsCliExistingMatch_HintsUmbrella
+		// (umbrella inclusion).
+		if !isBuildableAgent(rec.Agent) {
 			continue
 		}
 		alternates[rec.Agent] = struct{}{}

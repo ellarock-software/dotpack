@@ -396,3 +396,60 @@ func TestInstall_DefaultAgent_MixedStaleAndBuildableHosts_HintsOnlyBuildable(t *
 		t.Errorf("hint must NOT surface unbuildable host removed-adapter; got %q", msg)
 	}
 }
+
+// TestInstall_DefaultAgent_AgentsCliExistingMatch_HintsUmbrella pins
+// the umbrella side of the isBuildableAgent contract. When the user
+// installed a skill via --agent agents-cli (creating an agents-cli:skill:
+// <name> record) and later types `dotpack install <skill>` with no
+// --agent (defaults to claude-code), the misroute hint must surface
+// --agent agents-cli as the suggested fix — the umbrella IS a buildable
+// flag value, distinct from per-host adapters but no less valid.
+//
+// The earlier "OnlyMatch_NoHint" and "MixedStaleAndBuildableHosts" tests
+// pin the negative side (unbuildable hosts are filtered out); this is
+// the positive side (umbrellas pass the filter via isBuildableAgent).
+// Without the umbrella branch in isBuildableAgent, this test fails with
+// "expected hint, got nil" because the record's agent="agents-cli"
+// would be silently dropped by the per-host-only adapterFactories
+// membership check.
+func TestInstall_DefaultAgent_AgentsCliExistingMatch_HintsUmbrella(t *testing.T) {
+	setupTriHostEnv(t)
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+
+	// Seed: install via the umbrella explicitly.
+	seed := NewRootCmd()
+	seed.SetOut(io_DiscardWriter())
+	seed.SetErr(io_DiscardWriter())
+	seed.SetArgs([]string{"install", src, "--agent", "agents-cli"})
+	if err := seed.Execute(); err != nil {
+		t.Fatalf("seed install on agents-cli: %v", err)
+	}
+
+	// Trigger: defaulted --agent → claude-code. Hint should surface
+	// the umbrella as the buildable suggestion.
+	cmd := NewRootCmd()
+	cmd.SetOut(io_DiscardWriter())
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{"install", src})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected misroute hint when default --agent and agents-cli record exists, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "did you mean") {
+		t.Errorf("hint must use 'did you mean' shape; got %q", msg)
+	}
+	if !strings.Contains(msg, "--agent agents-cli") {
+		t.Errorf("hint must name --agent agents-cli (umbrella IS buildable); got %q", msg)
+	}
+	if !strings.Contains(msg, "dotpack-tracer-bullet") {
+		t.Errorf("hint must name the resource by short-name; got %q", msg)
+	}
+
+	// Anti-theatre: no claude-code write happened (the misroute
+	// short-circuits before orchestrator install).
+	claudeSkillPath := filepath.Join(os.Getenv("DOTPACK_CLAUDE_HOME"), "skills", "dotpack-tracer-bullet", "SKILL.md")
+	if _, err := os.Stat(claudeSkillPath); err == nil {
+		t.Errorf("hint must short-circuit BEFORE writing to claude-code; found %s", claudeSkillPath)
+	}
+}
