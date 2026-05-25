@@ -212,42 +212,35 @@ func validationError(errs []validator.ValidationError) error {
 	return fmt.Errorf("validation: %s", strings.Join(msgs, "; "))
 }
 
-func buildAdapter(name string, d dirs.Dirs) (adapter.Adapter, error) {
-	switch name {
-	case "claude-code":
-		return claudecode.New(d), nil
-	case "gemini-cli":
-		return gemini.New(d), nil
-	case "codex":
-		return codex.New(d), nil
-	case "agents-cli":
-		return nil, fmt.Errorf("agent %q not yet implemented", name)
-	default:
-		return nil, fmt.Errorf("unknown agent %q", name)
-	}
+// adapterFactories is the single registry of buildable --agent values.
+// Driving both buildAdapter dispatch AND checkDefaultAgentMisroute's
+// "is this host buildable?" filter from the same map removes the
+// keep-in-sync hazard the prior pair of switch + map literal carried.
+// Closures wrap the per-host New(d) constructors because each returns
+// the concrete *filedrop.Adapter, not adapter.Adapter — Go's lack of
+// return-type variance means the wrappers are mandatory for a uniform
+// map value type.
+//
+// agents-cli is intentionally NOT in this map: it's a recognised name
+// the CLI rejects with a distinct "not yet implemented" message rather
+// than the generic "unknown agent" error. The buildAdapter sentinel
+// branch (kept separate from this map) carries that affordance. When
+// the agents-cli umbrella flag lands per ADR-0016 §1, add a factory
+// here and drop the sentinel branch.
+var adapterFactories = map[string]func(dirs.Dirs) adapter.Adapter{
+	"claude-code": func(d dirs.Dirs) adapter.Adapter { return claudecode.New(d) },
+	"gemini-cli":  func(d dirs.Dirs) adapter.Adapter { return gemini.New(d) },
+	"codex":       func(d dirs.Dirs) adapter.Adapter { return codex.New(d) },
 }
 
-// buildableHostIDs returns the set of --agent values that buildAdapter
-// would accept (i.e. would yield a constructed adapter rather than an
-// error). checkDefaultAgentMisroute uses this set to drop stale
-// manifest records that name a host the current dotpack binary cannot
-// build — surfacing such a host as a "did you mean --agent X?"
-// suggestion would land the user at "unknown agent X" on the retry,
-// moving them from one error to another with no progress.
-//
-// KEEP IN SYNC with buildAdapter's success arms (claude-code,
-// gemini-cli, codex). agents-cli is omitted because today buildAdapter
-// rejects it explicitly ("not yet implemented"); when the agents-cli
-// umbrella flag lands per ADR-0016 §1, add it here too.
-//
-// Pinned by TestInstall_DefaultAgent_StaleManifestHost_OnlyMatch_NoHint
-// and TestInstall_DefaultAgent_MixedStaleAndBuildableHosts_HintsOnlyBuildable.
-func buildableHostIDs() map[string]struct{} {
-	return map[string]struct{}{
-		"claude-code": {},
-		"gemini-cli":  {},
-		"codex":       {},
+func buildAdapter(name string, d dirs.Dirs) (adapter.Adapter, error) {
+	if f, ok := adapterFactories[name]; ok {
+		return f(d), nil
 	}
+	if name == "agents-cli" {
+		return nil, fmt.Errorf("agent %q not yet implemented", name)
+	}
+	return nil, fmt.Errorf("unknown agent %q", name)
 }
 
 // checkDefaultAgentMisroute returns a "did you mean --agent X?" error
@@ -298,7 +291,6 @@ func checkDefaultAgentMisroute(res resource.Resource, target string, mf *manifes
 		return fmt.Errorf("manifest load (hint check): %w", err)
 	}
 
-	buildable := buildableHostIDs()
 	alternates := map[string]struct{}{}
 	onTarget := false
 	for _, rec := range m.Installs {
@@ -326,8 +318,12 @@ func checkDefaultAgentMisroute(res resource.Resource, target string, mf *manifes
 		// Drop hosts the current binary cannot build. Surfacing a stale
 		// or removed adapter name as a --agent suggestion would move
 		// the user from this error to "unknown agent X" with no
-		// progress.
-		if _, ok := buildable[rec.Agent]; !ok {
+		// progress. adapterFactories is the single buildable-host
+		// registry — see its docstring for the agents-cli exclusion
+		// rationale. Pinned by
+		// TestInstall_DefaultAgent_StaleManifestHost_OnlyMatch_NoHint
+		// and TestInstall_DefaultAgent_MixedStaleAndBuildableHosts_HintsOnlyBuildable.
+		if _, ok := adapterFactories[rec.Agent]; !ok {
 			continue
 		}
 		alternates[rec.Agent] = struct{}{}
