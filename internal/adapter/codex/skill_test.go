@@ -129,14 +129,15 @@ func TestCodex_PlanSkill_BytePerfectPassThroughWithPassThroughMetadataExtensions
 	// ADR-0008 byte-identity: if Raw is set AND every extension is one
 	// codex KEEPS per §8, content == source bytes. The previous shape of
 	// this test (universal-core-only source) short-circuited at
-	// `len(extensions) == 0` BEFORE codexKeeps was consulted — pre-#8
-	// hostile-review #1 caught this as theatre. This version sources
-	// `keywords` (lossy_when_dropped: false in schema/skill.yaml → codex
-	// keeps as pass-through metadata) so the canPassThrough loop actually
-	// invokes codexKeeps and exercises the keep-because-pass-through
-	// branch in the byte-identity context. If a future change made
-	// codexKeeps return false for `keywords`, this test fails because
-	// the skill would re-encode and the byte-identity check would break.
+	// `len(extensions) == 0` BEFORE schema.HostKeepsExtension was
+	// consulted — pre-#8 hostile-review #1 caught this as theatre. This
+	// version sources `keywords` (lossy_when_dropped: false in
+	// schema/skill.yaml → codex keeps as pass-through metadata) so the
+	// canPassThrough loop actually invokes HostKeepsExtension and
+	// exercises the keep-because-pass-through branch in the byte-identity
+	// context. If a future change made HostKeepsExtension return false
+	// for `keywords` on codex, this test fails because the skill would
+	// re-encode and the byte-identity check would break.
 	src := []byte("---\nname: passthrough-test\ndescription: d\nkeywords:\n  - tag1\n  - tag2\n---\nbody content\n")
 	skill, err := resource.ParseSkill(src)
 	if err != nil {
@@ -160,8 +161,8 @@ func TestCodex_PlanSkill_BytePerfectPassThroughWithPassThroughMetadataExtensions
 
 func TestCodex_PlanSkill_DropsClaudeOnlyRuntimeOverrides(t *testing.T) {
 	// claude_skill_runtime_overrides (allowed-tools, model, etc.) list
-	// ONLY claude-code in aliases — on codex, codexKeeps returns false →
-	// the field is NOT emitted in re-encoded frontmatter. (Orchestrator's
+	// ONLY claude-code in aliases — on codex, HostKeepsExtension returns
+	// false → the field is NOT emitted in re-encoded frontmatter. (Orchestrator's
 	// §8 lossy gate is exercised separately in cli/codex_test.go.) This
 	// test exercises the adapter in isolation: with the field present in
 	// extensions, the emit must strip it.
@@ -194,8 +195,9 @@ func TestCodex_PlanSkill_DropsClaudeOnlyRuntimeOverrides(t *testing.T) {
 func TestCodex_PlanSkill_PreservesPassThroughMetadata(t *testing.T) {
 	// `keywords` and `metadata` are lossy_when_dropped: false in
 	// schema/skill.yaml — pass-through bins that no host parses but the
-	// adapter must round-trip. codexKeeps must return true for these,
-	// same as geminiKeeps / claudeKeeps.
+	// adapter must round-trip. schema.HostKeepsExtension must return true
+	// for these on every host (the consolidated rule shared with
+	// claudecode and gemini).
 	a := codex.New(dirs.Dirs{AgentsHome: t.TempDir()})
 	skill := (&resource.Skill{
 		Name:        "with-keywords",

@@ -161,13 +161,10 @@ func encodeSkill(s *resource.Skill) ([]byte, error) {
 	return reencodeSkill(s)
 }
 
-// canPassThrough is a third copy of the same shape now in claudecode +
-// gemini — only the per-host `keeps` predicate differs. Acknowledged
-// duplication: adapters don't depend on each other, so codex can't
-// import gemini's helper, and a shared package would have to take the
-// hostID as a parameter. Per the project's no-premature-abstraction
-// rule, the extraction shape is left to a future architecture pass
-// rather than introduced speculatively in this commit.
+// canPassThrough delegates the per-host "should this field be kept?"
+// rule to schema.Schema.HostKeepsExtension so the same predicate that
+// claudecode and gemini call is the one codex calls — no per-host
+// duplication, no drift across the three adapters.
 func canPassThrough(r resource.Resource) (bool, error) {
 	ext := r.Extensions()
 	if len(ext) == 0 {
@@ -178,34 +175,18 @@ func canPassThrough(r resource.Resource) (bool, error) {
 		return false, err
 	}
 	for k := range ext {
-		if !codexKeeps(sc, k) {
+		if !sc.HostKeepsExtension(hostID, k) {
 			return false, nil
 		}
 	}
 	return true, nil
 }
 
-// codexKeeps reports whether codex's emit should retain the extension
-// keyed by fieldName. True if the schema lists codex under the matching
-// concept's aliases, or if the concept is pass-through metadata
-// (lossy_when_dropped: false). False for unknown fields — those surface
-// via the orchestrator's §8 lossy check.
-func codexKeeps(sc *schema.Schema, fieldName string) bool {
-	c := sc.LookupExtension(fieldName)
-	if c == nil {
-		return false
-	}
-	if !c.IsLossyWhenDropped() {
-		return true
-	}
-	return c.SupportsHost(hostID)
-}
-
 func reencodeSkill(s *resource.Skill) ([]byte, error) {
 	// Universal core first (fixed order: name, description, license).
 	// Then sorted retained extensions for deterministic output. Same
-	// shape as claudecode + gemini reencodeSkill — only codexKeeps
-	// differs.
+	// shape as claudecode + gemini reencodeSkill — only the captured
+	// hostID passed into schema.HostKeepsExtension differs.
 	front := []*yaml.Node{}
 	var encodeErr error
 	addScalar := func(key string, val any) {
@@ -239,7 +220,7 @@ func reencodeSkill(s *resource.Skill) ([]byte, error) {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if !codexKeeps(sc, k) {
+			if !sc.HostKeepsExtension(hostID, k) {
 				continue
 			}
 			addScalar(k, s.Extensions()[k])

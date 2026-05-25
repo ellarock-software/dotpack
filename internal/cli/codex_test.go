@@ -106,7 +106,7 @@ body content
 func TestInstall_SkillWithAllowedTools_OnCodex_AllowLossyDropsField(t *testing.T) {
 	// Counterpart to the refusal test: with --allow-lossy, install
 	// succeeds AND the emitted SKILL.md has `allowed-tools` stripped
-	// per codexKeeps. Assert key-form, not substring (description in
+	// per schema.HostKeepsExtension on codex. Assert key-form, not substring (description in
 	// fixture is deliberately benign — but the key-form pattern guards
 	// against future fixture drift containing the phrase in prose).
 	agentsHome, _ := setupCodexEnv(t)

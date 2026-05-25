@@ -105,7 +105,7 @@ body content
 func TestInstall_SkillWithAllowedTools_OnGeminiCLI_AllowLossyDropsField(t *testing.T) {
 	// Counterpart to the refusal test: with --allow-lossy, install
 	// succeeds AND the emitted SKILL.md does NOT carry `allowed-tools`
-	// (it's stripped per geminiKeeps returning false). The lossy gate
+	// (it's stripped per schema.HostKeepsExtension returning false on gemini-cli). The lossy gate
 	// is honest about what dropped — not just a "proceed anyway" flag.
 	geminiHome, _ := setupGeminiEnv(t)
 

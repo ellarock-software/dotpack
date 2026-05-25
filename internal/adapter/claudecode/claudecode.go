@@ -255,7 +255,7 @@ func reencodeAgent(ag *resource.Agent) ([]byte, error) {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if !claudeKeeps(sc, k) {
+			if !sc.HostKeepsExtension(hostID, k) {
 				continue
 			}
 			addScalar(k, ag.Extensions()[k])
@@ -281,14 +281,14 @@ func reencodeAgent(ag *resource.Agent) ([]byte, error) {
 
 // canPassThrough reports whether emitting Raw bytes verbatim would
 // drop nothing of semantic value on claude-code. True iff every
-// extension key resolves (via the schema) to either a claude-code-
-// supported concept or pass-through metadata.
+// extension key resolves (via schema.HostKeepsExtension) to either a
+// claude-code-supported concept or pass-through metadata.
 //
 // Generic over Resource: uses r.Kind() to select the schema and
-// r.Extensions() to enumerate keys. Kept here (rather than promoting
-// to the orchestrator) because the "should this be kept?" decision is
-// adapter-side — the orchestrator's §8 algorithm only answers "is this
-// lossy?" which is a complementary question with a different default.
+// r.Extensions() to enumerate keys. The per-host "should this field be
+// kept?" rule lives on schema.Schema (HostKeepsExtension) — the same
+// predicate gemini and codex call — so the three canPassThrough copies
+// share one consolidated rule and differ only in the captured hostID.
 //
 // Schema-load failure here is propagated to the caller, not swallowed.
 // The embedded YAML cannot fail in production, but if it ever does,
@@ -304,28 +304,11 @@ func canPassThrough(r resource.Resource) (bool, error) {
 		return false, err
 	}
 	for k := range ext {
-		if !claudeKeeps(sc, k) {
+		if !sc.HostKeepsExtension(hostID, k) {
 			return false, nil
 		}
 	}
 	return true, nil
-}
-
-// claudeKeeps reports whether claude-code's emit should retain the
-// extension keyed by fieldName. True if the schema lists claude-code
-// under the matching concept's aliases, or if the concept is
-// pass-through metadata (lossy_when_dropped: false). False otherwise
-// — including for unknown fields, which the orchestrator's §8 check
-// surfaces as lossy.
-func claudeKeeps(sc *schema.Schema, fieldName string) bool {
-	c := sc.LookupExtension(fieldName)
-	if c == nil {
-		return false
-	}
-	if !c.IsLossyWhenDropped() {
-		return true
-	}
-	return c.SupportsHost(hostID)
 }
 
 func reencodeSkill(s *resource.Skill) ([]byte, error) {
@@ -371,7 +354,7 @@ func reencodeSkill(s *resource.Skill) ([]byte, error) {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if !claudeKeeps(sc, k) {
+			if !sc.HostKeepsExtension(hostID, k) {
 				continue
 			}
 			addScalar(k, s.Extensions()[k])

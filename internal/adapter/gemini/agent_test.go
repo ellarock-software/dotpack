@@ -152,8 +152,9 @@ func TestGemini_PlanAgent_PreservesGeminiAgentRuntimeOverrides(t *testing.T) {
 
 func TestGemini_PlanAgent_DropsClaudeOnlyOverrides_ButThatsLossyAtOrchestrator(t *testing.T) {
 	// claude_subagent_runtime_overrides (maxTurns, disallowedTools, etc.)
-	// list ONLY claude-code in aliases. On gemini-cli, geminiKeeps
-	// returns false → the field is NOT emitted in re-encoded frontmatter.
+	// list ONLY claude-code in aliases. On gemini-cli,
+	// schema.HostKeepsExtension("gemini-cli", ...) returns false → the
+	// field is NOT emitted in re-encoded frontmatter.
 	// At the orchestrator layer, the §8 lossy check would refuse the
 	// install unless --allow-lossy. This test exercises the adapter in
 	// isolation: with the field present in extensions, the emit is

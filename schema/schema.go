@@ -102,6 +102,35 @@ func (c *Concept) SupportingHosts() []string {
 	return out
 }
 
+// HostKeepsExtension reports whether the given host's emit should retain
+// the named extension field. The schema is the authority for this
+// question — adapters delegate so the three per-host predicates that
+// used to live in claudecode / gemini / codex collapse to one rule.
+//
+// Semantic complement to LossyExtensions: HostKeepsExtension answers
+// "should the adapter emit this field?", LossyExtensions answers
+// "should the user be warned about dropping this field?". Same schema
+// data, different audiences. Signatures intentionally diverge —
+// HostKeepsExtension is a method on an already-loaded *Schema because
+// adapters call it in a re-encode loop and would otherwise reload per
+// key; LossyExtensions is top-level because the orchestrator's caller
+// site has only the kind, not a loaded schema.
+//
+// fieldName is the on-disk frontmatter key (e.g. "allowed-tools"),
+// matching LookupExtension's contract. Universal-core fields (name,
+// description, etc.) are NOT extensions and are not the domain of this
+// method — they are always emitted.
+func (s *Schema) HostKeepsExtension(hostID, fieldName string) bool {
+	c := s.LookupExtension(fieldName)
+	if c == nil {
+		return false
+	}
+	if !c.IsLossyWhenDropped() {
+		return true
+	}
+	return c.SupportsHost(hostID)
+}
+
 // LookupExtension finds the concept that binds the given on-disk
 // frontmatter key, checking both Aliases[].FieldName (hosted concepts)
 // and FieldNames (pass-through metadata bindings). Returns nil if no
