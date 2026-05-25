@@ -11,56 +11,96 @@ import (
 	"github.com/ellarock/dotpack/internal/adapter"
 )
 
-// TestApplyTOMLMergedKey_OpAppend_NotYetImplemented pins the
-// hostile-review #4 defensive guard. Op=Append on TOML is unreachable
-// from current adapters (codex mcp-server is Op=Set; no codex hook emit
-// yet), but the structured error message must remain stable so the
-// future codex-hook slice's tracer-bullet RED fails with a clear
-// pointer rather than silently no-oping.
-func TestApplyTOMLMergedKey_OpAppend_NotYetImplemented(t *testing.T) {
+// TestApplyTOMLMergedKey_OpAppend_FreshFile pins the Op=Append wiring
+// landed by the codex hook slice. Fresh file (no existing config.toml),
+// one append into hooks.PreToolUse, asserts the canonical
+// [[hooks.PreToolUse]] shape lands on disk. Replaced the stub-pin
+// "not yet implemented" guard once the arm wired.
+func TestApplyTOMLMergedKey_OpAppend_FreshFile(t *testing.T) {
 	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.toml")
 	mk := adapter.MergedKeyWrite{
-		File:  filepath.Join(tmp, "config.toml"),
-		Path:  "hooks.PreToolUse",
-		Value: map[string]any{"matcher": "*"},
-		Op:    adapter.MergedKeyAppend,
+		File: path,
+		Path: "hooks.PreToolUse",
+		Value: map[string]any{
+			"matcher": "Bash",
+			"hooks": []any{map[string]any{
+				"type":    "command",
+				"command": "/usr/local/bin/guard.sh",
+			}},
+		},
+		Op: adapter.MergedKeyAppend,
 	}
-	err := applyTOMLMergedKey(mk)
-	if err == nil {
-		t.Fatal("expected Op=Append on TOML to error; got nil")
+	if err := applyTOMLMergedKey(mk); err != nil {
+		t.Fatalf("apply: %v", err)
 	}
-	if !strings.Contains(err.Error(), "Op=Append on TOML not yet implemented") {
-		t.Errorf("error must name the unwired arm; got %v", err)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
 	}
-	if !strings.Contains(err.Error(), "codex hook slice") {
-		t.Errorf("error must point at the slice that wires it; got %v", err)
+	if !strings.Contains(string(raw), "[[hooks.PreToolUse]]") {
+		t.Errorf("expected canonical array-of-tables shape; got:\n%s", raw)
 	}
-	// File must not be created when the operation errors.
-	if _, statErr := os.Stat(mk.File); !os.IsNotExist(statErr) {
-		t.Errorf("file must not be created on errored apply; stat: %v", statErr)
+	if !strings.Contains(string(raw), "matcher = 'Bash'") {
+		t.Errorf("expected matcher field on disk; got:\n%s", raw)
 	}
 }
 
-// TestUnmergeTOMLKey_OpAppend_NotYetImplemented mirrors the apply guard
-// for the un-merge path.
-func TestUnmergeTOMLKey_OpAppend_NotYetImplemented(t *testing.T) {
+// TestApplyTOMLMergedKey_OpAppend_AppendsIntoExisting pins that a
+// second Op=Append into a pre-populated hooks.<Event> array preserves
+// the first element AND appends the second — the same coexistence
+// invariant that drove the JSON-side TestInstall_Hook_OrderOfInstalls
+// pinning.
+func TestApplyTOMLMergedKey_OpAppend_AppendsIntoExisting(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "config.toml")
-	if err := os.WriteFile(path, []byte("[hooks]\n"), 0o644); err != nil {
+	first := adapter.MergedKeyWrite{
+		File:  path,
+		Path:  "hooks.PreToolUse",
+		Value: map[string]any{"matcher": "Bash", "hooks": []any{map[string]any{"type": "command", "command": "/usr/local/bin/a.sh"}}},
+		Op:    adapter.MergedKeyAppend,
+	}
+	if err := applyTOMLMergedKey(first); err != nil {
+		t.Fatalf("apply first: %v", err)
+	}
+	second := adapter.MergedKeyWrite{
+		File:  path,
+		Path:  "hooks.PreToolUse",
+		Value: map[string]any{"matcher": "Edit", "hooks": []any{map[string]any{"type": "command", "command": "/usr/local/bin/b.sh"}}},
+		Op:    adapter.MergedKeyAppend,
+	}
+	if err := applyTOMLMergedKey(second); err != nil {
+		t.Fatalf("apply second: %v", err)
+	}
+	raw, _ := os.ReadFile(path)
+	if strings.Count(string(raw), "[[hooks.PreToolUse]]") != 2 {
+		t.Errorf("expected two [[hooks.PreToolUse]] tables; got:\n%s", raw)
+	}
+}
+
+// TestUnmergeTOMLKey_OpAppend_MissingSelectorErrors pins the manifest-
+// shape invariant — Op=Append un-merge without a Selector indicates a
+// buggy install that wrote a manifest entry without the content-hash
+// identity, and the un-merge cannot recover. Better to surface than to
+// silently no-op (which would orphan the array element).
+func TestUnmergeTOMLKey_OpAppend_MissingSelectorErrors(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.toml")
+	if err := os.WriteFile(path, []byte("[hooks]\n[[hooks.PreToolUse]]\nmatcher = 'Bash'\n"), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	mk := MergedKeySelector{
 		File:     path,
 		Path:     "hooks.PreToolUse",
 		Op:       adapter.MergedKeyAppend,
-		Selector: "sha256:0",
+		Selector: "",
 	}
 	err := unmergeTOMLKey(mk)
 	if err == nil {
-		t.Fatal("expected Op=Append on TOML un-merge to error; got nil")
+		t.Fatal("expected missing-selector to error; got nil")
 	}
-	if !strings.Contains(err.Error(), "Op=Append on TOML not yet implemented") {
-		t.Errorf("error must name the unwired arm; got %v", err)
+	if !strings.Contains(err.Error(), "Selector") {
+		t.Errorf("error must name the missing field; got %v", err)
 	}
 }
 

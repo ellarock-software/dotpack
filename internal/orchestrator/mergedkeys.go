@@ -283,27 +283,55 @@ func preserveMode(path string, dflt os.FileMode) os.FileMode {
 }
 
 // applyTOMLMergedKey is the TOML mirror of applyJSONMergedKey. The map-
-// walk primitives (setJSONPath, getJSONPath, deleteJSONPath) are
+// walk primitives (setJSONPath, getJSONPath, deleteJSONPath,
+// appendJSONPath, removeJSONArrayElementBySelector) are
 // FORMAT-AGNOSTIC — they walk map[string]any by []string segments and
 // don't reference JSON semantics, so TOML reuses them after
 // parseTOMLPath does the format-specific path parsing. The "JSON" in
 // their name is historical; renaming would churn ~14 callsites for no
-// functional gain. (appendJSONPath + removeJSONArrayElementBySelector
-// are also format-agnostic but unreached today — Op=Append on TOML is
-// not yet wired; see the switch arm below.)
+// functional gain.
 //
 // normalizeForTOML applies HERE — to the install's value only, NOT to
 // the full root. The root contains user-authored content (e.g.,
 // `version = 1.0` at top-level); normalizing that would coerce the
 // user's explicit float to int and silently mutate bytes dotpack does
-// not own. Hostile-review #1 from THIS slice. Apply only to mk.Value
-// because that's the JSON-sourced fragment whose integral-float64
-// arrival shape needs coercion before TOML emit.
+// not own. Hostile-review #1 from slice v18 (codex mcp-server). Apply
+// only to mk.Value because that's the JSON-sourced fragment whose
+// integral-float64 arrival shape needs coercion before TOML emit.
 //
-// Op=Set is fully wired today (codex mcp-server). Op=Append on TOML
-// returns "not yet implemented" — codex hook is the next slice that
-// needs it (per the hook slice's §9 pre-positioning in
-// schema/hook.yaml's cross-host event aliases).
+// Op=Set + Op=Append both fully wired today:
+//   - Op=Set: codex mcp-server (Set into mcp_servers.<name>).
+//   - Op=Append: codex hook (Append into hooks.<Event> array-of-tables).
+//
+// Selector hash stability across normalize: buildRecord computes
+// Selector from the UN-normalized mk.Value (one site, format-agnostic).
+// For all hook universal-core types (string, int, map[string]string,
+// []any-of-map[string]any) normalize is an identity transform, so the
+// install-time hash matches the uninstall-time hash (re-derived from
+// the TOML-roundtripped value). The probe in probe_toml_aot_test.go
+// pins this for the four shapes that exist today: bare matcher+command,
+// env-bearing, timeout-bearing, and append-into-existing.
+//
+// Two future scenarios would break this invariant — both produce silent
+// un-merge orphans where the manifest record clears but the on-disk
+// element survives:
+//
+//  1. Non-integral float64 in mk.Value (e.g., `timeout: 1.5` if the
+//     schema ever admits sub-second timeouts). The install hash is
+//     float64-shaped; the uninstall hash post-normalize is int64-
+//     shaped only when integral, and float64-shaped otherwise — but the
+//     TOML roundtrip preserves the float64 either way, so the actual
+//     divergence is via the integral-coercion path.
+//  2. Explicit `nil` map values in mk.Value (e.g., `"foo": null` in
+//     a hook extension surface). normalizeForTOML DROPS nil map values
+//     silently; TOML emits without `foo`; uninstall re-reads without
+//     `foo`; hash excludes `foo` while install-time hash included it.
+//
+// At that point the fix is either (a) compute Selector from
+// normalizeForTOML(mk.Value) at buildRecord, or (b) refuse the
+// offending shape (float64, nil map value) at the validator before it
+// reaches the merge boundary. Documented here so a future reader
+// hitting the orphan-uninstall ghost has a pointer.
 func applyTOMLMergedKey(mk adapter.MergedKeyWrite) error {
 	root, err := readTOMLOrEmpty(mk.File)
 	if err != nil {
@@ -323,17 +351,13 @@ func applyTOMLMergedKey(mk adapter.MergedKeyWrite) error {
 			return fmt.Errorf("merged-key apply: set %q in %s: %w", mk.Path, mk.File, err)
 		}
 	case adapter.MergedKeyAppend:
-		// Codex mcp-server is Op=Set only; codex hook (next slice) will
-		// need this arm. The configfrag adapter cannot produce an Op=
-		// Append MergedKeyWrite for TOML today because no emit function
-		// sets that combination — this guard catches a future slot
-		// missing wiring rather than silently no-oping.
-		//
-		// When codex hook lands, this arm runs normalizeForTOML on
-		// mk.Value (same posture as MergedKeySet above) then calls
-		// appendJSONPath. Pinned by a unit test in mergedkeys_toml_test.go
-		// today so bit-rot of the structured error is caught.
-		return fmt.Errorf("merged-key apply: Op=Append on TOML not yet implemented (file %s, path %q — wires with codex hook slice)", mk.File, mk.Path)
+		normalizedValue, err := normalizeForTOML(mk.Value)
+		if err != nil {
+			return fmt.Errorf("merged-key apply: normalize value for %q in %s: %w", mk.Path, mk.File, err)
+		}
+		if err := appendJSONPath(root, path, normalizedValue); err != nil {
+			return fmt.Errorf("merged-key apply: append %q in %s: %w", mk.Path, mk.File, err)
+		}
 	default:
 		return fmt.Errorf("merged-key apply: unknown op %q for %s", mk.Op, mk.File)
 	}
@@ -343,11 +367,14 @@ func applyTOMLMergedKey(mk adapter.MergedKeyWrite) error {
 // unmergeTOMLKey is the TOML mirror of unmergeJSONKey. Absent file is a
 // no-op (uninstall is idempotent). Same drift-tolerance principles:
 // non-map intermediates on the delete path are no-ops (user manually
-// nulled out the parent); missing leaves are no-ops.
+// nulled out the parent); missing leaves are no-ops; Op=Append's
+// no-matching-hash is a no-op (user edited the binding).
 //
-// Op=Append's array-element-by-selector arm errors "not yet
-// implemented" alongside applyTOMLMergedKey's Op=Append guard — the two
-// move together. When codex hook lands, both wire.
+// Op=Append re-uses removeJSONArrayElementBySelector — format-agnostic
+// because the walker only inspects map[string]any / []any. selectorFor
+// hashes the TOML-roundtripped value identically to the install-time
+// hash for hook universal-core types (see applyTOMLMergedKey's
+// Selector-stability note).
 func unmergeTOMLKey(mk MergedKeySelector) error {
 	raw, err := os.ReadFile(mk.File)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -379,7 +406,14 @@ func unmergeTOMLKey(mk MergedKeySelector) error {
 		}
 		changed = c
 	case adapter.MergedKeyAppend:
-		return fmt.Errorf("merged-key un-merge: Op=Append on TOML not yet implemented (file %s, path %q — wires with codex hook slice)", mk.File, mk.Path)
+		if mk.Selector == "" {
+			return fmt.Errorf("merged-key un-merge: %s op=append requires a Selector in the manifest (this is a manifest-shape bug; install should never have persisted an append-MergedKey without one)", mk.Path)
+		}
+		c, err := removeJSONArrayElementBySelector(root, path, mk.Selector)
+		if err != nil {
+			return fmt.Errorf("merged-key un-merge: remove array element at %q in %s: %w", mk.Path, mk.File, err)
+		}
+		changed = c
 	default:
 		return fmt.Errorf("merged-key un-merge: unknown op %q for %s", mk.Op, mk.File)
 	}

@@ -2,14 +2,22 @@
 // to the deep adapter modules:
 //
 //   - skill → internal/adapter/filedrop (one file written per resource).
-//   - mcp-server → internal/adapter/configfrag (one (path, value) merge
-//     into ~/.codex/config.toml; ADR-0016 §5–§7).
+//   - mcp-server + hook → internal/adapter/configfrag (one or more
+//     (path, value) merges into ~/.codex/config.toml; ADR-0016 §5–§7+§9).
 //
 // Both modules implement adapter.Adapter; the shell's job is to declare
 // the per-host policy data (Policy for filedrop; configfragPolicy() for
 // configfrag) and dispatch Plan by resource Kind. Mirror of claudecode's
 // pattern; the split keeps each deep module focused on one apply
 // contract.
+//
+// Codex mcp-server and hook BOTH target the same ~/.codex/config.toml
+// file — mcp-server installs Set into mcp_servers.<name>; hook installs
+// Append into hooks.<Event> arrays-of-tables per schema/hook.yaml's
+// codex source_locations entry. The orchestrator runs one install at a
+// time, so there's no apply-time collision; the read-modify-write
+// preserves whichever sibling tables (mcp_servers + hooks) the file
+// already carries.
 //
 // Codex supports skill only on the file-drop side — there is no native
 // agent loading directory documented by the codex CLI. The absence of
@@ -170,6 +178,127 @@ func emitMCPServerCodex(r resource.Resource) ([]configfrag.MergedFragment, error
 	}}, nil
 }
 
+// emitHookCodex turns a *resource.Hook into one MergedFragment per
+// binding across all the resource's events. Op=Append so the
+// orchestrator walker appends each binding to the host's hooks.<Event>
+// array-of-tables rather than overwriting it; the manifest's sha256
+// Selector for each fragment is computed by the orchestrator at install
+// time and re-derived at uninstall to find the right array element
+// regardless of sibling installs/reorders.
+//
+// Per-host divergence vs claudecode.emitHook: TOML-dotted Path
+// ("hooks." + ev.Event, no `$.` prefix) — codex's config.toml uses TOML
+// syntax, and parseTOMLPath rejects $-prefixed paths as a cross-format
+// safety net. Event names and timeout units are identity with claudecode
+// per schema/hook.yaml's cross_ecosystem_event_aliases (gemini-only
+// rewrites; codex shares Claude's PascalCase + seconds convention).
+//
+// Event-name validation is NOT this function's responsibility — the
+// canonical schema (schema/hook.yaml structure.top_level.canonical_event
+// _names) is the authority and the validator gates upstream. Two
+// codex-specific corpus notes the emit consumer should know about:
+//   - PostToolUseFailure is observed in the codex corpus but is NOT in
+//     the published Codex spec event-name table per schema/hook.yaml
+//     ecosystem_notes. dotpack writes [[hooks.PostToolUseFailure]]
+//     happily; codex's parser behavior on it is undocumented.
+//   - The "in-the-wild non-spec TOML shapes" (flat `[hooks]` map and
+//     anonymous `[[hooks]] event = '...'` AOT) are rejected on import
+//     (preflightMergedKeyCollisions for the flat-map case;
+//     appendJSONPath's intermediate-non-map check for the anonymous
+//     AOT case). dotpack emits only the canonical nested shape.
+//
+// encodeHookBindingCodex + encodeHookSpecCodex are duplicated from the
+// claudecode package rather than shared. The honest reason: ~30 LOC of
+// bit-identical duplication is small enough to defer the
+// lift-to-shared-package decision until a third caller appears. The
+// duplication will silently rot if claude or codex adds a universal-
+// core field the other doesn't — the lift to a shared helper is a
+// single small slice when that happens, and waiting reduces the
+// premature-abstraction risk.
+//
+// Selector hash stability: the emit's value (universal-core hook shape:
+// string + int + map[string]string + []any-of-map[string]any) round-
+// trips through TOML identically per the probe in
+// orchestrator/probe_toml_aot_test.go. selectorFor over the un-
+// normalized value at install time equals selectorFor over the TOML-
+// roundtripped value at uninstall time, so un-merge-by-content-hash
+// works without per-format hash adaptation.
+func emitHookCodex(r resource.Resource) ([]configfrag.MergedFragment, error) {
+	h, ok := r.(*resource.Hook)
+	if !ok {
+		return nil, fmt.Errorf("emit hook: resource type %T is not *resource.Hook", r)
+	}
+	if len(h.Events) == 0 {
+		return nil, fmt.Errorf("emit hook: %s has no events", h.Name)
+	}
+	frags := make([]configfrag.MergedFragment, 0)
+	for _, ev := range h.Events {
+		for _, b := range ev.Bindings {
+			frags = append(frags, configfrag.MergedFragment{
+				Path:  "hooks." + ev.Event,
+				Value: encodeHookBindingCodex(b),
+				Op:    adapter.MergedKeyAppend,
+			})
+		}
+	}
+	return frags, nil
+}
+
+// encodeHookBindingCodex serialises one Binding into the on-disk shape
+// codex's config.toml expects: { matcher, hooks: [...specs...] }.
+// Identical to claudecode's encodeBinding today — see emitHookCodex
+// docstring for why this is duplicated rather than shared.
+//
+// Output uses map[string]any (not a typed struct) so the value is
+// format-agnostic — applyTOMLMergedKey serialises via go-toml/v2's
+// Marshal which sorts map keys lexicographically. Same convention as
+// emitMCPServerCodex, which keeps cacheKey's hash deterministic per
+// the cacheKey docstring's "emit returns map[string]any" guard.
+func encodeHookBindingCodex(b resource.Binding) map[string]any {
+	out := map[string]any{}
+	if b.Matcher != "" {
+		out["matcher"] = b.Matcher
+	}
+	specs := make([]any, 0, len(b.Hooks))
+	for _, s := range b.Hooks {
+		specs = append(specs, encodeHookSpecCodex(s))
+	}
+	out["hooks"] = specs
+	return out
+}
+
+// encodeHookSpecCodex serialises one HookSpec leaf. type + command
+// always present; optional fields suppressed when absent so the on-disk
+// TOML shape matches what a hand-author would have written (readability
+// matters for a file the user diffs by hand).
+//
+// Field-name identity with claudecode: codex's hook-spec uses the same
+// `type`, `command`, `timeout`, `statusMessage`, `env` field names per
+// schema/hook.yaml structure.hook_spec.fields. The CamelCase quirk
+// (`statusMessage`) is shared cross-host; the survey corpus confirms.
+func encodeHookSpecCodex(s resource.HookSpec) map[string]any {
+	out := map[string]any{
+		"type":    s.Type,
+		"command": s.Command,
+	}
+	if s.HasTimeout {
+		out["timeout"] = s.Timeout
+	}
+	if s.StatusMessage != "" {
+		out["statusMessage"] = s.StatusMessage
+	}
+	if len(s.Env) > 0 {
+		// map[string]string round-trips through TOML identically to
+		// map[string]any with string values for selectorFor purposes:
+		// json.Marshal of either form produces byte-identical bytes
+		// when keys are sorted. The probe in orchestrator/
+		// probe_toml_aot_test.go pins this. Mirror of claudecode.
+		// encodeHookSpec's hostile-review #4 reasoning from slice v16.
+		out["env"] = s.Env
+	}
+	return out
+}
+
 // configfragPolicy returns the codex configfrag policy. Function (not
 // var) mirroring claudecode's pattern: nothing reads it via the package
 // surface today, and promotion to var would suggest cross-package
@@ -187,6 +316,17 @@ func configfragPolicy() configfrag.Policy {
 					// alternate codex doesn't promote to canonical.
 				},
 				Emit: emitMCPServerCodex,
+			},
+			resource.KindHook: {
+				Format: configfrag.FormatTOML,
+				Files: configfrag.ScopeFiles{
+					User: userConfigTomlFile,
+					// Project: deferred — same rationale as mcp-server
+					// (codex documents user scope as the canonical hook
+					// location per developers.openai.com/codex docs;
+					// project scope wires when a slice has reason).
+				},
+				Emit: emitHookCodex,
 			},
 		},
 	}
