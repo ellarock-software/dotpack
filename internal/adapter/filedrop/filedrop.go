@@ -51,7 +51,7 @@ const (
 //   - Nested (skill): <root>/<KindDir>/<name>/<NestedFile> — host
 //     owns the per-name subdir; TargetDir is set so uninstall can
 //     reclaim it.
-//   - Flat (agent):   <root>/<KindDir>/<name>.md — sibling resources
+//   - Flat (agent/rule): <root>/<KindDir>/<name>.md — sibling resources
 //     share the dir; TargetDir is empty so uninstall does NOT reclaim.
 //
 // The flat-layout file extension is hardcoded ".md" — every corpus
@@ -156,6 +156,9 @@ func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.Instal
 			Mode:    fs.FileMode(0o644),
 		}},
 	}
+	if rule, ok := r.(*resource.Rule); ok {
+		plan.RemoveFiles = a.staleRuleFiles(rule, target, scope)
+	}
 	if layout.Nested {
 		plan.TargetDir = filepath.Dir(target)
 	}
@@ -205,6 +208,8 @@ func (a *Adapter) encode(r resource.Resource) ([]byte, error) {
 		return a.encodeSkill(v)
 	case *resource.Agent:
 		return a.encodeAgent(v)
+	case *resource.Rule:
+		return a.encodeRule(v)
 	default:
 		return nil, fmt.Errorf("%s: encode: kind %q has no encoder", a.policy.HostID, r.Kind())
 	}
@@ -303,6 +308,80 @@ func (a *Adapter) encodeAgent(ag *resource.Agent) ([]byte, error) {
 		return nil, encodeErr
 	}
 	return marshalFrontmatterAndBody(front, ag.Body)
+}
+
+// encodeRule emits Markdown rule bytes. Rule metadata is preserved
+// byte-for-byte when Raw is available. If a caller constructs a Rule in
+// memory, re-encode id/name plus schema-known pass-through metadata.
+func (a *Adapter) encodeRule(r *resource.Rule) ([]byte, error) {
+	if len(r.Raw) > 0 {
+		pass, err := a.canPassThrough(r)
+		if err != nil {
+			return nil, fmt.Errorf("%s: schema unavailable for pass-through check: %w", a.policy.HostID, err)
+		}
+		if pass {
+			return r.Raw, nil
+		}
+	}
+	return a.reencodeRule(r)
+}
+
+func (a *Adapter) reencodeRule(r *resource.Rule) ([]byte, error) {
+	front := []*yaml.Node{}
+	var encodeErr error
+	addScalar := mkAddScalar(&front, &encodeErr)
+
+	if r.ID != "" {
+		addScalar("id", r.ID)
+	}
+	if r.Name != "" {
+		addScalar("name", r.Name)
+	}
+
+	if len(r.Extensions()) > 0 {
+		sc, err := schema.Load(resource.KindRule)
+		if err != nil {
+			return nil, fmt.Errorf("%s: schema unavailable for re-encode: %w", a.policy.HostID, err)
+		}
+		keys := sortedKeys(r.Extensions())
+		for _, k := range keys {
+			if !sc.HostKeepsExtension(a.policy.HostID, k) {
+				continue
+			}
+			addScalar(k, r.Extensions()[k])
+		}
+	}
+
+	if encodeErr != nil {
+		return nil, encodeErr
+	}
+	return marshalFrontmatterAndBody(front, r.Body)
+}
+
+func (a *Adapter) staleRuleFiles(r *resource.Rule, target string, scope adapter.Scope) []adapter.FileRemove {
+	if scope != adapter.ScopeProject || a.dirs.ProjectHome == "" || r.SourcePath == "" {
+		return nil
+	}
+	source, err := filepath.Abs(r.SourcePath)
+	if err != nil {
+		source = r.SourcePath
+	}
+	canonicalDir := filepath.Join(a.dirs.ProjectHome, ".agents", "rules")
+	sourceDir := filepath.Dir(source)
+	if sourceDir != canonicalDir {
+		return nil
+	}
+
+	staleHosts := []string{"claude", "claude-code", "codex", "gemini", "gemini-cli", "agents-cli"}
+	out := make([]adapter.FileRemove, 0, len(staleHosts))
+	for _, host := range staleHosts {
+		p := filepath.Join(canonicalDir, host, r.NameOrID()+".md")
+		if p == source || p == target {
+			continue
+		}
+		out = append(out, adapter.FileRemove{Path: p})
+	}
+	return out
 }
 
 // canPassThrough reports whether emitting Raw bytes verbatim would

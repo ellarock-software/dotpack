@@ -169,6 +169,42 @@ func TestFromEnv_GeminiHome_NonexistentEnvDoesNotError(t *testing.T) {
 	}
 }
 
+func TestFromEnv_AntigravityHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
+	wantParent := t.TempDir()
+	rel := "antigravity-cfg"
+	t.Chdir(wantParent)
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_ANTIGRAVITY_HOME", rel)
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.AntigravityHome) {
+		t.Errorf("AntigravityHome must be absolute after FromEnv normalises env input; got %q", d.AntigravityHome)
+	}
+	wantAbs := filepath.Join(wantParent, rel)
+	if filepath.Clean(d.AntigravityHome) != filepath.Clean(wantAbs) {
+		t.Errorf("AntigravityHome: got %q, want %q", d.AntigravityHome, wantAbs)
+	}
+}
+
+func TestFromEnv_AntigravityHome_NonexistentEnvDoesNotError(t *testing.T) {
+	parent := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_ANTIGRAVITY_HOME", filepath.Join(parent, "does-not-exist-yet"))
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !filepath.IsAbs(d.AntigravityHome) {
+		t.Errorf("AntigravityHome must be absolute; got %q", d.AntigravityHome)
+	}
+}
+
 func TestFromEnv_AgentsHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
 	// Mirror of TestFromEnv_GeminiHome_RelativeEnvIsResolvedToAbsolute
 	// for DOTPACK_AGENTS_HOME (slice 3 task #8 — third adapter `codex`).

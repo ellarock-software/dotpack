@@ -19,6 +19,8 @@
 // <ProjectHome>/.claude/agents/<name>.md (project). Skills nest (own
 // the per-name subdir); agents are flat (shared dir, not reclaimed by
 // uninstall).
+// Rule paths: <ClaudeHome>/rules/<name>.md (user) or
+// <ProjectHome>/.claude/rules/<name>.md (project).
 //
 // MCP-server paths: <ProjectHome>/.mcp.json (project) or
 // <HomeDir>/.claude.json (user — sibling to ~/.claude/ per
@@ -80,6 +82,12 @@ var Policy = filedrop.Policy{
 			UserRoot:      userRoot,
 			ProjectSubdir: ".claude",
 			KindDir:       "agents",
+			Nested:        false,
+		},
+		resource.KindRule: {
+			UserRoot:      userRoot,
+			ProjectSubdir: ".claude",
+			KindDir:       "rules",
 			Nested:        false,
 		},
 	},
@@ -311,7 +319,7 @@ func New(d dirs.Dirs) *Adapter {
 // HostID returns the schema-side host alias.
 func (a *Adapter) HostID() string { return hostID }
 
-// Plan dispatches by Kind. File-drop kinds (skill, agent) go to the
+// Plan dispatches by Kind. File-drop kinds (skill, agent, rule) go to the
 // filedrop adapter; config-fragment kinds (mcp-server today, hook
 // later) go to the configfrag adapter. Kinds neither adapter supports
 // surface as a structured "not yet supported" error rather than a
@@ -319,7 +327,7 @@ func (a *Adapter) HostID() string { return hostID }
 // that message, so we delegate.
 func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.InstallPlan, error) {
 	switch r.Kind() {
-	case resource.KindSkill, resource.KindAgent:
+	case resource.KindSkill, resource.KindAgent, resource.KindRule:
 		return a.filedrop.Plan(r, scope)
 	case resource.KindMCPServer, resource.KindHook:
 		return a.configfrag.Plan(r, scope)

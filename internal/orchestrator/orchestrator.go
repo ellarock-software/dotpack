@@ -247,6 +247,11 @@ func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts Insta
 			return InstallResult{}, fmt.Errorf("apply file %s: %w", fw.Path, err)
 		}
 	}
+	for _, rm := range plan.RemoveFiles {
+		if err := removeStaleFile(rm); err != nil {
+			return InstallResult{}, fmt.Errorf("remove stale file %s: %w", rm.Path, err)
+		}
+	}
 	for _, mk := range plan.MergedKeys {
 		if err := applyMergedKey(mk); err != nil {
 			return InstallResult{}, fmt.Errorf("apply merged key %s in %s: %w", mk.Path, mk.File, err)
@@ -501,6 +506,16 @@ func writeAtomic(fw adapter.FileWrite) error {
 	}
 	if err := os.Rename(tmpPath, fw.Path); err != nil {
 		cleanup()
+		return err
+	}
+	return nil
+}
+
+func removeStaleFile(rm adapter.FileRemove) error {
+	if rm.Path == "" {
+		return nil
+	}
+	if err := os.Remove(rm.Path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil

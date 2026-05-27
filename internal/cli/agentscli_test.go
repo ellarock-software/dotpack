@@ -25,6 +25,7 @@ func setupAgentsCliEnv(t *testing.T) (agentsHome, dotpackHome string) {
 	dotpackHome = t.TempDir()
 	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
 	t.Setenv("DOTPACK_GEMINI_HOME", t.TempDir())
+	t.Setenv("DOTPACK_ANTIGRAVITY_HOME", t.TempDir())
 	t.Setenv("DOTPACK_AGENTS_HOME", agentsHome)
 	t.Setenv("DOTPACK_CODEX_HOME", t.TempDir())
 	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)

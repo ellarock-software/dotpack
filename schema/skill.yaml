@@ -31,7 +31,7 @@ fields:
       absent everywhere else in the corpus). Free-form pointer to LICENSE.txt or
       a literal SPDX/proprietary string. Pass-through during translation.
 ecosystem_notes:
-  - SKILL.md is the canonical filename across Claude Code, Gemini CLI, and
+  - SKILL.md is the canonical filename across Claude Code, Gemini CLI, Antigravity CLI, and
     Codex CLI. The `~/.agents/skills/` alias is honoured by Gemini and Codex;
     Claude Code uses `.claude/skills/`. The on-disk layout (folder with
     SKILL.md + optional scripts/, references/, assets/) is identical across

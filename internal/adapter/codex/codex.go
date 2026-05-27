@@ -41,6 +41,8 @@
 //
 // MCP-server and hook paths: <CodexHome>/config.toml (user) or
 // <ProjectHome>/.codex/config.toml (project) per schema source_locations.
+// Rule paths: <CodexHome>/rules/<name>.md (user) or
+// <ProjectHome>/.codex/rules/<name>.md (project).
 package codex
 
 import (
@@ -113,7 +115,20 @@ var Policy = filedrop.Policy{
 			Nested:        true,
 			NestedFile:    "SKILL.md",
 		},
+		resource.KindRule: {
+			UserRoot:      userConfigRoot,
+			ProjectSubdir: ".codex",
+			KindDir:       "rules",
+			Nested:        false,
+		},
 	},
+}
+
+func userConfigRoot(d dirs.Dirs) (string, error) {
+	if d.CodexHome == "" {
+		return "", fmt.Errorf("codex: user scope requires dirs.CodexHome to be set")
+	}
+	return d.CodexHome, nil
 }
 
 // emitMCPServerCodex turns a *resource.MCPServer into one (path, value)
@@ -354,14 +369,14 @@ func New(d dirs.Dirs) *Adapter {
 // HostID returns the schema-side host alias.
 func (a *Adapter) HostID() string { return hostID }
 
-// Plan dispatches by Kind. File-drop kinds (skill) go to the filedrop
+// Plan dispatches by Kind. File-drop kinds (skill, rule) go to the filedrop
 // adapter; config-fragment kinds (mcp-server, hook) go to the
 // configfrag adapter. Kinds neither adapter supports surface
 // as a structured "not yet supported" error — the per-adapter Plan
 // paths already produce that message, so we delegate.
 func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.InstallPlan, error) {
 	switch r.Kind() {
-	case resource.KindSkill, resource.KindAgent:
+	case resource.KindSkill, resource.KindAgent, resource.KindRule:
 		return a.filedrop.Plan(r, scope)
 	case resource.KindMCPServer:
 		return a.configfrag.Plan(r, scope)

@@ -1,37 +1,37 @@
-// Package gemini is the gemini-cli per-host shell. It dispatches
+// Package antigravity is the antigravity-cli per-host shell. It dispatches
 // per-kind to the deep adapter modules:
 //
 //   - skill + agent → internal/adapter/filedrop (one file written per
 //     resource; no config merging).
 //   - mcp-server → internal/adapter/configfrag (one (path, value) merge
-//     into Gemini's settings.json; ADR-0016 §5-§7).
+//     into Antigravity's settings.json; ADR-0016 §5-§7).
 //
 // Both modules implement adapter.Adapter; this package declares the
 // host-specific policy data and dispatches Plan by resource Kind.
 // Hook paths: same settings.json target as mcp-server, under $.hooks.
-// Gemini rewrites PreToolUse/PostToolUse to BeforeTool/AfterTool and
+// Antigravity rewrites PreToolUse/PostToolUse to BeforeTool/AfterTool and
 // emits hook timeouts in milliseconds.
 //
-// Skill paths: <GeminiHome>/skills/<name>/SKILL.md (user) or
-// <ProjectHome>/.gemini/skills/<name>/SKILL.md (project).
-// Agent paths: <GeminiHome>/agents/<name>.md (user) or
-// <ProjectHome>/.gemini/agents/<name>.md (project). Skills nest;
+// Skill paths: <AntigravityHome>/skills/<name>/SKILL.md (user) or
+// <ProjectHome>/.antigravity/skills/<name>/SKILL.md (project).
+// Agent paths: <AntigravityHome>/agents/<name>.md (user) or
+// <ProjectHome>/.antigravity/agents/<name>.md (project). Skills nest;
 // agents are flat.
-// Rule paths: <GeminiHome>/rules/<name>.md (user) or
-// <ProjectHome>/.gemini/rules/<name>.md (project).
-// MCP-server paths: <GeminiHome>/settings.json (user) or
-// <ProjectHome>/.gemini/settings.json (project), under $.mcpServers.
+// Rule paths: <AntigravityHome>/rules/<name>.md (user) or
+// <ProjectHome>/.antigravity/rules/<name>.md (project).
+// MCP-server paths: <AntigravityHome>/settings.json (user) or
+// <ProjectHome>/.antigravity/settings.json (project), under $.mcpServers.
 //
-// Convergence note: per schema/skill.yaml ecosystem_notes, gemini-cli
+// Convergence note: per schema/skill.yaml ecosystem_notes, antigravity-cli
 // ALSO reads the shared `~/.agents/skills/` path for the skill kind.
-// Codex WRITES to that shared path; gemini-cli deliberately writes to
-// its host-specific GeminiHome/skills/ instead so `--agent gemini-cli`
+// Codex WRITES to that shared path; antigravity-cli deliberately writes to
+// its host-specific AntigravityHome/skills/ instead so `--agent antigravity-cli`
 // and `--agent codex` produce distinct manifest-tracked targets. The
-// gemini-cli runtime still picks up the codex-installed skill via its
+// antigravity-cli runtime still picks up the codex-installed skill via its
 // read-side convergence. The future `--agent agents-cli` umbrella
 // flag (ADR-0016 §1) will special-case writing to ~/.agents/skills/
 // once for both hosts.
-package gemini
+package antigravity
 
 import (
 	"fmt"
@@ -46,59 +46,59 @@ import (
 	"github.com/ellarock/dotpack/schema"
 )
 
-// hostID is the dotpack adapter HostID for gemini-cli. MUST match the
+// hostID is the dotpack adapter HostID for antigravity-cli. MUST match the
 // `host:` strings in schema/*.yaml aliases — schema.HostKeepsExtension
 // compares on string equality.
-const hostID = "gemini-cli"
+const hostID = "antigravity-cli"
 
-// userRoot returns GeminiHome with the host-specific missing-dir error.
+// userRoot returns AntigravityHome with the host-specific missing-dir error.
 func userRoot(d dirs.Dirs) (string, error) {
-	if d.GeminiHome == "" {
-		return "", fmt.Errorf("gemini-cli: user scope requires dirs.GeminiHome to be set")
+	if d.AntigravityHome == "" {
+		return "", fmt.Errorf("antigravity-cli: user scope requires dirs.AntigravityHome to be set")
 	}
-	return d.GeminiHome, nil
+	return d.AntigravityHome, nil
 }
 
-// userSettingsFile returns <GeminiHome>/settings.json — gemini-cli's
+// userSettingsFile returns <AntigravityHome>/settings.json — antigravity-cli's
 // user-scope target for mcp-server installs per schema/mcp-server.yaml.
 func userSettingsFile(d dirs.Dirs) (string, error) {
-	if d.GeminiHome == "" {
-		return "", fmt.Errorf("gemini-cli: user scope requires dirs.GeminiHome to be set")
+	if d.AntigravityHome == "" {
+		return "", fmt.Errorf("antigravity-cli: user scope requires dirs.AntigravityHome to be set")
 	}
-	return filepath.Join(d.GeminiHome, "settings.json"), nil
+	return filepath.Join(d.AntigravityHome, "settings.json"), nil
 }
 
-// projectSettingsFile returns <ProjectHome>/.gemini/settings.json —
-// gemini-cli's project-scope target for mcp-server installs.
+// projectSettingsFile returns <ProjectHome>/.antigravity/settings.json —
+// antigravity-cli's project-scope target for mcp-server installs.
 func projectSettingsFile(d dirs.Dirs) (string, error) {
 	if d.ProjectHome == "" {
-		return "", fmt.Errorf("gemini-cli: project scope requires dirs.ProjectHome to be set")
+		return "", fmt.Errorf("antigravity-cli: project scope requires dirs.ProjectHome to be set")
 	}
-	return filepath.Join(d.ProjectHome, ".gemini", "settings.json"), nil
+	return filepath.Join(d.ProjectHome, ".antigravity", "settings.json"), nil
 }
 
-// Policy is the gemini-cli per-host data the filedrop module dispatches
-// on. Tools shape is YAML array (Gemini convention) — the inverse of
+// Policy is the antigravity-cli per-host data the filedrop module dispatches
+// on. Tools shape is YAML array (Antigravity convention) — the inverse of
 // claudecode's comma-string coercion.
 var Policy = filedrop.Policy{
 	HostID: hostID,
 	Layouts: map[resource.Kind]filedrop.Layout{
 		resource.KindSkill: {
 			UserRoot:      userRoot,
-			ProjectSubdir: ".gemini",
+			ProjectSubdir: ".antigravity",
 			KindDir:       "skills",
 			Nested:        true,
 			NestedFile:    "SKILL.md",
 		},
 		resource.KindAgent: {
 			UserRoot:      userRoot,
-			ProjectSubdir: ".gemini",
+			ProjectSubdir: ".antigravity",
 			KindDir:       "agents",
 			Nested:        false,
 		},
 		resource.KindRule: {
 			UserRoot:      userRoot,
-			ProjectSubdir: ".gemini",
+			ProjectSubdir: ".antigravity",
 			KindDir:       "rules",
 			Nested:        false,
 		},
@@ -106,18 +106,18 @@ var Policy = filedrop.Policy{
 	AgentToolsShape: filedrop.ToolsYAMLArray,
 }
 
-// emitMCPServerGemini turns a *resource.MCPServer into one
-// $.mcpServers.<name> JSON fragment for Gemini settings.json. Gemini
+// emitMCPServerAntigravity turns a *resource.MCPServer into one
+// $.mcpServers.<name> JSON fragment for Antigravity settings.json. Antigravity
 // shares the canonical mcpServers key with Claude; only the target file
 // differs.
 //
 // Universal-core fields are emitted directly. Extension fields are
-// retained only when schema/mcp-server.yaml says gemini-cli keeps that
+// retained only when schema/mcp-server.yaml says antigravity-cli keeps that
 // extension natively or the field is non-lossy pass-through metadata
 // (e.g. `type`). Unknown or other-host extensions are intentionally
 // dropped by emit; the orchestrator's §8 lossy gate is what decides
 // whether that drop is allowed.
-func emitMCPServerGemini(r resource.Resource) ([]configfrag.MergedFragment, error) {
+func emitMCPServerAntigravity(r resource.Resource) ([]configfrag.MergedFragment, error) {
 	m, ok := r.(*resource.MCPServer)
 	if !ok {
 		return nil, fmt.Errorf("emit mcp-server: resource type %T is not *resource.MCPServer", r)
@@ -161,20 +161,20 @@ func emitMCPServerGemini(r resource.Resource) ([]configfrag.MergedFragment, erro
 	}}, nil
 }
 
-// emitHookGemini turns a *resource.Hook into one MergedFragment per
-// binding across all the resource's events. Gemini's current settings
+// emitHookAntigravity turns a *resource.Hook into one MergedFragment per
+// binding across all the resource's events. Antigravity's current settings
 // schema stores hooks under $.hooks.<Event>, so the path shape is the
-// same JSON wrapper as Claude with Gemini event names at the leaf.
+// same JSON wrapper as Claude with Antigravity event names at the leaf.
 //
 // Per-host divergence:
 //   - PreToolUse/PostToolUse become BeforeTool/AfterTool.
 //   - timeout is canonical seconds in dotpack and milliseconds in
-//     Gemini settings.json.
-//   - Gemini hook-spec extensions (name, description, async, once) are
+//     Antigravity settings.json.
+//   - Antigravity hook-spec extensions (name, description, async, once) are
 //     re-emitted when present. If a spec has no name, dotpack gives it a
-//     stable name derived from the hook resource name so Gemini's
+//     stable name derived from the hook resource name so Antigravity's
 //     hooksConfig.disabled list can target it later.
-func emitHookGemini(r resource.Resource) ([]configfrag.MergedFragment, error) {
+func emitHookAntigravity(r resource.Resource) ([]configfrag.MergedFragment, error) {
 	h, ok := r.(*resource.Hook)
 	if !ok {
 		return nil, fmt.Errorf("emit hook: resource type %T is not *resource.Hook", r)
@@ -190,14 +190,14 @@ func emitHookGemini(r resource.Resource) ([]configfrag.MergedFragment, error) {
 	specOrdinal := 0
 	frags := make([]configfrag.MergedFragment, 0)
 	for _, ev := range h.Events {
-		geminiEvent := geminiHookEvent(ev.Event)
+		antigravityEvent := antigravityHookEvent(ev.Event)
 		for _, b := range ev.Bindings {
-			value, err := encodeHookBindingGemini(b, h.Name, totalSpecs, &specOrdinal, sc)
+			value, err := encodeHookBindingAntigravity(b, h.Name, totalSpecs, &specOrdinal, sc)
 			if err != nil {
 				return nil, err
 			}
 			frags = append(frags, configfrag.MergedFragment{
-				Path:  "$.hooks." + geminiEvent,
+				Path:  "$.hooks." + antigravityEvent,
 				Value: value,
 				Op:    adapter.MergedKeyAppend,
 			})
@@ -216,7 +216,7 @@ func countHookSpecs(h *resource.Hook) int {
 	return n
 }
 
-func geminiHookEvent(event string) string {
+func antigravityHookEvent(event string) string {
 	switch event {
 	case "PreToolUse":
 		return "BeforeTool"
@@ -227,7 +227,7 @@ func geminiHookEvent(event string) string {
 	}
 }
 
-func encodeHookBindingGemini(b resource.Binding, hookName string, totalSpecs int, specOrdinal *int, sc *schema.Schema) (map[string]any, error) {
+func encodeHookBindingAntigravity(b resource.Binding, hookName string, totalSpecs int, specOrdinal *int, sc *schema.Schema) (map[string]any, error) {
 	out := map[string]any{}
 	if b.Matcher != "" {
 		out["matcher"] = b.Matcher
@@ -235,7 +235,7 @@ func encodeHookBindingGemini(b resource.Binding, hookName string, totalSpecs int
 	specs := make([]any, 0, len(b.Hooks))
 	for _, s := range b.Hooks {
 		*specOrdinal++
-		spec, err := encodeHookSpecGemini(s, b.Extensions, hookName, totalSpecs, *specOrdinal, sc)
+		spec, err := encodeHookSpecAntigravity(s, b.Extensions, hookName, totalSpecs, *specOrdinal, sc)
 		if err != nil {
 			return nil, err
 		}
@@ -245,7 +245,7 @@ func encodeHookBindingGemini(b resource.Binding, hookName string, totalSpecs int
 	return out, nil
 }
 
-func encodeHookSpecGemini(s resource.HookSpec, bindingExt map[string]any, hookName string, totalSpecs, ordinal int, sc *schema.Schema) (map[string]any, error) {
+func encodeHookSpecAntigravity(s resource.HookSpec, bindingExt map[string]any, hookName string, totalSpecs, ordinal int, sc *schema.Schema) (map[string]any, error) {
 	out := map[string]any{
 		"type":    s.Type,
 		"command": s.Command,
@@ -285,7 +285,7 @@ func encodeHookSpecGemini(s resource.HookSpec, bindingExt map[string]any, hookNa
 	return out, nil
 }
 
-// configfragPolicy returns the gemini-cli configfrag policy.
+// configfragPolicy returns the antigravity-cli configfrag policy.
 func configfragPolicy() configfrag.Policy {
 	return configfrag.Policy{
 		HostID: hostID,
@@ -296,7 +296,7 @@ func configfragPolicy() configfrag.Policy {
 					User:    userSettingsFile,
 					Project: projectSettingsFile,
 				},
-				Emit: emitMCPServerGemini,
+				Emit: emitMCPServerAntigravity,
 			},
 			resource.KindHook: {
 				Format: configfrag.FormatJSON,
@@ -304,20 +304,20 @@ func configfragPolicy() configfrag.Policy {
 					User:    userSettingsFile,
 					Project: projectSettingsFile,
 				},
-				Emit: emitHookGemini,
+				Emit: emitHookAntigravity,
 			},
 		},
 	}
 }
 
-// Adapter is the gemini-cli per-host shell that dispatches Plan to the
+// Adapter is the antigravity-cli per-host shell that dispatches Plan to the
 // right deep module by resource Kind.
 type Adapter struct {
 	filedrop   *filedrop.Adapter
 	configfrag *configfrag.Adapter
 }
 
-// New constructs the gemini-cli adapter, wiring filedrop and configfrag
+// New constructs the antigravity-cli adapter, wiring filedrop and configfrag
 // policies with the given Dirs.
 func New(d dirs.Dirs) *Adapter {
 	return &Adapter{

@@ -34,6 +34,12 @@ template:
         Gemini honours mcpServers in settings.json (unlike Claude). Same
         field shape with documented extensions (httpUrl, headers, cwd,
         timeout, trust) not observed in this corpus.
+    - host: antigravity-cli
+      file: .antigravity/settings.json
+      json_path: $.mcpServers
+      alternate_files: ["~/.antigravity/settings.json"]
+      note: |
+        Antigravity CLI inherits Gemini CLI's settings.json shape.
     - host: codex
       file: ~/.codex/config.toml
       toml_path: mcp_servers
@@ -229,6 +235,8 @@ deliberately_excluded:
         field_name: cwd
       - host: gemini-cli
         field_name: cwd
+      - host: antigravity-cli
+        field_name: cwd
     appeared_in: 0-1/25 entries
     reason: |
       Working directory for the stdio MCP server process. Same name
@@ -246,6 +254,8 @@ deliberately_excluded:
     aliases:
       - host: gemini-cli
         field_name: timeout
+      - host: antigravity-cli
+        field_name: timeout
     appeared_in: 0/25 entries
     reason: |
       Gemini-spec field for an overall server timeout (no corpus
@@ -262,6 +272,8 @@ deliberately_excluded:
     aliases:
       - host: gemini-cli
         field_name: trust
+      - host: antigravity-cli
+        field_name: trust
     appeared_in: 0/25 entries
     reason: |
       Gemini-spec field for marking a server as "trusted" (no corpus
@@ -277,6 +289,8 @@ deliberately_excluded:
   - canonical_concept: gemini_http_url_alias
     aliases:
       - host: gemini-cli
+        field_name: httpUrl
+      - host: antigravity-cli
         field_name: httpUrl
     canonicalises_to: url           # Same concept as universal `url`; Scenario B per ADR-0016.
     appeared_in: 0/25 entries

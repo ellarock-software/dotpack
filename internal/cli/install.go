@@ -14,6 +14,7 @@ import (
 	"github.com/ellarock/dotpack/internal/adapter/claudecode"
 	"github.com/ellarock/dotpack/internal/adapter/codex"
 	"github.com/ellarock/dotpack/internal/adapter/gemini"
+	"github.com/ellarock/dotpack/internal/adapter/antigravity"
 	"github.com/ellarock/dotpack/internal/dirs"
 	"github.com/ellarock/dotpack/internal/manifest"
 	"github.com/ellarock/dotpack/internal/orchestrator"
@@ -40,37 +41,43 @@ may live under .agents or anywhere else; the resource must match the selected
 kind's schema and template before dotpack writes host files.
 
 Supported today:
-  --agent claude-code | gemini-cli | codex | agents-cli
-  --kind  skill | agent | mcp-server | hook (skill is inferred when the
-          source is named SKILL.md; agent/mcp-server/hook require --kind
-          explicitly. Codex does not support agent because codex CLI
+  --agent claude-code | gemini-cli | antigravity-cli | codex | agents-cli
+  --kind  skill | agent | mcp-server | hook | rule (skill is inferred when
+          the source is named SKILL.md; rule is inferred for direct
+          .agents/rules/*.md files; agent/mcp-server/hook otherwise require
+          --kind explicitly. Codex does not support agent because codex CLI
           documents no native agent loading directory.)
   --scope user | project
 
 Host translation map:
   skill:
-    claude-code -> .claude/skills/<name>/SKILL.md
-    gemini-cli  -> .gemini/skills/<name>/SKILL.md
-    codex       -> .agents/skills/<name>/SKILL.md
-    agents-cli  -> .agents/skills/<name>/SKILL.md once for Gemini + Codex
+    claude-code     -> .claude/skills/<name>/SKILL.md
+    gemini-cli      -> .gemini/skills/<name>/SKILL.md
+    antigravity-cli -> .antigravity/skills/<name>/SKILL.md
+    codex           -> .agents/skills/<name>/SKILL.md
+    agents-cli      -> .agents/skills/<name>/SKILL.md once for sub-adapters
   agent:
-    claude-code -> .claude/agents/<name>.md
-    gemini-cli  -> .gemini/agents/<name>.md
+    claude-code     -> .claude/agents/<name>.md
+    gemini-cli      -> .gemini/agents/<name>.md
+    antigravity-cli -> .antigravity/agents/<name>.md
     codex and agents-cli are unsupported for agent
   mcp-server:
-    claude-code -> .mcp.json (project) or ~/.claude.json (user)
-    gemini-cli  -> .gemini/settings.json
-    codex       -> .codex/config.toml
-    agents-cli  -> fans out to Gemini + Codex config files
+    claude-code     -> .mcp.json (project) or ~/.claude.json (user)
+    gemini-cli      -> .gemini/settings.json
+    antigravity-cli -> .antigravity/settings.json
+    codex           -> .codex/config.toml
+    agents-cli      -> fans out to sub-adapter config files
   hook:
-    claude-code -> .claude/settings.json
-    gemini-cli  -> .gemini/settings.json
-    codex       -> .codex/config.toml
-    agents-cli  -> fans out to Gemini + Codex config files
+    claude-code     -> .claude/settings.json
+    gemini-cli      -> .gemini/settings.json
+    antigravity-cli -> .antigravity/settings.json
+    codex           -> .codex/config.toml
+    agents-cli      -> fans out to sub-adapter config files
 
 User scope writes under $DOTPACK_CLAUDE_HOME / ~/.claude,
-$DOTPACK_GEMINI_HOME / ~/.gemini, $DOTPACK_AGENTS_HOME / ~/.agents,
-$DOTPACK_CODEX_HOME / ~/.codex, or ~/.claude.json depending on host and kind.
+$DOTPACK_GEMINI_HOME / ~/.gemini, $DOTPACK_ANTIGRAVITY_HOME / ~/.antigravity,
+$DOTPACK_AGENTS_HOME / ~/.agents, $DOTPACK_CODEX_HOME / ~/.codex,
+or ~/.claude.json depending on host and kind.
 Project scope writes under $DOTPACK_PROJECT_HOME or the current directory.
 
 When --agent is omitted and the manifest already has a matching
@@ -100,7 +107,7 @@ Sub-adapter set and per-kind writer lists are declared in umbrellaFactories
 		},
 	}
 
-	cmd.Flags().StringVar(&agentName, "agent", "claude-code", "Target host adapter (claude-code | gemini-cli | codex | agents-cli)")
+	cmd.Flags().StringVar(&agentName, "agent", "claude-code", "Target host adapter (claude-code | gemini-cli | antigravity-cli | codex | agents-cli)")
 	cmd.Flags().StringVar(&kindName, "kind", "", "Resource kind; inferred from filename when omitted (SKILL.md → skill)")
 	cmd.Flags().StringVar(&scopeName, "scope", "user", "Install scope (user|project)")
 	cmd.Flags().BoolVar(&allowLossy, "allow-lossy", false, "Proceed even if the adapter cannot honour all source fields")
@@ -193,6 +200,9 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 	for _, f := range result.Plan.Files {
 		cmd.Printf("  wrote %s\n", f.Path)
 	}
+	for _, rm := range result.Plan.RemoveFiles {
+		cmd.Printf("  removed stale %s\n", rm.Path)
+	}
 	for _, mk := range result.Plan.MergedKeys {
 		cmd.Printf("  merged %s into %s\n", mk.Path, mk.File)
 	}
@@ -240,6 +250,9 @@ func runUmbrellaInstall(cmd *cobra.Command, source, agentName string, kind resou
 	for _, f := range result.Plan.Files {
 		cmd.Printf("  wrote %s\n", f.Path)
 	}
+	for _, rm := range result.Plan.RemoveFiles {
+		cmd.Printf("  removed stale %s\n", rm.Path)
+	}
 	for _, mk := range result.Plan.MergedKeys {
 		cmd.Printf("  merged %s into %s\n", mk.Path, mk.File)
 	}
@@ -247,13 +260,12 @@ func runUmbrellaInstall(cmd *cobra.Command, source, agentName string, kind resou
 }
 
 // resolveKind picks the resource Kind from --kind (when set) or infers
-// from the source filename. skill + agent supported; the other four
-// kinds (command, memory, hook, mcp-server) land as their per-kind work
-// comes online. Inference only fires for skill (SKILL.md is the
-// canonical filename across all hosts); agent has no canonical filename
-// (<agent-name>.md collides with anything else), so explicit --kind
-// agent is required — inferring "any .md → agent" would treat a
-// mis-named SKILL.md as an agent.
+// from the source filename. Inference only fires for unambiguous
+// canonical paths: SKILL.md for skills and direct .agents/rules/*.md
+// files for rules. Agent has no canonical filename (<agent-name>.md
+// collides with anything else), so explicit --kind agent is required —
+// inferring "any .md → agent" would treat a mis-named SKILL.md as an
+// agent.
 func resolveKind(explicit, sourcePath string) (resource.Kind, error) {
 	if explicit != "" {
 		switch resource.Kind(explicit) {
@@ -265,6 +277,8 @@ func resolveKind(explicit, sourcePath string) (resource.Kind, error) {
 			return resource.KindMCPServer, nil
 		case resource.KindHook:
 			return resource.KindHook, nil
+		case resource.KindRule:
+			return resource.KindRule, nil
 		case resource.KindCommand, resource.KindMemory:
 			return "", fmt.Errorf("kind %q not yet supported", explicit)
 		default:
@@ -274,12 +288,23 @@ func resolveKind(explicit, sourcePath string) (resource.Kind, error) {
 	if filepath.Base(sourcePath) == "SKILL.md" {
 		return resource.KindSkill, nil
 	}
+	if isDirectAgentsRulePath(sourcePath) {
+		return resource.KindRule, nil
+	}
 	// No inference for mcp-server: the .mcp.json filename collides with
 	// non-resource fragments a user may have lying around (the JSON
 	// shape doesn't carry a kind discriminator), so we require
 	// --kind mcp-server explicitly. Matches agent's explicit-only
 	// inference policy.
 	return "", fmt.Errorf("cannot infer --kind from %q; pass --kind explicitly", sourcePath)
+}
+
+func isDirectAgentsRulePath(sourcePath string) bool {
+	if filepath.Ext(sourcePath) != ".md" {
+		return false
+	}
+	dir := filepath.ToSlash(filepath.Clean(filepath.Dir(sourcePath)))
+	return strings.HasSuffix(dir, "/.agents/rules") || dir == ".agents/rules"
 }
 
 func loadResource(kind resource.Kind, source string) (resource.Resource, error) {
@@ -331,6 +356,16 @@ func loadResource(kind resource.Kind, source string) (resource.Resource, error) 
 			return nil, validationError(errs)
 		}
 		return hook, nil
+	case resource.KindRule:
+		rule, err := resource.ParseRule(raw)
+		if err != nil {
+			return nil, err
+		}
+		rule.WithSourcePath(source)
+		if errs := validator.ValidateRule(rule); len(errs) > 0 {
+			return nil, validationError(errs)
+		}
+		return rule, nil
 	default:
 		return nil, fmt.Errorf("kind %q not supported", kind)
 	}
@@ -383,9 +418,10 @@ func validationError(errs []validator.ValidationError) error {
 // isBuildableAgent so users see umbrella suggestions when an umbrella
 // install matches their (kind, name) tuple.
 var adapterFactories = map[string]func(dirs.Dirs) adapter.Adapter{
-	"claude-code": func(d dirs.Dirs) adapter.Adapter { return claudecode.New(d) },
-	"gemini-cli":  func(d dirs.Dirs) adapter.Adapter { return gemini.New(d) },
-	"codex":       func(d dirs.Dirs) adapter.Adapter { return codex.New(d) },
+	"claude-code":     func(d dirs.Dirs) adapter.Adapter { return claudecode.New(d) },
+	"gemini-cli":      func(d dirs.Dirs) adapter.Adapter { return gemini.New(d) },
+	"antigravity-cli": func(d dirs.Dirs) adapter.Adapter { return antigravity.New(d) },
+	"codex":           func(d dirs.Dirs) adapter.Adapter { return codex.New(d) },
 }
 
 // umbrellaFactories is the per-umbrella registry of CLI-flag-to-adapter-
@@ -415,7 +451,7 @@ var adapterFactories = map[string]func(dirs.Dirs) adapter.Adapter{
 // distinct host config file.
 var umbrellaFactories = map[string]umbrellaConfig{
 	"agents-cli": {
-		subs: []string{"gemini-cli", "codex"},
+		subs: []string{"gemini-cli", "antigravity-cli", "codex"},
 		writers: map[resource.Kind][]string{
 			// Skill: codex writes to AgentsHome/skills/<name>/SKILL.md
 			// per developers.openai.com/codex/skills. Gemini CLI ALSO
@@ -437,8 +473,9 @@ var umbrellaFactories = map[string]umbrellaConfig{
 			// Config-fragment kinds fan out: each sub-adapter writes
 			// to its own config file and the single umbrella manifest
 			// record aggregates both merged-key tuples.
-			resource.KindMCPServer: {"gemini-cli", "codex"},
-			resource.KindHook:      {"gemini-cli", "codex"},
+			resource.KindMCPServer: {"gemini-cli", "antigravity-cli", "codex"},
+			resource.KindHook:      {"gemini-cli", "antigravity-cli", "codex"},
+			resource.KindRule:      {"gemini-cli", "antigravity-cli", "codex"},
 		},
 	},
 }

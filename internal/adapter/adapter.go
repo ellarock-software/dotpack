@@ -34,6 +34,15 @@ type FileWrite struct {
 	Mode    fs.FileMode
 }
 
+// FileRemove represents one stale compatibility file the adapter wants
+// the orchestrator to remove after successful writes. These are not
+// manifest-owned install claims; they are migration cleanup paths such
+// as legacy .agents/rules/gemini/<name>.md files superseded by a shared
+// .agents/rules/<name>.md rule.
+type FileRemove struct {
+	Path string
+}
+
 // MergedKeyOp distinguishes the two merge semantics the orchestrator's
 // walker supports against the parsed path:
 //
@@ -99,9 +108,10 @@ type LossyReason struct {
 // content. Persisted into manifest.Record.TargetDir for the symmetric
 // uninstall behaviour.
 type InstallPlan struct {
-	Files      []FileWrite
-	MergedKeys []MergedKeyWrite
-	TargetDir  string
+	Files       []FileWrite
+	RemoveFiles []FileRemove
+	MergedKeys  []MergedKeyWrite
+	TargetDir   string
 }
 
 // Adapter is the host-side abstraction per ADR-0016 §2. Implementations

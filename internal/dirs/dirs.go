@@ -32,6 +32,12 @@ type Dirs struct {
 	// GeminiHome/agents/<name>.md.
 	GeminiHome string
 
+	// AntigravityHome is the root of Antigravity CLI's user config, e.g.
+	// ~/.antigravity. The antigravity-cli adapter writes user-scope skills to
+	// AntigravityHome/skills/<name>/SKILL.md and agents to
+	// AntigravityHome/agents/<name>.md.
+	AntigravityHome string
+
 	// AgentsHome is the root of the shared cross-host resource tree,
 	// e.g. ~/.agents. Codex CLI's only documented native skill path
 	// is AgentsHome/skills/<name>/SKILL.md (per
@@ -101,15 +107,16 @@ type Dirs struct {
 func FromEnv() (Dirs, error) {
 	d := Dirs{
 		HomeDir:     os.Getenv("DOTPACK_USER_HOME"),
-		ClaudeHome:  os.Getenv("DOTPACK_CLAUDE_HOME"),
-		GeminiHome:  os.Getenv("DOTPACK_GEMINI_HOME"),
-		AgentsHome:  os.Getenv("DOTPACK_AGENTS_HOME"),
-		CodexHome:   os.Getenv("DOTPACK_CODEX_HOME"),
-		DotpackHome: os.Getenv("DOTPACK_DOTPACK_HOME"),
-		ProjectHome: os.Getenv("DOTPACK_PROJECT_HOME"),
+		ClaudeHome:      os.Getenv("DOTPACK_CLAUDE_HOME"),
+		GeminiHome:      os.Getenv("DOTPACK_GEMINI_HOME"),
+		AntigravityHome: os.Getenv("DOTPACK_ANTIGRAVITY_HOME"),
+		AgentsHome:      os.Getenv("DOTPACK_AGENTS_HOME"),
+		CodexHome:       os.Getenv("DOTPACK_CODEX_HOME"),
+		DotpackHome:     os.Getenv("DOTPACK_DOTPACK_HOME"),
+		ProjectHome:     os.Getenv("DOTPACK_PROJECT_HOME"),
 	}
 
-	if d.HomeDir == "" || d.ClaudeHome == "" || d.GeminiHome == "" || d.AgentsHome == "" || d.CodexHome == "" || d.DotpackHome == "" {
+	if d.HomeDir == "" || d.ClaudeHome == "" || d.GeminiHome == "" || d.AntigravityHome == "" || d.AgentsHome == "" || d.CodexHome == "" || d.DotpackHome == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return Dirs{}, fmt.Errorf("resolve $HOME: %w", err)
@@ -122,6 +129,9 @@ func FromEnv() (Dirs, error) {
 		}
 		if d.GeminiHome == "" {
 			d.GeminiHome = filepath.Join(home, ".gemini")
+		}
+		if d.AntigravityHome == "" {
+			d.AntigravityHome = filepath.Join(home, ".antigravity")
 		}
 		if d.AgentsHome == "" {
 			d.AgentsHome = filepath.Join(home, ".agents")
@@ -150,6 +160,11 @@ func FromEnv() (Dirs, error) {
 		d.GeminiHome = abs
 	} else {
 		return Dirs{}, fmt.Errorf("DOTPACK_GEMINI_HOME=%q: resolve abs: %w", d.GeminiHome, err)
+	}
+	if abs, err := filepath.Abs(d.AntigravityHome); err == nil {
+		d.AntigravityHome = abs
+	} else {
+		return Dirs{}, fmt.Errorf("DOTPACK_ANTIGRAVITY_HOME=%q: resolve abs: %w", d.AntigravityHome, err)
 	}
 	if abs, err := filepath.Abs(d.AgentsHome); err == nil {
 		d.AgentsHome = abs

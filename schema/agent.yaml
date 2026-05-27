@@ -45,8 +45,8 @@ fields:
       dotpack accepts either; the translator normalises to array<string>
       internally and adapters re-emit the host-native shape.
 ecosystem_notes:
-  - Agents live under `.claude/agents/*.md` (Claude Code) or `.gemini/agents/*.md`
-    (Gemini CLI). The `.agents/agents/` convergence path is NOT yet honoured
+  - Agents live under `.claude/agents/*.md` (Claude Code), `.gemini/agents/*.md`
+    (Gemini CLI), or `.antigravity/agents/*.md` (Antigravity CLI). The `.agents/agents/` convergence path is NOT yet honoured
     by either Claude or Gemini for the agent kind (unlike skills, which both
     honour `~/.agents/skills/`). agents-cli adapter will need to fan out to
     each host's native directory until convergence happens.
@@ -104,11 +104,19 @@ deliberately_excluded:
     aliases:
       - host: gemini-cli
         field_name: kind
+      - host: antigravity-cli
+        field_name: kind
       - host: gemini-cli
+        field_name: temperature
+      - host: antigravity-cli
         field_name: temperature
       - host: gemini-cli
         field_name: max_turns
+      - host: antigravity-cli
+        field_name: max_turns
       - host: gemini-cli
+        field_name: timeout_mins
+      - host: antigravity-cli
         field_name: timeout_mins
     appeared_in: 0/8
     reason: |

@@ -21,6 +21,9 @@ template:
     - host: gemini-cli
       file: .gemini/settings.json
       json_path: $.hooks
+    - host: antigravity-cli
+      file: .antigravity/settings.json
+      json_path: $.hooks
     - host: codex
       file: ~/.codex/config.toml
       toml_path: hooks
@@ -59,8 +62,10 @@ structure:
       # PascalCase events as identity — no alias mapping needed.
       - claude_and_codex: PreToolUse
         gemini: BeforeTool
+        antigravity: BeforeTool
       - claude_and_codex: PostToolUse
         gemini: AfterTool
+        antigravity: AfterTool
 
   binding:
     description: |
@@ -192,7 +197,11 @@ deliberately_excluded:
     aliases:
       - host: gemini-cli
         field_name: async
+      - host: antigravity-cli
+        field_name: async
       - host: gemini-cli
+        field_name: once
+      - host: antigravity-cli
         field_name: once
     appeared_in: 1/7 files (Gemini only)
     reason: |
@@ -213,7 +222,11 @@ deliberately_excluded:
     aliases:
       - host: gemini-cli
         field_name: name
+      - host: antigravity-cli
+        field_name: name
       - host: gemini-cli
+        field_name: description
+      - host: antigravity-cli
         field_name: description
     lossy_when_dropped: false       # Gemini log/disabled-list metadata; no runtime effect on Claude/Codex.
     appeared_in: 1/7 files (Gemini only)

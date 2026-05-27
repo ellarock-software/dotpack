@@ -178,6 +178,11 @@ func (u *UmbrellaInstaller) Install(r resource.Resource, scope adapter.Scope, op
 			return InstallResult{}, fmt.Errorf("apply file %s: %w", fw.Path, err)
 		}
 	}
+	for _, rm := range plan.RemoveFiles {
+		if err := removeStaleFile(rm); err != nil {
+			return InstallResult{}, fmt.Errorf("remove stale file %s: %w", rm.Path, err)
+		}
+	}
 	for _, mk := range plan.MergedKeys {
 		if err := applyMergedKey(mk); err != nil {
 			return InstallResult{}, fmt.Errorf("apply merged key %s in %s: %w", mk.Path, mk.File, err)
@@ -199,6 +204,7 @@ func (u *UmbrellaInstaller) aggregatePlans(r resource.Resource, scope adapter.Sc
 			return adapter.InstallPlan{}, fmt.Errorf("plan (%s sub-adapter %s): %w", u.label, writer.HostID(), err)
 		}
 		out.Files = append(out.Files, plan.Files...)
+		out.RemoveFiles = append(out.RemoveFiles, plan.RemoveFiles...)
 		out.MergedKeys = append(out.MergedKeys, plan.MergedKeys...)
 		if plan.TargetDir == "" {
 			continue

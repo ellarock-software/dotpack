@@ -1,7 +1,7 @@
 package resource
 
-// Kind identifies one of the six resource categories from
-// docs/adr/0007-... — skill, agent, command, memory, hook, mcp-server.
+// Kind identifies one of the resource categories from docs/adr/0007-...
+// — skill, agent, command, memory, hook, mcp-server, rule.
 type Kind string
 
 const (
@@ -11,6 +11,7 @@ const (
 	KindMemory    Kind = "memory"
 	KindHook      Kind = "hook"
 	KindMCPServer Kind = "mcp-server"
+	KindRule      Kind = "rule"
 )
 
 // Resource is the marker interface every per-kind struct implements,
@@ -60,3 +61,11 @@ func (h *Hook) Kind() Kind { return KindHook }
 // mcp-server's map-key identity but with the filesystem as the
 // identity carrier when the source format does not encode one).
 func (h *Hook) ResourceName() string { return h.Name }
+
+// Kind returns KindRule so *Rule satisfies the Resource interface.
+// Extensions() lives in rule.go alongside its backing field.
+func (r *Rule) Kind() Kind { return KindRule }
+
+// ResourceName returns the rule's name, falling back to id when the
+// canonical source only carries `id:`.
+func (r *Rule) ResourceName() string { return r.NameOrID() }
