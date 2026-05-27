@@ -245,6 +245,45 @@ func TestInstall_HookOnCodex_UserScope_FreshFile(t *testing.T) {
 	}
 }
 
+func TestInstall_HookOnCodex_RefusesSiblingHooksJSON(t *testing.T) {
+	codexHome := t.TempDir()
+	dotpackHome := t.TempDir()
+	projectHome := t.TempDir()
+	projectCodexDir := filepath.Join(projectHome, ".codex")
+	if err := os.MkdirAll(projectCodexDir, 0o755); err != nil {
+		t.Fatalf("mkdir project .codex: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectCodexDir, "hooks.json"), []byte(`{"hooks":{"preToolUse":[{"command":"echo legacy"}]}}`), 0o644); err != nil {
+		t.Fatalf("write hooks.json: %v", err)
+	}
+
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_GEMINI_HOME", t.TempDir())
+	t.Setenv("DOTPACK_AGENTS_HOME", t.TempDir())
+	t.Setenv("DOTPACK_CODEX_HOME", codexHome)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	t.Setenv("DOTPACK_PROJECT_HOME", projectHome)
+
+	src := filepath.Join("..", "resource", "testdata", "hooks", "bash-guard.hook.json")
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--kind", "hook", "--scope", "project"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected Codex hook install to refuse sibling hooks.json, got nil")
+	}
+	for _, want := range []string{"hooks.json", "config.toml", "remove or migrate"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error missing %q: %v", want, err)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(projectCodexDir, "config.toml")); !os.IsNotExist(statErr) {
+		t.Fatalf("config.toml should not be created after refusal, stat err = %v", statErr)
+	}
+}
+
 // TestInstall_HookOnCodex_SiblingKeyPreservation pins the "config.toml
 // is user-owned, not dotpack-owned" contract for codex. A pre-existing
 // config.toml with user-authored top-level `profile`, an unrelated
@@ -946,4 +985,3 @@ PreToolUse = "/legacy/non-spec.sh"
 		t.Errorf("user's legacy entry must survive the refusal; got:\n%s", raw)
 	}
 }
-

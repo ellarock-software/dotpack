@@ -30,7 +30,15 @@ Supported today:
 
 The importer copies durable configuration, skips runtime state, and rewrites
 repository-local .claude path references to .agents. Host compatibility output
-still belongs to dotpack install/reconcile, not to checked-in generated trees.`,
+still belongs to dotpack install/reconcile, not to checked-in generated trees.
+
+To translate .agents resources back into .claude, .gemini, .codex/config.toml,
+or shared .agents/skills host files, use dotpack install on the specific
+resource. dotpack does not yet bulk-export an entire .agents tree.`,
+		Example: `  dotpack import claude-code . --out .
+  dotpack install .agents/skills/demo/SKILL.md --agent claude-code --scope project
+  dotpack install .agents/skills/demo/SKILL.md --agent gemini-cli --scope project
+  dotpack install .agents/skills/demo/SKILL.md --agent codex --scope project`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runImport(cmd, args[0], args[1], outDir, force)
