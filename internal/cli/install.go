@@ -33,7 +33,11 @@ func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <source-path>",
 		Short: "Install a resource into an agent host",
-		Long: `Install a single resource into the named agent host.
+		Long: `Install a single portable resource into the named agent host.
+
+This is dotpack's .agents -> host-native translation command. The source
+may live under .agents or anywhere else; the resource must match the selected
+kind's schema and template before dotpack writes host files.
 
 Supported today:
   --agent claude-code | gemini-cli | codex | agents-cli
@@ -43,10 +47,31 @@ Supported today:
           documents no native agent loading directory.)
   --scope user | project
 
-User scope writes to $DOTPACK_CLAUDE_HOME / ~/.claude,
-$DOTPACK_GEMINI_HOME / ~/.gemini, or $DOTPACK_AGENTS_HOME / ~/.agents
-for file-drop resources, and to each host's config file for mcp-server
-and hook resources. Project scope writes under $DOTPACK_PROJECT_HOME / CWD.
+Host translation map:
+  skill:
+    claude-code -> .claude/skills/<name>/SKILL.md
+    gemini-cli  -> .gemini/skills/<name>/SKILL.md
+    codex       -> .agents/skills/<name>/SKILL.md
+    agents-cli  -> .agents/skills/<name>/SKILL.md once for Gemini + Codex
+  agent:
+    claude-code -> .claude/agents/<name>.md
+    gemini-cli  -> .gemini/agents/<name>.md
+    codex and agents-cli are unsupported for agent
+  mcp-server:
+    claude-code -> .mcp.json (project) or ~/.claude.json (user)
+    gemini-cli  -> .gemini/settings.json
+    codex       -> .codex/config.toml
+    agents-cli  -> fans out to Gemini + Codex config files
+  hook:
+    claude-code -> .claude/settings.json
+    gemini-cli  -> .gemini/settings.json
+    codex       -> .codex/config.toml
+    agents-cli  -> fans out to Gemini + Codex config files
+
+User scope writes under $DOTPACK_CLAUDE_HOME / ~/.claude,
+$DOTPACK_GEMINI_HOME / ~/.gemini, $DOTPACK_AGENTS_HOME / ~/.agents,
+$DOTPACK_CODEX_HOME / ~/.codex, or ~/.claude.json depending on host and kind.
+Project scope writes under $DOTPACK_PROJECT_HOME or the current directory.
 
 When --agent is omitted and the manifest already has a matching
 (kind, name) on a different host, install refuses with a
@@ -64,6 +89,11 @@ sub-adapter set is the strict union per ADR-0016 §8: a field whose
 canonical_concept is unsupported by ANY sub-adapter requires --allow-lossy.
 Sub-adapter set and per-kind writer lists are declared in umbrellaFactories
 (this file).`,
+		Example: `  dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope project
+  dotpack install .agents/skills/code-review/SKILL.md --agent gemini-cli --scope project
+  dotpack install .agents/skills/code-review/SKILL.md --agent codex --scope project
+  dotpack install .agents/mcp-servers/github.mcp.json --kind mcp-server --agent codex --scope user
+  dotpack install .agents/hooks/bash-guard.hook.json --kind hook --agent agents-cli --scope project`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInstall(cmd, args[0], agentName, kindName, scopeName, allowLossy, force)

@@ -44,7 +44,9 @@
 package codex
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/ellarock/dotpack/internal/adapter"
@@ -361,9 +363,99 @@ func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.Instal
 	switch r.Kind() {
 	case resource.KindSkill, resource.KindAgent:
 		return a.filedrop.Plan(r, scope)
-	case resource.KindMCPServer, resource.KindHook:
+	case resource.KindMCPServer:
 		return a.configfrag.Plan(r, scope)
+	case resource.KindHook:
+		plan, err := a.configfrag.Plan(r, scope)
+		if err != nil {
+			return adapter.InstallPlan{}, err
+		}
+		if err := rejectCodexHooksJSONConflict(plan); err != nil {
+			return adapter.InstallPlan{}, err
+		}
+		return plan, nil
 	default:
 		return adapter.InstallPlan{}, fmt.Errorf("%s: kind %q not yet supported", hostID, r.Kind())
+	}
+}
+
+func rejectCodexHooksJSONConflict(plan adapter.InstallPlan) error {
+	for _, mk := range plan.MergedKeys {
+		hooksJSONPath := filepath.Join(filepath.Dir(mk.File), "hooks.json")
+		hasHooks, err := codexHooksJSONDefinesHooks(hooksJSONPath)
+		if err != nil {
+			return err
+		}
+		if hasHooks {
+			return fmt.Errorf("codex: refusing hook install into %s because %s already defines hooks; Codex rejects hooks from both hooks.json and config.toml in the same layer, so remove or migrate hooks.json first", mk.File, hooksJSONPath)
+		}
+	}
+	return nil
+}
+
+func codexHooksJSONDefinesHooks(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("codex: inspect %s: %w", path, err)
+	}
+	if len(raw) == 0 {
+		return false, nil
+	}
+
+	var root map[string]any
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return false, fmt.Errorf("codex: %s exists but is not valid JSON; remove or fix it before installing hooks into config.toml: %w", path, err)
+	}
+	if hooks, ok := root["hooks"].(map[string]any); ok {
+		return codexHookEventMapDefinesHooks(hooks), nil
+	}
+
+	for _, event := range []string{
+		"preToolUse",
+		"PreToolUse",
+		"postToolUse",
+		"PostToolUse",
+		"postToolUseFailure",
+		"PostToolUseFailure",
+		"userPromptSubmit",
+		"UserPromptSubmit",
+		"stop",
+		"Stop",
+	} {
+		if value, ok := root[event]; ok {
+			if items, ok := value.([]any); ok && len(items) == 0 {
+				continue
+			}
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func codexHookEventMapDefinesHooks(hooks map[string]any) bool {
+	for _, value := range hooks {
+		if codexHookEventValueDefinesHooks(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func codexHookEventValueDefinesHooks(value any) bool {
+	switch v := value.(type) {
+	case nil:
+		return false
+	case []any:
+		return len(v) > 0
+	case map[string]any:
+		return len(v) > 0
+	case string:
+		return v != ""
+	default:
+		return true
 	}
 }
