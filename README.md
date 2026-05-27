@@ -2,7 +2,7 @@
 
 dotpack is a local package manager and translator for AI-agent resources.
 It validates a portable resource shape, then installs that resource into the
-native files used by Claude Code, Gemini CLI, Codex CLI, or the `agents-cli`
+native files used by Claude Code, Gemini CLI, Antigravity CLI, Codex CLI, or the `agents-cli`
 umbrella target.
 
 The project is intentionally filesystem-first. Adapters produce install plans;
@@ -40,6 +40,7 @@ Install a portable skill from a checked-in `.agents` tree:
 ```sh
 dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope project
 dotpack install .agents/skills/code-review/SKILL.md --agent gemini-cli --scope project
+dotpack install .agents/skills/code-review/SKILL.md --agent antigravity-cli --scope project
 dotpack install .agents/skills/code-review/SKILL.md --agent codex --scope project
 ```
 
@@ -61,15 +62,15 @@ dotpack import claude-code /path/to/project --out /path/to/project
 `dotpack install` is the `.agents` to host-native translation path. It installs
 one resource at a time.
 
-| Kind | `claude-code` target | `gemini-cli` target | `codex` target | `agents-cli` target |
-| --- | --- | --- | --- | --- |
-| `skill` | `.claude/skills/<name>/SKILL.md` | `.gemini/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` once for Gemini + Codex |
-| `agent` | `.claude/agents/<name>.md` | `.gemini/agents/<name>.md` | unsupported | unsupported |
-| `mcp-server` | `.mcp.json` or `~/.claude.json` | `.gemini/settings.json` | `.codex/config.toml` | fans out to Gemini + Codex config files |
-| `hook` | `.claude/settings.json` | `.gemini/settings.json` | `.codex/config.toml` | fans out to Gemini + Codex config files |
+| Kind | `claude-code` target | `gemini-cli` target | `antigravity-cli` target | `codex` target | `agents-cli` target |
+| --- | --- | --- | --- | --- | --- |
+| `skill` | `.claude/skills/<name>/SKILL.md` | `.gemini/skills/<name>/SKILL.md` | `.antigravity/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` once for sub-adapters |
+| `agent` | `.claude/agents/<name>.md` | `.gemini/agents/<name>.md` | `.antigravity/agents/<name>.md` | unsupported | unsupported |
+| `mcp-server` | `.mcp.json` or `~/.claude.json` | `.gemini/settings.json` | `.antigravity/settings.json` | `.codex/config.toml` | fans out to sub-adapter config files |
+| `hook` | `.claude/settings.json` | `.gemini/settings.json` | `.antigravity/settings.json` | `.codex/config.toml` | fans out to sub-adapter config files |
 
 For user scope, the same host roots resolve under `~/.claude`, `~/.gemini`,
-`~/.agents`, `~/.codex`, and `~/.dotpack`. For project scope, dotpack anchors
+`~/.antigravity`, `~/.agents`, `~/.codex`, and `~/.dotpack`. For project scope, dotpack anchors
 paths at `DOTPACK_PROJECT_HOME` or the current working directory.
 
 Important boundaries:
