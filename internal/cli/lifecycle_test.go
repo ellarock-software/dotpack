@@ -177,6 +177,89 @@ func TestLifecycleFailsClosedWhenRequiredHostIsUnsupported(t *testing.T) {
 	}
 }
 
+func TestInstallFailsClosedWithUnsupportedRealSponsioHosts(t *testing.T) {
+	if os.Getenv("DOTPACK_TEST_REAL_SPONSIO") != "1" {
+		t.Skip("set DOTPACK_TEST_REAL_SPONSIO=1 to probe the installed Sponsio binary")
+	}
+	binary := realSponsioBinaryForTest(t)
+	t.Setenv("DOTPACK_SPONSIO_BINARY", binary)
+
+	// Sponsio resolves `host install all` through its host registry. This probe
+	// exercises the same public status command dotpack uses so an installed
+	// binary that still lacks these host registrations proves the fail-closed
+	// path without running pip or touching network state.
+	probe := lifecycleTask{
+		Name: "real-sponsio-host-support-probe",
+		Ensure: lifecycleEnsure{Binaries: []lifecycleBinary{{
+			Name: "sponsio",
+			Env:  "DOTPACK_SPONSIO_BINARY",
+		}}},
+		Verify: []lifecycleCommand{
+			{Command: "sponsio", Args: []string{"host", "status", "codex"}},
+			{Command: "sponsio", Args: []string{"host", "status", "gemini-cli"}},
+			{Command: "sponsio", Args: []string{"host", "status", "antigravity-cli"}},
+		},
+		Failure: "fail-closed",
+	}
+	lifecycleErr := runLifecycleTask(probe)
+	if lifecycleErr == nil {
+		t.Skipf("%s supports codex, gemini-cli, and antigravity-cli; unsupported-host fail-closed path is not applicable", binary)
+	}
+
+	agentsHome, _ := setupCodexEnv(t)
+	withPostInstallLifecycle(t, func(agent string) error {
+		if agent != "codex" {
+			return fmt.Errorf("unexpected lifecycle agent %q", agent)
+		}
+		return lifecycleErr
+	})
+
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+	cmd := NewRootCmd()
+	cmd.SetOut(io_DiscardWriter())
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--scope", "user"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected install to fail closed when the real Sponsio binary lacks required host support")
+	}
+	for _, want := range []string{"installed codex:skill:dotpack-tracer-bullet", "post-install lifecycle failed", "host status codex"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(agentsHome, "skills", "dotpack-tracer-bullet", "SKILL.md")); statErr != nil {
+		t.Fatalf("materialization should have happened before real Sponsio failure is reported: %v", statErr)
+	}
+}
+
+func realSponsioBinaryForTest(t *testing.T) string {
+	t.Helper()
+	if configured := strings.TrimSpace(os.Getenv("DOTPACK_SPONSIO_BINARY")); configured != "" {
+		abs, err := filepath.Abs(configured)
+		if err != nil {
+			t.Fatalf("resolve DOTPACK_SPONSIO_BINARY: %v", err)
+		}
+		if _, err := os.Stat(abs); err != nil {
+			t.Fatalf("DOTPACK_SPONSIO_BINARY=%s: %v", abs, err)
+		}
+		return abs
+	}
+	if path, err := exec.LookPath("sponsio"); err == nil {
+		return path
+	}
+	candidate := filepath.Join("..", "..", ".venv", "bin", "sponsio")
+	if _, err := os.Stat(candidate); err == nil {
+		abs, absErr := filepath.Abs(candidate)
+		if absErr != nil {
+			t.Fatalf("resolve %s: %v", candidate, absErr)
+		}
+		return abs
+	}
+	t.Skip("no Sponsio binary found on PATH or at ../../.venv/bin/sponsio")
+	return ""
+}
+
 func TestInstallCodexTriggersPostInstallLifecycle(t *testing.T) {
 	agentsHome, _ := setupCodexEnv(t)
 	var called []string

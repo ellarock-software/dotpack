@@ -87,6 +87,12 @@ Important boundaries:
   `gemini-cli`, `antigravity-cli`, and `agents-cli` installs; if Sponsio or a
   configured installer is unavailable, or Sponsio cannot verify any required
   host, dotpack reports the materialized resource and exits with an error.
+  This is a runtime support gate, not a dotpack config fiction: OpenAI Codex
+  CLI 0.125.0 serializes hook stdin with `hook_event_name`, `tool_name`, and
+  `tool_input`, and accepts the Claude-style `hookSpecificOutput` deny reply.
+  A Sponsio binary still has to register the `codex`, `gemini-cli`, and
+  `antigravity-cli` hosts; `sponsio host install all` only covers registered
+  hosts, so dotpack verifies each required host explicitly.
 - `import` is native to `.agents`. Today it supports Claude Code input only.
 - There is no bulk exporter yet; install the specific `.agents` resource you
   want to materialize for a host.
