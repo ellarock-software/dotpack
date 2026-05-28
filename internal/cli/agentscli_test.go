@@ -429,7 +429,23 @@ func TestInstall_SkillOnCodexThenAgentsCli_ForceProducesDualRecords(t *testing.T
 	}
 }
 
-func TestInstall_AgentKindOnAgentsCli_Supported(t *testing.T) {
+// TestInstall_AgentKindOnAgentsCli_Unsupported pins that the agent kind
+// is NOT supported under the umbrella today. Codex has no native agent
+// loading directory (its Policy.Layouts omits KindAgent); gemini-cli
+// supports agent but at GeminiHome/agents/, NOT the AgentsHome
+// convergence path that the umbrella write-once contract requires. Until
+// the agent kind has a documented cross-host convergence path, the
+// umbrella refuses with a structured error rather than silently picking
+// one sub-adapter's path.
+//
+// Decision rationale (recorded here because the ADR doesn't address per-
+// kind agents-cli support): the umbrella's value proposition is "one
+// install, both CLIs see it". For skill, that holds via the documented
+// ~/.agents/skills/ convergence. For agent, there is no such convergence
+// — emitting only at GeminiHome/agents/ would mean codex never sees the
+// agent (and the user typed agents-cli expecting both to). Refusing is
+// the failure-mode-safe choice per ADR-0016 §Why.
+func TestInstall_AgentKindOnAgentsCli_Unsupported(t *testing.T) {
 	setupAgentsCliEnv(t)
 	src := filepath.Join("..", "resource", "testdata", "agents", "dotpack-tracer-agent.md")
 
@@ -439,17 +455,14 @@ func TestInstall_AgentKindOnAgentsCli_Supported(t *testing.T) {
 	cmd.SetArgs([]string{"install", src, "--agent", "agents-cli", "--kind", "agent"})
 
 	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("expected install to succeed for agent kind on agents-cli, got %v", err)
+	if err == nil {
+		t.Fatal("expected error for agent kind on agents-cli (no documented convergence path), got nil")
 	}
-
-	geminiPath := filepath.Join(os.Getenv("DOTPACK_GEMINI_HOME"), "agents", "dotpack-tracer-agent.md")
-	if _, err := os.Stat(geminiPath); err != nil {
-		t.Errorf("expected agent file at gemini path %s: %v", geminiPath, err)
+	msg := err.Error()
+	if !strings.Contains(msg, "agents-cli") {
+		t.Errorf("error must name the umbrella; got %q", msg)
 	}
-
-	codexPath := filepath.Join(os.Getenv("DOTPACK_CODEX_HOME"), "agents", "dotpack-tracer-agent.toml")
-	if _, err := os.Stat(codexPath); err != nil {
-		t.Errorf("expected TOML agent file at codex path %s: %v", codexPath, err)
+	if !strings.Contains(msg, "agent") {
+		t.Errorf("error must name the unsupported kind; got %q", msg)
 	}
 }

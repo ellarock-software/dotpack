@@ -45,7 +45,8 @@ Supported today:
   --kind  skill | agent | mcp-server | hook | rule (skill is inferred when
           the source is named SKILL.md; rule is inferred for direct
           .agents/rules/*.md files; agent/mcp-server/hook otherwise require
-          --kind explicitly.)
+          --kind explicitly. Codex does not support agent because codex CLI
+          documents no native agent loading directory.)
   --scope user | project
 
 Host translation map:
@@ -59,8 +60,7 @@ Host translation map:
     claude-code     -> .claude/agents/<name>.md
     gemini-cli      -> .gemini/agents/<name>.md
     antigravity-cli -> .antigravity/agents/<name>.md
-    codex           -> .codex/agents/<name>.toml
-    agents-cli      -> fans out to sub-adapters (markdown for most, TOML for codex)
+    codex and agents-cli are unsupported for agent
   mcp-server:
     claude-code     -> .mcp.json (project) or ~/.claude.json (user)
     gemini-cli      -> .gemini/settings.json
@@ -475,11 +475,14 @@ var umbrellaFactories = map[string]umbrellaConfig{
 			// per ADR-0016 §1.
 			resource.KindSkill: {"codex"},
 
-			// Agent kind fans out: dotpack translates the abstraction
-			// into TOML for Codex and drops Markdown for Gemini/Claude.
-			// Because the formats differ, there is no shared write-once
-			// path; each adapter writes its own host config file.
-			resource.KindAgent: {"gemini-cli", "antigravity-cli", "codex"},
+			// Agent kind: INTENTIONALLY ABSENT. No documented cross-
+			// host convergence path for agent — gemini-cli writes to
+			// GeminiHome/agents/, codex has no native agent loading
+			// directory at all. Surface as "kind not supported under
+			// umbrella" rather than silently picking gemini-cli's
+			// path (which codex would never see). See
+			// TestInstall_AgentKindOnAgentsCli_Unsupported. Add a
+			// writer here ONLY when a documented convergence emerges.
 			//
 			// Config-fragment kinds fan out: each sub-adapter writes
 			// to its own config file and the single umbrella manifest

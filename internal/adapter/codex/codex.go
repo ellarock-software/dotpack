@@ -19,10 +19,14 @@
 // preserves whichever sibling tables (mcp_servers + hooks) the file
 // already carries.
 //
-// Codex supports skill on the file-drop side and agent via TOML translation.
-// Because codex expects agents as .toml files under AgentsHome/agents/,
-// KindAgent is absent from Policy.Layouts (which handles raw file-drop) and
-// is instead handled natively by planAgentCodex to emit TOML.
+// Codex supports skill only on the file-drop side — there is no native
+// agent loading directory documented by the codex CLI. The absence of
+// resource.KindAgent from Policy.Layouts is the canonical declaration
+// of that: the filedrop module returns "kind agent not yet supported"
+// for any Plan(KindAgent) call. Agent support would be added by
+// appending a KindAgent Layout entry + setting AgentToolsShape; that
+// requires the codex CLI to document a native agent loading directory
+// analogous to .claude/agents/.
 //
 // Skill paths: <AgentsHome>/skills/<name>/SKILL.md (user) or
 // <ProjectHome>/.agents/skills/<name>/SKILL.md (project). Per
@@ -46,8 +50,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/pelletier/go-toml/v2"
 
 	"github.com/ellarock/dotpack/internal/adapter"
 	"github.com/ellarock/dotpack/internal/adapter/configfrag"
@@ -94,12 +96,15 @@ func projectConfigTomlFile(d dirs.Dirs) (string, error) {
 	return filepath.Join(d.ProjectHome, ".codex", "config.toml"), nil
 }
 
-// Policy is the codex per-host filedrop policy (skill and rule kinds).
-// KindAgent is INTENTIONALLY ABSENT from Layouts — codex CLI uses TOML
-// files for agents (handled directly by Adapter.Plan -> planAgentCodex)
-// rather than dropping raw frontmatter/markdown like skill and rule do.
-// Mcp-server and hook live in configfragPolicy(); they're config-fragment
-// kinds, not file-drop, so they ride a separate policy structure.
+// Policy is the codex per-host filedrop policy (skill kind only).
+// KindAgent is INTENTIONALLY ABSENT from Layouts — codex CLI documents
+// no native agent loading directory per developers.openai.com/codex (a
+// deliberate decision, not an oversight). filedrop.Plan returns "kind
+// agent not yet supported" for any Plan(KindAgent) call as a result.
+// AgentToolsShape is intentionally left at zero value (ToolsShapeUnused)
+// because no agent Layout exists. Mcp-server and hook live in
+// configfragPolicy(); they're config-fragment kinds, not file-drop, so
+// they ride a separate policy structure.
 var Policy = filedrop.Policy{
 	HostID: hostID,
 	Layouts: map[resource.Kind]filedrop.Layout{
@@ -341,70 +346,12 @@ func configfragPolicy() configfrag.Policy {
 	}
 }
 
-func planAgentCodex(r resource.Resource, scope adapter.Scope, d dirs.Dirs) (adapter.InstallPlan, error) {
-	a, ok := r.(*resource.Agent)
-	if !ok {
-		return adapter.InstallPlan{}, fmt.Errorf("plan agent: resource type %T is not *resource.Agent", r)
-	}
-
-	var rootDir string
-	var err error
-	if scope == adapter.ScopeUser {
-		rootDir, err = userConfigRoot(d)
-		if err != nil {
-			return adapter.InstallPlan{}, err
-		}
-	} else if scope == adapter.ScopeProject {
-		if d.ProjectHome == "" {
-			return adapter.InstallPlan{}, fmt.Errorf("codex: project scope requires dirs.ProjectHome to be set")
-		}
-		rootDir = filepath.Join(d.ProjectHome, ".codex")
-	} else {
-		return adapter.InstallPlan{}, fmt.Errorf("codex: unknown scope %q", scope)
-	}
-
-	targetDir := filepath.Join(rootDir, "agents")
-	targetFile := filepath.Join(targetDir, a.Name+".toml")
-
-	value := map[string]any{
-		"name":                   a.Name,
-		"description":            a.Description,
-		"model":                  a.Model,
-		"developer_instructions": a.Body,
-	}
-
-	if len(a.Tools) > 0 {
-		value["skills"] = a.Tools
-	}
-
-	for k, v := range a.Extensions() {
-		if _, taken := value[k]; taken {
-			continue
-		}
-		value[k] = v
-	}
-
-	b, err := toml.Marshal(value)
-	if err != nil {
-		return adapter.InstallPlan{}, fmt.Errorf("codex: marshal agent: %w", err)
-	}
-
-	return adapter.InstallPlan{
-		Files: []adapter.FileWrite{{
-			Path:    targetFile,
-			Content: b,
-			Mode:    0644,
-		}},
-	}, nil
-}
-
 // Adapter is the codex per-host shell that dispatches Plan to the right
 // deep module by resource Kind. Mirror of claudecode.Adapter; the
 // per-host registries in internal/cli (adapterFactories) type these as
 // adapter.Adapter so the concrete return type is transparent across
 // the boundary.
 type Adapter struct {
-	dirs       dirs.Dirs
 	filedrop   *filedrop.Adapter
 	configfrag *configfrag.Adapter
 }
@@ -414,7 +361,6 @@ type Adapter struct {
 // adapter from configfragPolicy.
 func New(d dirs.Dirs) *Adapter {
 	return &Adapter{
-		dirs:       d,
 		filedrop:   filedrop.New(d, Policy),
 		configfrag: configfrag.New(d, configfragPolicy()),
 	}
@@ -430,10 +376,8 @@ func (a *Adapter) HostID() string { return hostID }
 // paths already produce that message, so we delegate.
 func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.InstallPlan, error) {
 	switch r.Kind() {
-	case resource.KindSkill, resource.KindRule:
+	case resource.KindSkill, resource.KindAgent, resource.KindRule:
 		return a.filedrop.Plan(r, scope)
-	case resource.KindAgent:
-		return planAgentCodex(r, scope, a.dirs)
 	case resource.KindMCPServer:
 		return a.configfrag.Plan(r, scope)
 	case resource.KindHook:
