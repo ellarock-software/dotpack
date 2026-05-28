@@ -13,7 +13,7 @@ import (
 // setupAgentsCliEnv mirrors setupCodexEnv but is named for the umbrella
 // it exercises. AgentsHome is the convergence path both gemini-cli and
 // codex read; it's where --agent agents-cli writes once for the skill
-// kind per ADR-0016 §1. ClaudeHome and GeminiHome are still set so the
+// kind per ADR-0012 §1. ClaudeHome and GeminiHome are still set so the
 // sub-adapters that the umbrella constructs (codex + gemini-cli) can
 // validate their UserRoot accessors without erroring during the lossy
 // pre-flight — both sub-adapters' Plan() is potentially called when
@@ -34,7 +34,7 @@ func setupAgentsCliEnv(t *testing.T) (agentsHome, dotpackHome string) {
 }
 
 // TestInstall_Skill_OnAgentsCli_EndToEnd is the primary tracer-bullet
-// vertical slice for the agents-cli umbrella per ADR-0016 §1. It pins:
+// vertical slice for the agents-cli umbrella per ADR-0012 §1. It pins:
 //
 //   - --agent agents-cli is a recognised, buildable flag value (no longer
 //     the "not yet implemented" sentinel from architecture-review Card #4).
@@ -46,7 +46,7 @@ func setupAgentsCliEnv(t *testing.T) (agentsHome, dotpackHome string) {
 //   - Manifest record carries Agent="agents-cli" (NOT a sub-adapter HostID)
 //     and ID=agents-cli:skill:<name>. The umbrella IS the user-visible
 //     identity; the sub-adapter set lives in the orchestrator's
-//     CLI-flag-to-adapter-set map (ADR-0016 §10), not on the record.
+//     CLI-flag-to-adapter-set map (ADR-0012 §10), not on the record.
 //   - Exactly one file is written. The umbrella does not invoke both
 //     sub-adapters with redundant writes (would CollisionError on the
 //     second one and break the umbrella's "install once, all CLIs see it"
@@ -120,7 +120,7 @@ func TestInstall_Skill_OnAgentsCli_EndToEnd(t *testing.T) {
 }
 
 // TestInstall_SkillWithAllowedTools_OnAgentsCli_LossyRefused pins the
-// schema-driven lossy check under the umbrella per ADR-0016 §8 literal
+// schema-driven lossy check under the umbrella per ADR-0012 §8 literal
 // aggregation: a field whose canonical_concept is supported on NEITHER
 // sub-adapter (gemini-cli, codex) — here claude_skill_runtime_overrides
 // is claude-code-only — must refuse install without --allow-lossy. The

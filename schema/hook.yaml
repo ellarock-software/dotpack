@@ -5,7 +5,7 @@ shape_note: |
   is a slice of host configuration that gets merged into the host's settings
   file rather than dropped as a new file. The translator parses the source
   slice; the validator gates on the schema below; the adapter performs a
-  config-key merge per ADR-0008 (manifest tracks `merged_keys`).
+  config-key merge per ADR-0004 (manifest tracks `merged_keys`).
 
   Counts below are per HOOK-SPEC LEAF (innermost handler with command/type)
   or per BINDING (matcher group) depending on the field's level. Corpus
@@ -187,7 +187,7 @@ ecosystem_notes:
     targeting, but is not adopted universally."
 
 deliberately_excluded:
-  # Per ADR-0016 §8, each deliberately_excluded entry declares a
+  # Per ADR-0012 §8, each deliberately_excluded entry declares a
   # canonical_concept + aliases [{host, field_name}, ...]. Orchestrator's
   # per-instance lossy detection: if a resource's Extensions carry a field
   # listed under aliases[].field_name, install is lossy on hosts NOT in
@@ -208,7 +208,7 @@ deliberately_excluded:
       Gemini-specific execution-mode flags: `async` toggles non-blocking
       hook execution (default: sync), `once` toggles single-fire-per-session
       (default: every-trigger). The omission-failure rationale (Deviation
-      2 of ADR-0015) doesn't hold — both defaults are functional, just
+      2 of ADR-0011) doesn't hold — both defaults are functional, just
       different from the explicit-true behaviour. Below floor. Adapter
       behaviour:
       - gemini-cli adapter: emit natively when present.
@@ -244,6 +244,6 @@ deliberately_excluded:
         don't parse hook names. NOT lossy (lossy_when_dropped: false) —
         dropping them on Claude/Codex does not change install behaviour.
       This is the canonical example for the `lossy_when_dropped: false`
-      escape hatch introduced in ADR-0016 §8. If a future host introduces
+      escape hatch introduced in ADR-0012 §8. If a future host introduces
       a hook-name control concept and would parse these fields, add it to
       `aliases` and flip lossy_when_dropped to true.

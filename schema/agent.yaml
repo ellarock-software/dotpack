@@ -54,14 +54,14 @@ ecosystem_notes:
     Gemini's documented spec includes fields the Claude ecosystem does not
     use in practice: `kind: local|remote`, `temperature`, `max_turns`
     (snake_case), `timeout_mins`, inline `mcpServers`. None appeared in the
-    corpus. Treated as adapter-layer concerns per ADR-0007.
+    corpus. Treated as adapter-layer concerns per ADR-0003.
   - Description-as-trigger is universal across hosts. The body becomes the
     agent's system prompt — markdown is the only format observed.
   - Recurring body section conventions (Identity/Purpose, Capabilities,
     Approach, Workflow, Quality Checklist) are author conventions, NOT
     schema. dotpack does not enforce or rewrite body structure.
 deliberately_excluded:
-  # Per ADR-0016 §8, each deliberately_excluded entry declares a
+  # Per ADR-0012 §8, each deliberately_excluded entry declares a
   # canonical_concept + aliases [{host, field_name}, ...]. Orchestrator's
   # per-instance lossy detection: if a resource's Extensions carry a field
   # listed under aliases[].field_name, install is lossy on hosts NOT in
@@ -123,7 +123,7 @@ deliberately_excluded:
       Gemini-spec-only fields, absent from corpus. These encode
       Gemini-native agent runtime: agent locality (`kind: local|remote`,
       naming clash with dotpack's universal `kind` taxonomy documented in
-      ADR-0010), sampling parameter (`temperature`), conversation cap
+      ADR-0006), sampling parameter (`temperature`), conversation cap
       (`max_turns` — snake_case, distinct from Claude's camelCase
       `maxTurns`), wall-clock cap (`timeout_mins`). Adapter behaviour:
       - gemini-cli adapter: emit natively when present.
@@ -133,7 +133,7 @@ deliberately_excluded:
       a separate canonical_concept (claude_subagent_runtime_overrides).
       A future ADR-0017 may consolidate them under a single
       conversation_turn_cap canonical_concept with both aliases — see
-      ADR-0016 Consequences for the Scenario B deferral.
+      ADR-0012 Consequences for the Scenario B deferral.
 
   - body_section_normalisation:
       reason: |

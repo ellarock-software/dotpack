@@ -12,7 +12,7 @@ import (
 // matcher pattern and the hook-spec leaves the host actually executes.
 //
 // Universal core (the fields adapters always carry): event names
-// (PascalCase per ADR-0016 §5; Claude/Codex identity, Gemini's
+// (PascalCase per ADR-0012 §5; Claude/Codex identity, Gemini's
 // BeforeTool/AfterTool aliased per schema cross_ecosystem_event_aliases),
 // matcher (optional), and the hook-spec quartet of type, command,
 // timeout, statusMessage, env.
@@ -37,7 +37,7 @@ type Hook struct {
 }
 
 // EventBinding is one event with its ordered list of matcher-groups.
-// Event name is canonical (PascalCase per ADR-0016 §5); the schema's
+// Event name is canonical (PascalCase per ADR-0012 §5); the schema's
 // cross_ecosystem_event_aliases drives per-host rewriting in the
 // adapter's emit function (identity on claude+codex; Gemini-specific
 // for BeforeTool/AfterTool).
@@ -60,7 +60,7 @@ type Binding struct {
 // corpus (Codex documents prompt + agent handlers but tags them
 // "parsed but skipped"; only command actually runs). Timeout is in
 // canonical seconds — Gemini's milliseconds get a *1000 rewrite at
-// emit time per ADR-0016 §6.
+// emit time per ADR-0012 §6.
 type HookSpec struct {
 	Type          string
 	Command       string

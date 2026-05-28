@@ -17,7 +17,7 @@ func TestGemini_PlanSkill_UserScope_WritesToGeminiHome(t *testing.T) {
 	// Same on-disk layout as claude-code (skills nest in their own dir);
 	// only the root differs (.gemini vs .claude). The shared
 	// ~/.agents/skills/ convergence path is reserved for agents-cli
-	// (ADR-0016 §1) and explicitly NOT claimed here.
+	// (ADR-0012 §1) and explicitly NOT claimed here.
 	home := t.TempDir()
 	a := gemini.New(dirs.Dirs{GeminiHome: home})
 
@@ -119,7 +119,7 @@ func TestGemini_PlanSkill_FallbackEncodeEmitsFrontmatterAndBody(t *testing.T) {
 }
 
 func TestGemini_PlanSkill_BytePerfectPassThroughWhenNoLossyExtensions(t *testing.T) {
-	// ADR-0008 byte-identity guarantee applies here too: if ParseSkill
+	// ADR-0004 byte-identity guarantee applies here too: if ParseSkill
 	// captured Raw bytes and no extension would be dropped on gemini-cli,
 	// plan.Files[0].Content MUST equal the source bytes. (For gemini-cli,
 	// even fewer extensions are "kept" than claude-code, so most
@@ -136,7 +136,7 @@ func TestGemini_PlanSkill_BytePerfectPassThroughWhenNoLossyExtensions(t *testing
 		t.Fatalf("Plan: %v", err)
 	}
 	if !bytes.Equal(plan.Files[0].Content, src) {
-		t.Errorf("plan content diverges from source bytes (ADR-0008 violation).\n"+
+		t.Errorf("plan content diverges from source bytes (ADR-0004 violation).\n"+
 			"--- source ---\n%s\n--- plan ---\n%s", string(src), string(plan.Files[0].Content))
 	}
 }

@@ -4,7 +4,7 @@
 //   - skill + agent → internal/adapter/filedrop (one file written per
 //     resource; no config merging).
 //   - mcp-server + hook → internal/adapter/configfrag (one or more
-//     (path, value) merges into a host config file; ADR-0016 §5–§7).
+//     (path, value) merges into a host config file; ADR-0012 §5–§7).
 //
 // Both modules implement adapter.Adapter; the shell's job is to declare
 // the per-host policy data (Policy for filedrop; configfragPolicy() for
@@ -30,7 +30,7 @@
 // <ClaudeHome>/settings.json (user — settings.json IS inside
 // ClaudeHome, unlike mcp-server's ~/.claude.json sibling, so user
 // scope is wired from day 1). Hook installs append into $.hooks.<Event>
-// arrays per ADR-0016 §9; identity at uninstall time is a sha256
+// arrays per ADR-0012 §9; identity at uninstall time is a sha256
 // content-hash Selector persisted in manifest.MergedKey (numeric
 // indices are unstable when siblings come and go).
 package claudecode
@@ -64,7 +64,7 @@ func userRoot(d dirs.Dirs) (string, error) {
 
 // Policy is the claude-code per-host filedrop policy (skill + agent
 // kinds). Exported (not unexported `policy`) so future cross-adapter
-// machinery — agents-cli umbrella (ADR-0016 §1), batch capability
+// machinery — agents-cli umbrella (ADR-0012 §1), batch capability
 // queries — can read it without importing through New(d). Mcp-server
 // and hook live in configfragPolicy(); they're config-fragment
 // kinds, not file-drop, so they ride a separate policy structure.
@@ -148,7 +148,7 @@ func userSettingsFile(d dirs.Dirs) (string, error) {
 //
 // Per-host divergence (claude-code identity for event names,
 // canonical-seconds timeout, no Gemini-only field re-emit) is the
-// trivial slice — claude's emit is the canonical shape ADR-0016 §5
+// trivial slice — claude's emit is the canonical shape ADR-0012 §5
 // designates. Gemini and Codex each have their own emit function with
 // the per-host rewrites
 // (Gemini's BeforeTool/AfterTool + ms timeout; Codex identity for

@@ -92,7 +92,7 @@ convergence to ~/.agents/skills/ across gemini-cli + codex; mcp-server and
 hook installs fan out to each host's config file. The manifest record
 carries Agent="agents-cli" so the user-typed umbrella identity is preserved
 through ` + "`dotpack list`" + ` and uninstall. Lossy aggregation across the
-sub-adapter set is the strict union per ADR-0016 §8: a field whose
+sub-adapter set is the strict union per ADR-0012 §8: a field whose
 canonical_concept is unsupported by ANY sub-adapter requires --allow-lossy.
 Sub-adapter set and per-kind writer lists are declared in umbrellaFactories
 (this file).
@@ -165,7 +165,7 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 
 	// Umbrella branch — agents-cli (and any future umbrella name in
 	// umbrellaFactories) routes to orchestrator.UmbrellaInstaller per
-	// ADR-0016 §1. The per-host buildAdapter path is unchanged; the
+	// ADR-0012 §1. The per-host buildAdapter path is unchanged; the
 	// umbrella branch is the orchestrator-side fan-out the ADR calls
 	// for, kept narrow so per-host installs aren't paying for the
 	// umbrella machinery they don't use.
@@ -439,7 +439,7 @@ var adapterFactories = map[string]func(dirs.Dirs) adapter.Adapter{
 }
 
 // umbrellaFactories is the per-umbrella registry of CLI-flag-to-adapter-
-// set aliases per ADR-0016 §1 + §10. Each umbrella declares:
+// set aliases per ADR-0012 §1 + §10. Each umbrella declares:
 //
 //   - subs: the sub-adapter HostID set the umbrella fans out to for
 //     lossy aggregation (resolved against adapterFactories at install
@@ -453,7 +453,7 @@ var adapterFactories = map[string]func(dirs.Dirs) adapter.Adapter{
 //     UmbrellaInstaller.Install returns a structured "kind not supported
 //     under umbrella" error rather than silently picking a default.
 //
-// To add a new umbrella (e.g., "all", "cursor-ish" per ADR-0016 §10's
+// To add a new umbrella (e.g., "all", "cursor-ish" per ADR-0012 §10's
 // future-note): append an entry here, add per-kind writers as
 // convergence paths get documented, and the rest is mechanical (misroute
 // hint, install dispatch, and uninstall round-tripping all work without
@@ -472,7 +472,7 @@ var umbrellaFactories = map[string]umbrellaConfig{
 			// reads ~/.agents/skills/ per schema/skill.yaml's
 			// ecosystem_notes, so codex's single write is consumed by
 			// both runtimes — the file-drop write-once convergence
-			// per ADR-0016 §1.
+			// per ADR-0012 §1.
 			resource.KindSkill: {"codex"},
 
 			// Agent kind fans out: dotpack translates the abstraction

@@ -1,5 +1,5 @@
 // UmbrellaInstaller — orchestrator-side fan-out for CLI flags that
-// resolve to an adapter set per ADR-0016 §1+§10. Sibling to Installer;
+// resolve to an adapter set per ADR-0012 §1+§10. Sibling to Installer;
 // see orchestrator.go's package docstring for the (Reader, Installer,
 // UmbrellaInstaller) split rationale.
 //
@@ -7,7 +7,7 @@
 // Installer is the (host, manifest) pair — one adapter, one HostID,
 // HostID() drives both lossy-check and record-derivation. An umbrella
 // install has NO single host: it aggregates lossy across multiple
-// sub-adapters (per ADR-0016 §8's fan-out aggregation) AND it labels
+// sub-adapters (per ADR-0012 §8's fan-out aggregation) AND it labels
 // the manifest record with the umbrella's CLI-flag name ("agents-cli"),
 // NOT a sub-adapter's HostID. Splatting both knobs onto Installer would
 // require an "AgentLabel override" on InstallOptions and a sub-adapter
@@ -23,7 +23,7 @@
 // gemini-cli and codex both honour ~/.agents/skills/, so the umbrella
 // picks codex (the documented canonical writer per
 // developers.openai.com/codex/skills) to produce the InstallPlan, and
-// the single SKILL.md written there is read by both runtimes. ADR-0016
+// the single SKILL.md written there is read by both runtimes. ADR-0012
 // §1: "for file-drop kinds the orchestrator special-cases the flag to
 // write `.agents/` once rather than invoking both sub-adapters with
 // redundant writes". Config-fragment kinds are different: each
@@ -49,7 +49,7 @@ import (
 
 // UmbrellaInstaller installs one resource under a CLI-flag-driven
 // adapter set. SubAdapters is the full set the umbrella fans out to for
-// lossy aggregation (ADR-0016 §8); Writers picks which sub-adapter
+// lossy aggregation (ADR-0012 §8); Writers picks which sub-adapter
 // supplies the InstallPlan for each kind (the write-once convergence
 // choice for file-drop). Label is the user-visible umbrella name (e.g.
 // "agents-cli") and becomes the manifest record's Agent field and the
@@ -75,7 +75,7 @@ type UmbrellaInstaller struct {
 //   - subAdapters MUST contain every adapter the umbrella resolves to.
 //     Lossy aggregation iterates this set; a missing sub-adapter
 //     silently bypasses its lossy check (the failure-mode-safety
-//     argument in ADR-0016 §Why).
+//     argument in ADR-0012 §Why).
 //   - writers MUST cover every kind the umbrella supports. A kind absent
 //     from writers means "umbrella does not support this kind" — Install
 //     returns a structured error rather than picking a default
@@ -104,7 +104,7 @@ func NewUmbrellaInstaller(d dirs.Dirs, label string, subAdapters []adapter.Adapt
 //  2. Aggregate the writers' InstallPlans. Errors propagate (each
 //     writer's Plan enforces per-host kind support).
 //  3. Aggregate per-instance lossy reasons across ALL sub-adapters per
-//     ADR-0016 §8 fan-out semantics. A LossyReason is recorded if ANY
+//     ADR-0012 §8 fan-out semantics. A LossyReason is recorded if ANY
 //     sub-adapter would drop the field whose concept is
 //     lossy_when_dropped: true. Reasons are deduped by FieldPath so
 //     "claude_skill_runtime_overrides not supported on EITHER sub-adapter"
@@ -113,7 +113,7 @@ func NewUmbrellaInstaller(d dirs.Dirs, label string, subAdapters []adapter.Adapt
 //     (not a sub-adapter) — the user's CLI-flag identity is what they
 //     should see in the failure message.
 //  4. Build the manifest record using the umbrella label for Agent and
-//     the ID's host segment. Per ADR-0016 §1 + this session's design
+//     the ID's host segment. Per ADR-0012 §1 + this session's design
 //     decision (Option A), the user-typed umbrella IS the record's
 //     identity; sub-adapter HostIDs do not surface on the record.
 //  5. Pre-flight collision check (shared with per-host Installer) — if
@@ -221,7 +221,7 @@ func (u *UmbrellaInstaller) aggregatePlans(r resource.Resource, scope adapter.Sc
 }
 
 // aggregateLossy walks every sub-adapter and unions their LossyReasons
-// per ADR-0016 §8 fan-out semantics (a field is lossy on the umbrella
+// per ADR-0012 §8 fan-out semantics (a field is lossy on the umbrella
 // if ANY sub-adapter would drop it). Dedup is by FieldPath so a field
 // lossy on multiple sub-adapters surfaces once with a stable supporting-
 // hosts list — the user reads one reason per field, not per sub-adapter.
@@ -273,7 +273,7 @@ func (u *UmbrellaInstaller) aggregateLossy(r resource.Resource) ([]adapter.Lossy
 // resolveAgentsHomeWriter and related per-umbrella helpers are NOT in
 // this file — they live in internal/cli/install.go's umbrellaFactories
 // alongside the per-host adapterFactories. Keeping them at the CLI layer
-// matches Card #4's registry pattern and ADR-0016 §10's "alias table" at
+// matches Card #4's registry pattern and ADR-0012 §10's "alias table" at
 // the orchestrator/CLI boundary. This file is concerned with the install
 // algorithm only.
 //

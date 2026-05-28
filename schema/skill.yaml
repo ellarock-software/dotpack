@@ -42,7 +42,7 @@ ecosystem_notes:
     their body text, but none of the corpus examples actually used it in
     frontmatter. Treated as authorial intent, not schema.
 deliberately_excluded:
-  # Per ADR-0016 §8, each deliberately_excluded entry declares a
+  # Per ADR-0012 §8, each deliberately_excluded entry declares a
   # canonical_concept slug plus the frontmatter field name(s) that
   # encode it on disk. Two binding mechanisms — pick the one that
   # matches the concept's nature, not both:

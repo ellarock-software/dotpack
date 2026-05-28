@@ -126,7 +126,7 @@ func TestCodex_PlanSkill_FallbackEncodeEmitsFrontmatterAndBody(t *testing.T) {
 }
 
 func TestCodex_PlanSkill_BytePerfectPassThroughWithPassThroughMetadataExtensions(t *testing.T) {
-	// ADR-0008 byte-identity: if Raw is set AND every extension is one
+	// ADR-0004 byte-identity: if Raw is set AND every extension is one
 	// codex KEEPS per §8, content == source bytes. The previous shape of
 	// this test (universal-core-only source) short-circuited at
 	// `len(extensions) == 0` BEFORE schema.HostKeepsExtension was
@@ -154,7 +154,7 @@ func TestCodex_PlanSkill_BytePerfectPassThroughWithPassThroughMetadataExtensions
 		t.Fatalf("Plan: %v", err)
 	}
 	if !bytes.Equal(plan.Files[0].Content, src) {
-		t.Errorf("plan content diverges from source bytes (ADR-0008 violation).\n"+
+		t.Errorf("plan content diverges from source bytes (ADR-0004 violation).\n"+
 			"--- source ---\n%s\n--- plan ---\n%s", string(src), string(plan.Files[0].Content))
 	}
 }

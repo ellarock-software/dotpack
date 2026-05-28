@@ -30,12 +30,12 @@ func setupCodexMCPEnv(t *testing.T) (codexHome, dotpackHome string) {
 }
 
 // TestInstall_MCPServerOnCodex_UserScope_FreshFile is the tracer-bullet
-// for the codex mcp-server slice per ADR-0016 §5–§7 + ADR-0014. Smallest
+// for the codex mcp-server slice per ADR-0012 §5–§7 + ADR-0010. Smallest
 // meaningful vertical slice: one kind (mcp-server) on codex, TOML format,
 // user scope, fresh config.toml (no existing file). Forces all new
 // architectural elements:
 //
-//   - pelletier/go-toml/v2 dep (ADR-0016 §4 sanctioned)
+//   - pelletier/go-toml/v2 dep (ADR-0012 §4 sanctioned)
 //   - orchestrator.applyTOMLMergedKey / unmergeTOMLKey (the format-
 //     specific walkers around the format-agnostic map primitives)
 //   - codex.configfragPolicy() + emitMCPServerCodex (mirror of claudecode
@@ -190,7 +190,7 @@ func TestInstall_MCPServerOnCodex_UserScope_FreshFile(t *testing.T) {
 }
 
 // TestInstall_MCPServerOnCodex_PreservesCodexSupersetExtensions pins
-// the schema/mcp-server.yaml + ADR-0014 promise that codex emit
+// the schema/mcp-server.yaml + ADR-0010 promise that codex emit
 // preserves the codex superset verbatim. Source has `enabled`,
 // `startup_timeout_sec`, `http_headers` (all schema-listed extensions);
 // emit must keep them on the value. Also pins the integral-float64 →

@@ -16,8 +16,8 @@ import (
 // non-conforming source can always be renamed at import time).
 var mcpServerNameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 
-// ValidateMCPServer checks the per-instance invariants ADR-0014 +
-// ADR-0016 §7 promise to gate at parse-time:
+// ValidateMCPServer checks the per-instance invariants ADR-0010 +
+// ADR-0012 §7 promise to gate at parse-time:
 //
 //  1. Name is non-empty and slug-shaped (see mcpServerNameRE).
 //  2. Transport discriminator: exactly one of {Command, URL} is set
@@ -28,7 +28,7 @@ var mcpServerNameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 //     not.
 //
 // Extensions are NOT validated here — per-instance lossy detection
-// (ADR-0016 §8) is the orchestrator's job, not the validator's. The
+// (ADR-0012 §8) is the orchestrator's job, not the validator's. The
 // validator's contract is "the resource is structurally well-formed";
 // "the install would drop semantically load-bearing fields on this
 // host" is a runtime concern surfaced via LossyError.

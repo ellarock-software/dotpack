@@ -23,7 +23,7 @@ var hookNameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 // rather than letting the host silently ignore the binding.
 //
 // Gemini's BeforeTool / AfterTool are NOT in this set — the translator
-// canonicalises Gemini sources to PascalCase per ADR-0016 §5 before
+// canonicalises Gemini sources to PascalCase per ADR-0012 §5 before
 // the validator runs.
 var canonicalHookEvents = map[string]struct{}{
 	"PreToolUse":         {},
@@ -48,10 +48,10 @@ var canonicalHookEvents = map[string]struct{}{
 // 30000 in a Claude-seconds field — the author thought it was
 // milliseconds, so their hooks effectively never timed out).
 //
-// Deviation from ADR-0016 §6: the ADR text says "the validator emits
+// Deviation from ADR-0012 §6: the ADR text says "the validator emits
 // a WARNING when canonical timeout > 600". The validator framework
 // has no warnings channel (errors block, nothing else does), so this
-// slice TIGHTENS the behaviour to a blocking error per ADR-0015's
+// slice TIGHTENS the behaviour to a blocking error per ADR-0011's
 // "fail-loud-not-silent" deviation criterion 2. A user who legitimately
 // wants a >10-minute timeout (no corpus precedent) must lower the
 // value to install; --force does not bypass validation. If the
@@ -59,7 +59,7 @@ var canonicalHookEvents = map[string]struct{}{
 // to a warning and the docstring drops this paragraph.
 const hookTimeoutSecondsSaneCeiling = 600
 
-// ValidateHook checks the per-instance invariants ADR-0016 §5–§6 +
+// ValidateHook checks the per-instance invariants ADR-0012 §5–§6 +
 // schema/hook.yaml promise to gate at parse-time:
 //
 //  1. Name is non-empty and kebab-shaped (see hookNameRE).
@@ -74,7 +74,7 @@ const hookTimeoutSecondsSaneCeiling = 600
 //     shanraisshan-anomaly guard.
 //
 // Extensions are NOT validated here — per-instance lossy detection
-// (ADR-0016 §8) is the orchestrator's job, not the validator's.
+// (ADR-0012 §8) is the orchestrator's job, not the validator's.
 func ValidateHook(h *resource.Hook) []ValidationError {
 	var errs []ValidationError
 

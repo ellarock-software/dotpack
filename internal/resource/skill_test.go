@@ -61,7 +61,7 @@ func TestParseSkill_CollectsUnknownFieldsAsExtensions(t *testing.T) {
 	// allowed-tools is a Claude-only extension per schema/skill.yaml
 	// deliberately_excluded.claude_skill_runtime_overrides. ParseSkill
 	// must surface it on Extensions so the orchestrator's per-instance
-	// lossy detection (ADR-0016 §8) has data to inspect.
+	// lossy detection (ADR-0012 §8) has data to inspect.
 	raw := []byte("---\nname: ext-fixture\ndescription: e\nallowed-tools:\n  - Bash\n  - Edit\n---\nbody\n")
 	skill, err := resource.ParseSkill(raw)
 	if err != nil {

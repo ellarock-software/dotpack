@@ -1,10 +1,10 @@
-// Format-aware merged-key apply / un-merge per ADR-0016 §5–§7 + §9.
+// Format-aware merged-key apply / un-merge per ADR-0012 §5–§7 + §9.
 //
 // Why this lives in orchestrator (not adapter): the read-modify-write
 // algorithm is FORMAT-specific (JSON vs TOML), not host-specific.
 // Adapters emit (file, path, value) tuples in their native path syntax;
 // the orchestrator infers format from the file extension and dispatches
-// to the right walker. This is the advisor's pushback on ADR-0016 §9's
+// to the right walker. This is the advisor's pushback on ADR-0012 §9's
 // "Uninstall...requires the host adapter" future-note — empirically the
 // walker is sufficient, so Reader.Uninstall does NOT need an adapter
 // parameter for the un-merge step.
@@ -71,7 +71,7 @@ func formatFromFile(path string) (mergedFormat, error) {
 // Dispatches on Op:
 //   - MergedKeySet (default): path-leaf overwrite — mcp-server's shape.
 //   - MergedKeyAppend: path target is an array; value is appended —
-//     hook's $.hooks.<event> shape per ADR-0016 §9.
+//     hook's $.hooks.<event> shape per ADR-0012 §9.
 func applyMergedKey(mk adapter.MergedKeyWrite) error {
 	format, err := formatFromFile(mk.File)
 	if err != nil {

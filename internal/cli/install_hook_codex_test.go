@@ -80,7 +80,7 @@ func readCodexHooks(t *testing.T, path string) map[string][]map[string]any {
 }
 
 // TestInstall_HookOnCodex_UserScope_FreshFile is the tracer-bullet for
-// the codex hook slice per ADR-0016 §5–§7+§9. Smallest meaningful
+// the codex hook slice per ADR-0012 §5–§7+§9. Smallest meaningful
 // vertical slice: one event × one binding × one hook-spec on codex,
 // TOML format, user scope, fresh config.toml (no existing file).
 //
@@ -374,7 +374,7 @@ command = "/usr/local/bin/read-guard.sh"
 	}
 }
 
-// TestInstall_HookOnCodex_MultiBinding_RoundTrip pins ADR-0016 §9's
+// TestInstall_HookOnCodex_MultiBinding_RoundTrip pins ADR-0012 §9's
 // "Multiple keys per hook install (one per binding leaf path)" for
 // TOML. One resource installs 3 bindings across 2 events (PreToolUse ×
 // 2 + PostToolUse × 1). Manifest must record 3 MergedKey entries (each

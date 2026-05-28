@@ -122,10 +122,10 @@ No preamble, no explanation. Just the sentinel on its own line, then stop.
 // TestHostVerify_ClaudeCodeLoadsAdapterOutput_WithRuntimeOverrides is the
 // slice-2 closing probe. Same pattern as the slice-1 test, but the source
 // SKILL.md carries `allowed-tools` in its frontmatter — one of the
-// claude_skill_runtime_overrides aliases (ADR-0016 §8). Slice 2's
+// claude_skill_runtime_overrides aliases (ADR-0012 §8). Slice 2's
 // schema-driven §8 algorithm says claude-code natively supports this
 // concept, so the adapter must (a) not flag the install lossy and
-// (b) byte-pass-through the bytes (ADR-0008) so Claude Code's loader
+// (b) byte-pass-through the bytes (ADR-0004) so Claude Code's loader
 // sees the field. This test fails if either guarantee regresses.
 //
 // Gated by DOTPACK_TEST_CLAUDE_HOST=1 (same as the slice-1 test) —
@@ -214,7 +214,7 @@ No preamble, no explanation. Just the sentinel on its own line, then stop.
 		t.Fatalf("read installed SKILL.md at %s: %v", target, err)
 	}
 	if !bytes.Equal(onDisk, []byte(skillContent)) {
-		t.Fatalf("installed bytes diverge from source (ADR-0008 regression).\n"+
+		t.Fatalf("installed bytes diverge from source (ADR-0004 regression).\n"+
 			"--- source ---\n%s\n--- on disk ---\n%s", skillContent, string(onDisk))
 	}
 	if !bytes.Contains(onDisk, []byte("allowed-tools:")) {

@@ -1,5 +1,6 @@
 package schema
 
+//go:generate go run ../cmd/gendocs
 import (
 	"fmt"
 	"sync"
@@ -9,7 +10,7 @@ import (
 	"github.com/ellarock/dotpack/internal/resource"
 )
 
-// Schema is one kind's parsed YAML. Only the fields the ADR-0016 §8
+// Schema is one kind's parsed YAML. Only the fields the ADR-0012 §8
 // algorithm reads are unmarshalled — the rest of the YAML (template,
 // fields, ecosystem_notes, reasons) is intentionally ignored here;
 // validators / docs read it directly from the YAML files.
@@ -36,7 +37,7 @@ type Concept struct {
 	FieldNames []string `yaml:"field_names"`
 
 	// LossyWhenDropped is *bool so we can distinguish absent (→ default
-	// true per ADR-0016 §8) from explicit false (pass-through metadata).
+	// true per ADR-0012 §8) from explicit false (pass-through metadata).
 	LossyWhenDropped *bool `yaml:"lossy_when_dropped"`
 
 	// CanonicalisesTo is the ADR-0017 Scenario B anchor — names a
@@ -76,7 +77,7 @@ func (c *Concept) SupportsHost(host string) bool {
 
 // IsLossyWhenDropped reports whether dropping this concept on a
 // non-supporting host is semantically lossy. Defaults to true per
-// ADR-0016 §8: silent drop is the failure mode dotpack exists to
+// ADR-0012 §8: silent drop is the failure mode dotpack exists to
 // prevent, so the safer default is "lossy unless explicitly opted out".
 func (c *Concept) IsLossyWhenDropped() bool {
 	if c.LossyWhenDropped == nil {

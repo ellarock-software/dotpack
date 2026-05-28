@@ -7,12 +7,12 @@ import (
 	"github.com/ellarock/dotpack/internal/resource"
 )
 
-// LossyExtensions implements ADR-0016 §8 per-instance lossy detection.
+// LossyExtensions implements ADR-0012 §8 per-instance lossy detection.
 // For each key in extensions, look up the matching canonical_concept;
 // emit a LossyReason when the concept exists and the target host is
 // NOT in its aliases (and lossy_when_dropped is true), OR when the
 // concept does not exist (unknown field — lossy by default per the
-// failure-mode-safety argument in ADR-0016 §Why).
+// failure-mode-safety argument in ADR-0012 §Why).
 //
 // Pass-through metadata (lossy_when_dropped: false) is skipped: dropping
 // it changes nothing observable, so requiring --allow-lossy would be

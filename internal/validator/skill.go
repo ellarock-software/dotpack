@@ -32,7 +32,7 @@ var skillNameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 // ValidateSkill checks the universal-core invariants for a Skill: name
 // required + slug-shaped, description required, body required. License
 // is optional and pass-through (no validation). Extensions are not
-// checked here — per-instance lossy detection (ADR-0016 §8) is the
+// checked here — per-instance lossy detection (ADR-0012 §8) is the
 // orchestrator's job, not the validator's.
 func ValidateSkill(s *resource.Skill) []ValidationError {
 	var errs []ValidationError

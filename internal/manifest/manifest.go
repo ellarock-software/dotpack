@@ -1,5 +1,5 @@
 // Package manifest persists install provenance to ~/.dotpack/installs.yaml,
-// the source of truth for uninstall / list / reconcile / prune per ADR-0008.
+// the source of truth for uninstall / list / reconcile / prune per ADR-0004.
 // Load + Upsert + Remove are intentionally small primitives; higher-level
 // workflows decide when a record is stale enough to remove.
 package manifest
@@ -15,7 +15,7 @@ import (
 )
 
 // MergedKey is one (file, path) tuple the install merged into a host
-// config file (per ADR-0016 §9). File is the absolute path of the host
+// config file (per ADR-0012 §9). File is the absolute path of the host
 // config file (e.g., <ProjectHome>/.mcp.json); Path is the format-native
 // expression (JSONPath-ish "$.mcpServers.github" for JSON, dotted
 // "mcp_servers.github" for TOML when codex lands) — the format is
@@ -55,7 +55,7 @@ type MergedKey struct {
 	Selector string `yaml:"selector,omitempty"`
 }
 
-// Record is one install. Field set per ADR-0008's "{ id, source, kind,
+// Record is one install. Field set per ADR-0004's "{ id, source, kind,
 // agent, scope, target_dir, files: [...], merged_keys: [...], cache_key,
 // installed_at }" schema.
 type Record struct {
@@ -110,7 +110,7 @@ func (s *Store) Load() (*Manifest, error) {
 // if no match is found. The result is written back atomically (write
 // to tmp, rename). Parent dirs are created if missing.
 //
-// Per ADR-0008 the manifest is the reconcile source of truth: the
+// Per ADR-0004 the manifest is the reconcile source of truth: the
 // (host, kind, name) tuple — encoded as the ID — uniquely identifies
 // an install slot. Re-installs MUST be idempotent at the record level
 // so uninstall/list/reconcile behave consistently. Slot preservation

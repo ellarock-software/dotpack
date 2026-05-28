@@ -16,7 +16,7 @@ import (
 // manifest record ID derivation (claude-code:mcp-server:<Name>) without
 // re-reading the source.
 //
-// Transport: ADR-0014 + ADR-0016 §7 discriminate by field presence —
+// Transport: ADR-0010 + ADR-0012 §7 discriminate by field presence —
 // stdio is (Command, Args), HTTP is URL. The validator enforces "exactly
 // one of Command/URL is present" + "Args required when Command present"
 // at parse-time gate; the adapter emits whichever transport fields the
@@ -71,7 +71,7 @@ func (m *MCPServer) WithExtensions(ext map[string]any) *MCPServer {
 // Accepts the wrapper shape {"mcpServers": {"<name>": {...fields...}}}
 // per advisor's resolution of Branch A — copy-paste from real .mcp.json
 // works with zero edits. The wrapper key MUST be `mcpServers` (camelCase,
-// the canonical name per ADR-0016 §5); codex's snake_case `mcp_servers`
+// the canonical name per ADR-0012 §5); codex's snake_case `mcp_servers`
 // is a TOML-emit concern, not a JSON-source concern.
 //
 // Multi-entry sources are rejected: dotpack's resource = one server
@@ -98,7 +98,7 @@ func ParseMCPServer(raw []byte) (*MCPServer, error) {
 	serversRaw, ok := wrapper["mcpServers"]
 	if !ok {
 		keys := sortedTopKeys(wrapper)
-		return nil, fmt.Errorf("mcp-server: top-level key %v is not \"mcpServers\" (per ADR-0016 §5 the canonical wrapper is camelCase mcpServers)", keys)
+		return nil, fmt.Errorf("mcp-server: top-level key %v is not \"mcpServers\" (per ADR-0012 §5 the canonical wrapper is camelCase mcpServers)", keys)
 	}
 
 	var servers map[string]json.RawMessage

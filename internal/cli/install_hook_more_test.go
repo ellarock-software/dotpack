@@ -544,7 +544,7 @@ func TestInstall_Hook_DuplicateContent_DifferentNameRefused(t *testing.T) {
 	}
 }
 
-// TestInstall_Hook_MultiBinding_RoundTrip pins ADR-0016 §9's "Multiple
+// TestInstall_Hook_MultiBinding_RoundTrip pins ADR-0012 §9's "Multiple
 // keys per hook install (one per binding leaf path)" — the case that
 // drove configfrag.KindConfig.Emit to return []MergedFragment in the
 // mcp-server slice. One resource installs 3 bindings across 2 events
@@ -578,7 +578,7 @@ func TestInstall_Hook_MultiBinding_RoundTrip(t *testing.T) {
 	}
 
 	// Manifest must record 3 separate MergedKey entries — one per
-	// binding-leaf path per ADR-0016 §9. Each gets its own Selector
+	// binding-leaf path per ADR-0012 §9. Each gets its own Selector
 	// (content-hash); the orchestrator's deterministic sort by
 	// (File, Path, Selector) keeps the manifest stable for
 	// `dotpack list` rendering.

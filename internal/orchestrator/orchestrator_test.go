@@ -77,7 +77,7 @@ func TestInstall_FileContentMatchesPlan(t *testing.T) {
 
 func TestInstall_UnknownExtensionRefusedWithoutAllowLossy(t *testing.T) {
 	// An extension with no matching canonical_concept in schema/skill.yaml
-	// is treated as lossy by default (ADR-0016 §8 failure-mode-safety:
+	// is treated as lossy by default (ADR-0012 §8 failure-mode-safety:
 	// silent drop is worse than loud block). `made_up_field` is not
 	// listed under deliberately_excluded → no host claims to support it →
 	// install refused without --allow-lossy.
@@ -653,11 +653,11 @@ func TestList_EmptyManifest_ReturnsEmpty(t *testing.T) {
 }
 
 func TestInstall_NativeExtensionOnClaudeCode_NotLossy_BytesPreserved(t *testing.T) {
-	// ADR-0016 §8 + schema/skill.yaml: `allowed-tools` is one alias of
+	// ADR-0012 §8 + schema/skill.yaml: `allowed-tools` is one alias of
 	// canonical_concept `claude_skill_runtime_overrides` with host
 	// claude-code present in aliases[]. Installing on claude-code must
 	// NOT trigger LossyError, and the bytes must round-trip identically
-	// to disk (ADR-0008 byte-pass-through holds when the adapter doesn't
+	// to disk (ADR-0004 byte-pass-through holds when the adapter doesn't
 	// need to drop anything). This is the load-bearing slice-2 test —
 	// real-world Claude skills carrying these fields install cleanly.
 	src := []byte("---\n" +
@@ -690,7 +690,7 @@ func TestInstall_NativeExtensionOnClaudeCode_NotLossy_BytesPreserved(t *testing.
 		t.Fatalf("ReadFile installed: %v", err)
 	}
 	if !bytes.Equal(got, src) {
-		t.Errorf("installed bytes diverge from source (ADR-0008 violation).\n"+
+		t.Errorf("installed bytes diverge from source (ADR-0004 violation).\n"+
 			"--- source ---\n%s\n--- got ---\n%s", string(src), string(got))
 	}
 }

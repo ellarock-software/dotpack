@@ -1,0 +1,2025 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the dotpack universal agent schemas">
+      
+      
+      
+      
+        <link rel="prev" href="hook.html">
+      
+      
+        <link rel="next" href="memory.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Mcp-Server - dotpack Schema Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mcp-server-schema" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../index.html" title="dotpack Schema Documentation" class="md-header__button md-logo" aria-label="dotpack Schema Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dotpack Schema Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Mcp-Server
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../index.html" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="agent.html" class="md-tabs__link">
+          
+  
+  
+  Schemas
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../adr/0001-empirically-derived-schema-via-corpus-survey.html" class="md-tabs__link">
+          
+  
+  
+  Standards & Architecture (ADR)
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../index.html" title="dotpack Schema Documentation" class="md-nav__button md-logo" aria-label="dotpack Schema Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dotpack Schema Documentation
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schemas
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Schemas
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="agent.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="command.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="hook.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mcp-Server
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="mcp-server.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mcp-Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ecosystem-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ecosystem Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deliberately-excluded-concepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deliberately Excluded Concepts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deliberately Excluded Concepts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#concept-transport_type_marker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: transport_type_marker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-http_transport_headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: http_transport_headers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-stdio_working_directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: stdio_working_directory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-gemini_server_overall_timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: gemini_server_overall_timeout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-gemini_server_trust" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: gemini_server_trust
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-gemini_http_url_alias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: gemini_http_url_alias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_server_lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_server_lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_env_vars_with_source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_env_vars_with_source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_bearer_token_env_var" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_bearer_token_env_var
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_http_auth_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_http_auth_metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_startup_timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_startup_timeout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_tool_call_timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_tool_call_timeout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_default_tool_approval_mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_default_tool_approval_mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_tool_allowlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_tool_allowlist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_experimental_environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_experimental_environment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-per_tool_approval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: per_tool_approval
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="memory.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="rule.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rule
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="skill.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skill
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standards & Architecture (ADR)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Standards & Architecture (ADR)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0001-empirically-derived-schema-via-corpus-survey.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0001
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0002-schema-template-as-anchor.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0002
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0003-universal-kinds-with-adapter-capability-matrix.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0003
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0004-manifest-as-install-provenance-source-of-truth.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0004
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0005-skill-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0005
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0006-agent-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0006
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0007-command-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0007
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0008-memory-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0008
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0009-hook-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0009
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0010-mcp-server-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0010
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0011-floor-rule-deviation-criterion.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0011
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0012-agents-cli-adapter-fan-out-and-schema-driven-lossy-detection.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0012
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0013-rule-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0013
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ecosystem-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ecosystem Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deliberately-excluded-concepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deliberately Excluded Concepts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deliberately Excluded Concepts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#concept-transport_type_marker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: transport_type_marker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-http_transport_headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: http_transport_headers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-stdio_working_directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: stdio_working_directory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-gemini_server_overall_timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: gemini_server_overall_timeout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-gemini_server_trust" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: gemini_server_trust
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-gemini_http_url_alias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: gemini_http_url_alias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_server_lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_server_lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_env_vars_with_source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_env_vars_with_source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_bearer_token_env_var" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_bearer_token_env_var
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_http_auth_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_http_auth_metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_startup_timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_startup_timeout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_tool_call_timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_tool_call_timeout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_default_tool_approval_mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_default_tool_approval_mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_tool_allowlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_tool_allowlist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-codex_experimental_environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: codex_experimental_environment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concept-per_tool_approval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concept: per_tool_approval
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="mcp-server-schema">Mcp-Server Schema</h1>
+<p><strong>Version:</strong> <code>0</code></p>
+<h2 id="template">Template</h2>
+<ul>
+<li><strong>Shape:</strong> <code>config_fragment</code></li>
+<li><strong>Filename:</strong> ``</li>
+</ul>
+<h2 id="ecosystem-notes">Ecosystem Notes</h2>
+<ul>
+<li>Codex MCP-server schema is a SUPERSET of Claude/Gemini. The full Codex spec adds (per developers.openai.com/codex/config-reference): cwd, enabled, required, env_vars (with source = local|remote), bearer_token_env_var, env_http_headers, http_headers, oauth_resource, scopes, startup_timeout_sec (+ _ms alias), tool_timeout_sec, default_tools_approval_mode, enabled_tools / disabled_tools (allow/ deny lists), experimental_environment (local|remote), and per-tool overrides via tools.<toolname>.approval_mode. None of these clear the universal-schema floor (all &lt;= 1 file in corpus); they are adapter pass-through fields for the Codex adapter, NOT promoted to the cross-host schema. See <a href="../adr/0003-universal-kinds-with-adapter-capability-matrix.html">ADR-0003</a> consequences re: per-instance lossy promotion when a Codex resource carrying these fields is installed via a non-Codex adapter.</li>
+<li><code>type</code> field NOT promoted to schema despite 13/25 corpus presence (8 'stdio' from ChrisWiles, 5 'http' from arc-kit). Reason: Codex spec discriminates transport by PRESENCE of <code>url</code> vs <code>command</code>, not by a <code>type</code> field. arc-kit's <code>type = 'http'</code> is a Claude-style holdover by the author; Codex parser ignores it. Schema uses the spec-canonical discriminator (url-vs-command). Translator drops <code>type</code> on import to Codex; passes through for Claude/Gemini where it may still carry meaning.</li>
+<li><code>headers</code> vs <code>http_headers</code> (arc-kit): arc-kit uses <code>headers = {...}</code> for API-key injection; Codex spec field is <code>http_headers</code>. Either arc-kit is wrong (Codex silently ignores <code>headers</code>) or <code>headers</code> is an undocumented alias. Both seen in corpus (2/25). NEITHER promoted to schema until the spec/source confirms. Translator canonicalises on import: rewrite <code>headers</code> to <code>http_headers</code> when targeting Codex, flag the original spelling in resource metadata for traceability.</li>
+<li>Per-tool approval override (wp-calypso): chrome-devtools entry contains <code>tools.click.approval_mode = 'approve'</code> and <code>tools.evaluate_script.approval_mode = 'approve'</code>. Counting choice: these are SUB-entries of one server entry, not separate server entries. At server-entry granularity, 1/25 has the <code>tools</code> field — below floor. At nested-tool-entry granularity, 2/2 of wp-calypso's tools have approval_mode — but the denominator is meaningless across the corpus. Schema-wise: not promoted; adapter pass-through. Per <a href="../adr/0001-empirically-derived-schema-via-corpus-survey.html">ADR-0001</a>, may also be a security-agent input (per-tool approval is a security control — translator should not silently drop it when porting to a host that lacks the concept).</li>
+<li>Filename + key-name divergence: Claude <code>.mcp.json $.mcpServers</code> (camelCase), Gemini <code>.gemini/settings.json $.mcpServers</code> (camelCase), Codex <code>.codex/config.toml mcp_servers</code> (snake_case). Adapter translates the key name on emit; the schema's <code>template.source_locations</code> declares each canonical location.</li>
+<li>Claude footgun: <code>mcpServers</code> in <code>.claude/settings.json</code> is SILENTLY IGNORED by Claude Code (anthropics/claude-code#24477, #646). Adapters MUST write to <code>.mcp.json</code> or <code>~/.claude.json</code>.</li>
+<li>Argument-style credential handling varies. abcdan/mcp.json embeds secrets directly in args (<code>--figma-api-key=XXXXXXXX</code>). arc-kit uses <code>headers={X-API-Key=${...}}</code> with ${VAR} substitution. Codex spec <code>bearer_token_env_var</code> is the cleanest pattern (env-var indirection). Translator should detect literal secrets in args (high-entropy strings) and surface a warning per the security-agent stage (<a href="../adr/0001-empirically-derived-schema-via-corpus-survey.html">ADR-0001</a>). No schema-level enforcement (legitimate args contain high-entropy values too — paths, UUIDs, etc.).</li>
+<li>Remote-MCP wrapper detection. abcdan's Atlassian entry is structurally <code>command: npx args: [-y, mcp-remote, https://...sse]</code> — a stdio wrapper around an SSE endpoint. arc-kit's HTTP entries express the same concept natively via <code>url</code>. Codex spec supports both. Translator detecting <code>mcp-remote</code> (or similar shims) and re-emitting native HTTP form when targeting a host that supports it is cleaner than literal-stdio round-tripping. Not v1; documented.</li>
+<li>Server name (the JSON/TOML key) is the install identifier. Two installs with the same name into the same target file collide — manifest must record the server-name claim so a second install fails fast rather than silently overwriting.</li>
+</ul>
+<h2 id="deliberately-excluded-concepts">Deliberately Excluded Concepts</h2>
+<h3 id="concept-transport_type_marker">Concept: <code>transport_type_marker</code></h3>
+<p>The <code>type</code> field (corpus: 8 "stdio" from ChrisWiles Claude entries,
+5 "http" from arc-kit Codex entries) is NOT a real transport
+discriminator on any host. Codex spec discriminates by presence of
+<code>url</code> vs <code>command</code>. arc-kit's <code>type = "http"</code> is a Claude-style
+holdover the Codex parser ignores. Claude and Gemini accept the
+field but do not parse it semantically (corpus uses it as
+documentation only). Adapter behaviour:
+- All adapters: pass-through if present; never emit if absent.
+- Never lossy (lossy_when_dropped: false) — no host's runtime
+  depends on <code>type</code>. The validator rejects sources where <code>type</code>
+  contradicts the transport discriminator (<code>type: "http"</code> without
+  <code>url</code>, or <code>type: "stdio"</code> without <code>command</code>); see <a href="../adr/0010-mcp-server-schema.html">ADR-0010</a> and
+  <a href="../adr/0012-agents-cli-adapter-fan-out-and-schema-driven-lossy-detection.html">ADR-0012</a> §7.</p>
+<p><strong>Field Names:</strong> <code>type</code></p>
+<h3 id="concept-http_transport_headers">Concept: <code>http_transport_headers</code></h3>
+<p>HTTP transport custom headers. Codex spec field is <code>http_headers</code>;
+arc-kit (2/25) uses <code>headers</code> — either an undocumented alias or
+a typo Codex silently ignores. Both names listed in aliases under
+host: codex because the translator preserves the source spelling
+on import while canonicalising semantically (see
+ecosystem_notes — translator rewrites <code>headers</code> → <code>http_headers</code>
+when targeting Codex emit). Claude/Gemini have no HTTP-transport
+custom-headers concept in spec (Gemini's <code>headers</code> extension is
+undocumented and not corpus-attested). Adapter behaviour:
+- codex adapter: emit as <code>http_headers</code> (canonical Codex name).
+  If source has <code>headers</code>, treat as <code>http_headers</code> and warn that
+  the spelling was normalised.
+- non-codex adapters: surface as lossy. HTTP authentication is
+  load-bearing; silently dropping headers means the install will
+  fail at runtime with confusing auth errors.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>http_headers</code></td>
+</tr>
+<tr>
+<td><code>codex</code></td>
+<td><code>headers</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-stdio_working_directory">Concept: <code>stdio_working_directory</code></h3>
+<p>Working directory for the stdio MCP server process. Same name
+(<code>cwd</code>) across both Codex and Gemini specs; same semantics. Claude
+has no documented <code>cwd</code> field — stdio servers inherit Claude's
+working directory. Adapter behaviour:
+- codex / gemini-cli adapters: emit natively when present.
+- claude-code adapter: surface as lossy. The MCP server's behaviour
+  depends on where it runs (e.g., a server reading config from a
+  relative path); silently dropping <code>cwd</code> means the server may not
+  find its config on Claude. Install proceeds only with
+  <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>cwd</code></td>
+</tr>
+<tr>
+<td><code>gemini-cli</code></td>
+<td><code>cwd</code></td>
+</tr>
+<tr>
+<td><code>antigravity-cli</code></td>
+<td><code>cwd</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-gemini_server_overall_timeout">Concept: <code>gemini_server_overall_timeout</code></h3>
+<p>Gemini-spec field for an overall server timeout (no corpus
+presence). Distinct from Codex's per-phase timeouts
+(startup_timeout_sec, tool_timeout_sec) — those are separate
+canonical_concepts. Adapter behaviour:
+- gemini-cli adapter: emit natively when present.
+- non-gemini adapters: surface as lossy. Adapter ergonomics note:
+  if a future ADR-0017 unifies overall-vs-phase timeouts into one
+  canonical_concept, this entry merges with codex_startup_timeout
+  and codex_tool_call_timeout. Deferred per <a href="../adr/0012-agents-cli-adapter-fan-out-and-schema-driven-lossy-detection.html">ADR-0012</a> (Scenario B).</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gemini-cli</code></td>
+<td><code>timeout</code></td>
+</tr>
+<tr>
+<td><code>antigravity-cli</code></td>
+<td><code>timeout</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-gemini_server_trust">Concept: <code>gemini_server_trust</code></h3>
+<p>Gemini-spec field for marking a server as "trusted" (no corpus
+presence). Encodes a security control — trusted servers bypass
+certain approval prompts. Adapter behaviour:
+- gemini-cli adapter: emit natively when present.
+- non-gemini adapters: surface as lossy. Security control —
+  silently dropping it means a server an author marked trusted
+  on Gemini gets default-untrusted treatment on Claude/Codex,
+  which may surprise the user. Install proceeds only with
+  <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gemini-cli</code></td>
+<td><code>trust</code></td>
+</tr>
+<tr>
+<td><code>antigravity-cli</code></td>
+<td><code>trust</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-gemini_http_url_alias">Concept: <code>gemini_http_url_alias</code></h3>
+<p>Gemini's documented name for HTTP transport URL. The universal
+core promotes <code>url</code> (the Codex spec name, 5/25 corpus presence
+from arc-kit) as the canonical HTTP-URL field. <code>httpUrl</code> is the
+SAME CONCEPT under a different name — this is a Scenario B case
+(cross-host concept-equivalence under different names) called
+out in <a href="../adr/0012-agents-cli-adapter-fan-out-and-schema-driven-lossy-detection.html">ADR-0012</a> Consequences as deferred to ADR-0017. The
+<code>canonicalises_to: url</code> annotation is the machine-readable anchor
+ADR-0017 will consume.
+For MVP:
+- The translator on Gemini-source import should normalise <code>httpUrl</code>
+  to the universal <code>url</code> field. (Translator concern, not adapter.)
+- If the translator fails to normalise and the canonical resource
+  carries <code>httpUrl</code> in Extensions, lossy detection per the table
+  above flags it as Gemini-only — over-strict for installs on
+  Codex (which supports the same concept under name <code>url</code>).
+  Acceptable until ADR-0017 introduces alias-aware translation.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gemini-cli</code></td>
+<td><code>httpUrl</code></td>
+</tr>
+<tr>
+<td><code>antigravity-cli</code></td>
+<td><code>httpUrl</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-codex_server_lifecycle">Concept: <code>codex_server_lifecycle</code></h3>
+<p>Codex-spec lifecycle flags: <code>enabled: false</code> disables a server
+without removing it from config; <code>required: true</code> causes Codex
+to fail startup if the server doesn't initialise (vs default
+warn-and-continue). Adapter behaviour:
+- codex adapter: emit natively when present.
+- non-codex adapters: surface as lossy. <code>enabled: false</code> is
+  particularly load-bearing — silently emitting the server as
+  active on Claude/Gemini contradicts the author's explicit
+  intent. Install proceeds only with <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>enabled</code></td>
+</tr>
+<tr>
+<td><code>codex</code></td>
+<td><code>required</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-codex_env_vars_with_source">Concept: <code>codex_env_vars_with_source</code></h3>
+<p>Codex-spec richer environment-variable declaration with
+per-variable <code>source = local|remote</code> indirection (vs the
+universal <code>env</code> field which is a flat <code>{name: value}</code> map).
+Scenario B-adjacent: <code>env_vars</code> and the universal <code>env</code> overlap
+in concept (env vars for the server process) but <code>env_vars</code>
+encodes additional information (variable source). Adapter
+behaviour:
+- codex adapter: emit natively when present.
+- non-codex adapters: surface as lossy. The <code>source = remote</code>
+  case encodes that a credential lives in Codex's secret store,
+  not in the local environment — dropping it means the variable
+  is unset at server startup on other hosts, which silently
+  breaks auth. Install proceeds only with <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>env_vars</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-codex_bearer_token_env_var">Concept: <code>codex_bearer_token_env_var</code></h3>
+<p>Codex-spec field for HTTP-transport bearer auth: the name of an
+env var whose value Codex injects as <code>Authorization: Bearer
+${value}</code>. Cleanest credential pattern in the corpus (vs
+args-embedded secrets at abcdan or template-interpolated headers
+at arc-kit). Adapter behaviour:
+- codex adapter: emit natively when present.
+- non-codex adapters: surface as lossy. HTTP auth is load-bearing;
+  dropping the bearer-token directive means the HTTP server
+  rejects all requests with 401. Install proceeds only with
+  <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>bearer_token_env_var</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-codex_http_auth_metadata">Concept: <code>codex_http_auth_metadata</code></h3>
+<p>Codex-spec HTTP-transport auth metadata: <code>env_http_headers</code>
+(env-var-interpolated custom headers, vs the literal-values
+http_headers above), <code>oauth_resource</code> (OAuth resource identifier),
+<code>scopes</code> (OAuth scope list). Adapter behaviour:
+- codex adapter: emit natively when present.
+- non-codex adapters: surface as lossy. OAuth metadata is
+  load-bearing; dropping it means token-acquisition fails. Install
+  proceeds only with <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>env_http_headers</code></td>
+</tr>
+<tr>
+<td><code>codex</code></td>
+<td><code>oauth_resource</code></td>
+</tr>
+<tr>
+<td><code>codex</code></td>
+<td><code>scopes</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-codex_startup_timeout">Concept: <code>codex_startup_timeout</code></h3>
+<p>Codex-spec timeout for server startup phase (vs request handling).
+Two unit-suffixed aliases for the same field — Codex spec
+documents both, parser accepts either. Adapter behaviour:
+- codex adapter: emit whichever the source carried; if both
+  present, prefer <code>_sec</code> per Codex spec precedence. The
+  validator warns on conflict.
+- non-codex adapters: surface as lossy. Startup timeout encodes
+  an explicit author-chosen wait-budget; silently dropping it
+  means the host uses its default (which may be shorter for a
+  slow-starting server, causing intermittent install-time
+  failures). Install proceeds only with <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>startup_timeout_sec</code></td>
+</tr>
+<tr>
+<td><code>codex</code></td>
+<td><code>startup_timeout_ms</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-codex_tool_call_timeout">Concept: <code>codex_tool_call_timeout</code></h3>
+<p>Codex-spec timeout for individual tool calls (vs startup). Adapter
+behaviour:
+- codex adapter: emit natively when present.
+- non-codex adapters: surface as lossy. Same rationale as
+  codex_startup_timeout. Install proceeds only with <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>tool_timeout_sec</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-codex_default_tool_approval_mode">Concept: <code>codex_default_tool_approval_mode</code></h3>
+<p>Codex-spec server-wide approval default — gates whether tools
+from this server require user approval. Security-relevant.
+Adapter behaviour:
+- codex adapter: emit natively when present.
+- non-codex adapters: surface as lossy. Author explicitly chose
+  an approval posture; silently dropping it means tools run
+  under the host's default (which may be more permissive),
+  bypassing the security control. Install proceeds only with
+  <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>default_tools_approval_mode</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-codex_tool_allowlist">Concept: <code>codex_tool_allowlist</code></h3>
+<p>Codex-spec per-server tool allowlist (<code>enabled_tools</code>) and
+denylist (<code>disabled_tools</code>). Security control. Adapter behaviour:
+- codex adapter: emit natively when present.
+- non-codex adapters: surface as lossy. An author who restricted
+  the server's exposed tools via these lists chose explicit
+  attack-surface reduction; silently emitting the unrestricted
+  server elsewhere exposes more tools than the author intended.
+  Install proceeds only with <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>enabled_tools</code></td>
+</tr>
+<tr>
+<td><code>codex</code></td>
+<td><code>disabled_tools</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-codex_experimental_environment">Concept: <code>codex_experimental_environment</code></h3>
+<p>Codex-spec <code>experimental_environment: local|remote</code> for server
+placement (whether Codex runs the server itself or expects a
+remote executor). Adapter behaviour:
+- codex adapter: emit natively when present.
+- non-codex adapters: surface as lossy. <code>remote</code> placement
+  means the server runs outside the host's process — emitting
+  the entry on Claude/Gemini without the remote-executor
+  infrastructure would attempt local launch and fail. Install
+  proceeds only with <code>--allow-lossy</code>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>experimental_environment</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="concept-per_tool_approval">Concept: <code>per_tool_approval</code></h3>
+<p>Codex-spec per-tool approval override (<code>tools.&lt;id&gt;.approval_mode</code>).
+A security control — wp-calypso uses it to require user approval
+for chrome-devtools' <code>click</code> and <code>evaluate_script</code> tools, which
+can perform destructive actions. The alias field_name is <code>tools</code>
+(the top-level key); lossy detection sees the resource carrying
+a <code>tools</code> extension and consults this concept. Adapter behaviour:
+- codex adapter: emit natively when present.
+- non-codex adapters: surface as lossy. This is the canonical
+  example called out in <a href="../adr/0003-universal-kinds-with-adapter-capability-matrix.html">ADR-0003</a>'s per-instance lossy addendum
+  and <a href="../adr/0010-mcp-server-schema.html">ADR-0010</a> — silently dropping per-tool approval is exactly
+  the failure mode dotpack exists to prevent. Install proceeds
+  only with <code>--allow-lossy</code>. Also a security-agent input per
+  <a href="../adr/0001-empirically-derived-schema-via-corpus-survey.html">ADR-0001</a>.</p>
+<p><strong>Aliases:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Host</th>
+<th>Field Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codex</code></td>
+<td><code>tools</code></td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.tabs", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

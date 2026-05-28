@@ -1,0 +1,1688 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the dotpack universal agent schemas">
+      
+      
+      
+      
+        <link rel="prev" href="0011-floor-rule-deviation-criterion.html">
+      
+      
+        <link rel="next" href="0013-rule-schema.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>ADR 0012 - dotpack Schema Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#agents-cli-adapter-fan-out-canonical-form-emit-schema-driven-per-instance-lossy-detection" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../index.html" title="dotpack Schema Documentation" class="md-header__button md-logo" aria-label="dotpack Schema Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            dotpack Schema Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ADR 0012
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../index.html" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../schemas/agent.html" class="md-tabs__link">
+          
+  
+  
+  Schemas
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="0001-empirically-derived-schema-via-corpus-survey.html" class="md-tabs__link">
+          
+  
+  
+  Standards & Architecture (ADR)
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../index.html" title="dotpack Schema Documentation" class="md-nav__button md-logo" aria-label="dotpack Schema Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    dotpack Schema Documentation
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schemas
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Schemas
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schemas/agent.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schemas/command.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schemas/hook.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schemas/mcp-server.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mcp-Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schemas/memory.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schemas/rule.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rule
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schemas/skill.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skill
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standards & Architecture (ADR)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Standards & Architecture (ADR)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0001-empirically-derived-schema-via-corpus-survey.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0001
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0002-schema-template-as-anchor.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0002
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0003-universal-kinds-with-adapter-capability-matrix.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0003
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0004-manifest-as-install-provenance-source-of-truth.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0004
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0005-skill-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0005
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0006-agent-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0006
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0007-command-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0007
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0008-memory-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0008
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0009-hook-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0009
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0010-mcp-server-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0010
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0011-floor-rule-deviation-criterion.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0011
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0012
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="0012-agents-cli-adapter-fan-out-and-schema-driven-lossy-detection.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0012
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Decision">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-adapter-granularity-two-sub-adapters-one-cli-flag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Adapter granularity — two sub-adapters, one CLI flag
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Adapter granularity — two sub-adapters, one CLI flag">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1a-implementation-resolved-2026-05-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1a. Implementation (resolved 2026-05-25)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1b-why-this-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1b. Why this structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1c-deferred-refinements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1c. Deferred refinements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-adapter-interface-plan-returning-not-filesystem-mutating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Adapter interface — plan-returning, not filesystem-mutating
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-canonical-form-internal-representation-typed-go-structs-per-kind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Canonical-form internal representation — typed Go structs per kind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-format-conversion-go-libraries-in-production-yq-is-survey-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Format conversion — Go libraries in production, yq is survey-only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-key-name-and-event-name-canonicalisation-schema-driven-emit-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Key-name and event-name canonicalisation — schema-driven, emit-time
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-timeout-unit-conversion-canonical-seconds-gemini-multiplies-on-emit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Timeout unit conversion — canonical seconds, Gemini multiplies on emit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-mcp-server-discriminated-transport-field-presence-not-adapter-concern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. mcp-server discriminated transport — field presence, not adapter concern
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-per-instance-lossy-detection-schema-declared-aliases-host-field_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Per-instance lossy detection — schema-declared aliases: [{host, field_name}, ...]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-manifest-merged_keys-populated-from-the-install-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Manifest merged_keys — populated from the install plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-schema-as-adapter-contract-comprehensive-inline-documentation-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Schema as adapter contract — comprehensive inline documentation required
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#artefacts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Artefacts
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="0013-rule-schema.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR 0013
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Decision">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-adapter-granularity-two-sub-adapters-one-cli-flag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Adapter granularity — two sub-adapters, one CLI flag
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Adapter granularity — two sub-adapters, one CLI flag">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1a-implementation-resolved-2026-05-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1a. Implementation (resolved 2026-05-25)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1b-why-this-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1b. Why this structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1c-deferred-refinements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1c. Deferred refinements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-adapter-interface-plan-returning-not-filesystem-mutating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Adapter interface — plan-returning, not filesystem-mutating
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-canonical-form-internal-representation-typed-go-structs-per-kind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Canonical-form internal representation — typed Go structs per kind
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-format-conversion-go-libraries-in-production-yq-is-survey-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Format conversion — Go libraries in production, yq is survey-only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-key-name-and-event-name-canonicalisation-schema-driven-emit-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Key-name and event-name canonicalisation — schema-driven, emit-time
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-timeout-unit-conversion-canonical-seconds-gemini-multiplies-on-emit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Timeout unit conversion — canonical seconds, Gemini multiplies on emit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-mcp-server-discriminated-transport-field-presence-not-adapter-concern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. mcp-server discriminated transport — field presence, not adapter concern
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-per-instance-lossy-detection-schema-declared-aliases-host-field_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Per-instance lossy detection — schema-declared aliases: [{host, field_name}, ...]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-manifest-merged_keys-populated-from-the-install-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Manifest merged_keys — populated from the install plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-schema-as-adapter-contract-comprehensive-inline-documentation-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Schema as adapter contract — comprehensive inline documentation required
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#artefacts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Artefacts
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="agents-cli-adapter-fan-out-canonical-form-emit-schema-driven-per-instance-lossy-detection">agents-cli adapter fan-out, canonical-form emit, schema-driven per-instance lossy detection</h1>
+<h2 id="context">Context</h2>
+<p>The <code>agents-cli</code> adapter is the first one that writes to multiple host config files. For the four file-drop kinds (skill, agent, command, memory) the convergence story holds: both Gemini CLI and Codex CLI honour <code>.agents/</code> and <code>~/.agents/</code>, so the install is one filesystem write. For the two config-fragment kinds (hook, mcp-server) the hosts diverge — Gemini reads <code>.gemini/settings.json</code>, Codex reads <code>~/.codex/config.toml</code>, and these files differ in format (JSON vs TOML), key names (camelCase vs snake_case), event names (Gemini-specific <code>BeforeTool</code>/<code>AfterTool</code> vs PascalCase elsewhere), timeout units (Gemini ms vs Claude/Codex seconds), and supported fields (Codex's mcp-server schema is a ~18-field superset, see <a href="0010-mcp-server-schema.html">ADR-0010</a>).</p>
+<p>Settling this exposed seven follow-on questions that all sit inside the same architectural choice: adapter granularity, canonical-form representation, format-conversion mechanism, key-name and event-name canonicalisation, timeout unit conversion, mcp-server discriminated transport, manifest <code>merged_keys</code> tracking, and the per-instance lossy detection promised by <a href="0003-universal-kinds-with-adapter-capability-matrix.html">ADR-0003</a>'s 2026-05-24 addendum. ADR-0003 picked adapter-declared <code>lossy_when_fields: [...]</code> but that decision predates the Codex re-survey (<a href="0009-hook-schema.html">ADR-0009</a>, <a href="0010-mcp-server-schema.html">ADR-0010</a>), which made the duplication cost visible: ~23 field names restated per non-Codex adapter, multiplied by adapter count, drifting independently as the corpus grows.</p>
+<h2 id="decision">Decision</h2>
+<h3 id="1-adapter-granularity-two-sub-adapters-one-cli-flag">1. Adapter granularity — two sub-adapters, one CLI flag</h3>
+<p><code>gemini</code> and <code>codex</code> are independent <code>Adapter</code> implementations, each with its own per-host kind-support data (<code>Policy.Layouts</code> membership for the file-drop adapter; see §2 + <a href="0003-universal-kinds-with-adapter-capability-matrix.html">ADR-0003</a>). <code>--agent agents-cli</code> is an orchestrator-side CLI flag that resolves to the adapter set <code>{gemini, codex}</code>. The umbrella CLI flag does not become a third adapter. For file-drop kinds the orchestrator special-cases the flag to write <code>.agents/</code> once rather than invoking both sub-adapters with redundant writes; for config-fragment kinds the orchestrator invokes each sub-adapter and aggregates their install plans.</p>
+<h4 id="1a-implementation-resolved-2026-05-25">1a. Implementation (resolved 2026-05-25)</h4>
+<p>The open questions §1 left for implementation were resolved as:</p>
+<ul>
+<li><strong>Manifest record shape</strong>: one record per umbrella install with <code>agent: "agents-cli"</code> and ID <code>agents-cli:{kind}:{name}</code>. The user-typed CLI flag IS the user-visible identity; sub-adapter HostIDs never surface on the record. Cross-flag installs of the same resource (e.g., <code>--agent codex foo</code> then <code>--agent agents-cli foo</code>) produce DIFFERENT record IDs and the second one collides at the convergence path — the user must explicitly resolve via <code>--force</code> or uninstall the other. The umbrella never silently shares an ID with a sub-adapter; that would lose the umbrella identity in <code>dotpack list</code> and break the misroute-hint surface.</li>
+<li><strong>Resolution layer</strong>: orchestrator-side per §10. <code>internal/orchestrator/umbrella.go</code> declares <code>UmbrellaInstaller</code> (sibling to <code>Installer</code> and <code>Reader</code> per Card #3's split); <code>internal/cli/install.go</code> declares <code>umbrellaFactories</code> (the CLI-flag-to-adapter-set alias table) alongside the per-host <code>adapterFactories</code>. <code>runInstall</code> branches on <code>umbrellaFactories</code> membership BEFORE <code>buildAdapter</code>, dispatching to <code>runUmbrellaInstall</code> which constructs the <code>UmbrellaInstaller</code> from sub-adapter HostIDs resolved through <code>adapterFactories</code>. The init-time validator panics if an umbrella references an unknown sub-adapter or a writer that isn't in its sub-adapter set.</li>
+<li><strong>Per-kind writer list</strong>: <code>umbrellaFactories[{umbrella}].writers[{kind}]</code> names the ordered sub-adapter HostIDs whose plans are applied for that kind. File-drop convergence uses ONE writer: <code>agents-cli + skill → codex</code> (codex's <code>AgentsHome/skills/{name}/SKILL.md</code> per developers.openai.com/codex/skills; gemini-cli reads the same path per <code>schema/skill.yaml</code> ecosystem_notes). Config-fragment kinds use multiple writers: <code>agents-cli + mcp-server</code> and <code>agents-cli + hook</code> fan out to both <code>gemini-cli</code> and <code>codex</code>, each writing its own native config file while the umbrella manifest record aggregates all merged-key tuples. Rule kind also fans out to both <code>gemini-cli</code> and <code>codex</code>, writing each host's native <code>rules/&lt;name&gt;.md</code> file while preserving one <code>agents-cli:rule:&lt;name&gt;</code> manifest row. Kinds absent from <code>writers</code> are explicitly unsupported under the umbrella — <code>UmbrellaInstaller.Install</code> returns "kind not supported under umbrella" rather than silently picking a default sub-adapter. Agent kind fans out: <code>agents-cli + agent</code> writes a markdown file for <code>gemini-cli</code> and translates the abstraction into a TOML file for <code>codex</code> (which natively loads <code>~/.codex/agents/*.toml</code>).</li>
+<li><strong>Lossy aggregation under the umbrella</strong>: literal §8 — a field is lossy on the umbrella if ANY sub-adapter would drop it. <code>UmbrellaInstaller.aggregateLossy</code> calls <code>schema.LossyExtensions(kind, sub.HostID(), ext)</code> for each sub-adapter and unions the reasons by <code>FieldPath</code> (dedup) and surfaces them via a <code>LossyError</code> naming the umbrella label (not a sub-adapter). The 2026-05-25 empirical check confirmed every skill-kind <code>deliberately_excluded</code> is either claude-code-only (lossy on BOTH sub-adapters) or has empty aliases with <code>lossy_when_dropped: false</code> (never lossy), so literal §8 produces identical results to a convergence-write reading for skill kind today. If a future schema entry has gemini-cli-XOR-codex support, literal §8 will be strictly stricter than the convergence-write reading — at that point this section gets a refinement (see §1c).</li>
+<li><strong>Misroute hint inclusion</strong>: <code>isBuildableAgent(name)</code> consults both <code>adapterFactories</code> AND <code>umbrellaFactories</code>, so <code>checkDefaultAgentMisroute</code> surfaces umbrella suggestions when an existing umbrella record matches the (kind, name) tuple. A user defaulting to <code>--agent claude-code</code> with an existing agents-cli install gets "did you mean --agent agents-cli?".</li>
+<li><strong>Uninstall round-tripping</strong>: zero new code. <code>orchestrator.Reader.Uninstall</code> works from manifest absolute paths regardless of the host segment in the ID; an umbrella record with ID <code>agents-cli:skill:foo</code> and <code>Files: [/home/u/.agents/skills/foo/SKILL.md]</code> round-trips through Reader exactly as a per-host record does. This is the no-code payoff of Option A (label = <code>--agent</code> flag value).</li>
+</ul>
+<h4 id="1b-why-this-structure">1b. Why this structure</h4>
+<ul>
+<li><strong><code>UmbrellaInstaller</code> as a sibling type</strong> (not a method on <code>Installer</code> or an <code>InstallOptions.AgentLabel</code> override): Installer is the (host, manifest) pair per Card #3's docstring — one adapter, one HostID, HostID() drives both lossy-check and record-derivation. The umbrella has NO single host: it aggregates lossy across multiple sub-adapters and labels records with the CLI-flag name, not a sub-adapter HostID. Splatting both knobs onto Installer would require an "AgentLabel override" on InstallOptions and a sub-adapter slice the per-host install path would ignore — actively misleading to readers. The split keeps each type honest about what it does.</li>
+<li><strong><code>umbrellaFactories</code> at the CLI layer</strong> (not the orchestrator package): matches Card #4's <code>adapterFactories</code> registry pattern and §10's "alias table" framing. The orchestrator package stays algorithm-only; the CLI package owns the registry of buildable agent names (per-host AND umbrella). The init-time validator catches typos at binary startup, not first user install.</li>
+<li><strong>No schema-side umbrella concept</strong>: schema package stays per-host. <code>HostKeepsExtension</code> and <code>LossyExtensions</code> are unchanged. The umbrella's aggregation is applied at the orchestrator layer by iterating sub-adapter HostIDs through the per-host schema API. Adding a future umbrella (<code>all</code>, <code>cursor-ish</code> per §10) is a CLI-layer config edit + a writer-per-kind decision per documented convergence; no schema changes are forced by the umbrella mechanism itself.</li>
+</ul>
+<h4 id="1c-deferred-refinements">1c. Deferred refinements</h4>
+<ul>
+<li><strong>§8 reinterpretation for write-once convergence</strong>: today's empirical schema makes literal-§8 and convergence-write reading indistinguishable for skill kind. If a future schema entry has gemini-cli-XOR-codex aliases AND lives on a write-once file-drop kind, the literal-§8 reading (any sub drops → umbrella lossy) is arguably stricter than the user's mental model ("install once, both CLIs read what they understand — no loss if any sub-adapter parses the field"). The decision is deferred until the empirical case lands; the comment in <code>UmbrellaInstaller.aggregateLossy</code> flags it.</li>
+<li><strong>Per-umbrella canonical writer override via CLI flag</strong>: not on the table. The umbrella's writer-per-kind is data, not user-tunable.</li>
+</ul>
+<h3 id="2-adapter-interface-plan-returning-not-filesystem-mutating">2. Adapter interface — plan-returning, not filesystem-mutating</h3>
+<pre><code class="language-go">type Adapter interface {
+    HostID() string                                          // &quot;claude-code&quot;, &quot;gemini-cli&quot;, &quot;codex&quot;
+    Plan(resource Resource, scope Scope) (InstallPlan, error)
+}
+
+type InstallPlan struct {
+    Files       []FileWrite      // path + content for file-drop kinds
+    RemoveFiles []FileRemove     // stale compatibility files to remove after successful writes
+    MergedKeys  []MergedKeyWrite // (file, json_path or toml_path, value) for fragment kinds
+    TargetDir   string           // dir the orchestrator may reclaim on uninstall when empty
+}
+
+type LossyReason struct { // populated by the orchestrator, not the adapter
+    FieldPath        string
+    CanonicalConcept string
+    SupportedHosts   []string
+}
+</code></pre>
+<p>Per-kind support is expressed by <code>Plan</code>'s behaviour: unsupported kinds return a typed error (<code>"{host}: kind {k} not yet supported"</code>); supported kinds return an <code>InstallPlan</code>. For the file-drop adapter, <code>Policy.Layouts</code> membership is the data structure that drives this — a kind present in <code>Layouts</code> is supported; a kind absent yields the error. There is no separate <code>Capabilities()</code> interface method: the architecture review (cards #1, #5) collapsed the old per-(kind, adapter) <code>Native</code>/<code>Lossy</code>/<code>Unsupported</code> matrix into this Plan-error contract because no production caller traversed the queryable form (see <a href="0003-universal-kinds-with-adapter-capability-matrix.html">ADR-0003</a> for the rationale and history).</p>
+<p>Per-instance lossiness is computed by the orchestrator after <code>Plan</code> returns, using §8's schema-driven check against the resource's <code>Extensions</code> and the adapter's <code>HostID</code>. The plan does NOT carry lossy state — keeping a <code>plan.Lossy</code> field invited adapters to restate schema knowledge in code, which §8 explicitly supersedes. The orchestrator's policy is: <code>Plan</code> errors with "kind not supported" → refuse; per-instance lossy reasons present AND <code>--allow-lossy</code> not set → refuse with <code>LossyError</code>; otherwise proceed.</p>
+<p>Adapters are pure functions of the resource. The orchestrator applies plans, persists manifest records, and gates lossy plans behind <code>--allow-lossy</code>. This keeps adapters trivially unit-testable, makes dry-run free (<code>Plan</code> without <code>Apply</code>), and centralises manifest construction.</p>
+<h3 id="3-canonical-form-internal-representation-typed-go-structs-per-kind">3. Canonical-form internal representation — typed Go structs per kind</h3>
+<p><code>internal/resource/</code> declares one struct type per kind, mirroring the schema. The validator produces a <code>Resource</code> interface value (one of <code>*Skill</code>, <code>*Agent</code>, <code>*Command</code>, <code>*Memory</code>, <code>*Hook</code>, <code>*MCPServer</code>, <code>*Rule</code>); adapters consume it. Per-kind logic is the norm rather than a generic walker (already noted in the schema files — kind shapes are non-uniform).</p>
+<p>Extension fields not in the universal core (e.g., Codex's <code>default_tools_approval_mode</code>) are preserved on a per-kind <code>Extensions map[string]any</code> so the per-instance lossy check has data to inspect. Adapters that natively support an extension copy it into their emit; adapters that don't surface it as a <code>LossyReason</code>.</p>
+<h3 id="4-format-conversion-go-libraries-in-production-yq-is-survey-only">4. Format conversion — Go libraries in production, yq is survey-only</h3>
+<p>Production binary uses <code>encoding/json</code> (stdlib) and <code>github.com/pelletier/go-toml/v2</code> for TOML emit. The <code>yq -p toml -o json</code> pattern in <code>scripts/survey.sh</code> is survey-time only — the production binary does not shell out for hot-path format conversion. Adding <code>pelletier/go-toml/v2</code> is the only new direct dependency this ADR sanctions.</p>
+<h3 id="5-key-name-and-event-name-canonicalisation-schema-driven-emit-time">5. Key-name and event-name canonicalisation — schema-driven, emit-time</h3>
+<p>The canonical in-memory form uses one chosen name per concept: <code>mcpServers</code> (camelCase, matches 2 of 3 hosts including the .mcp.json file format that anchors the kind), PascalCase event names (<code>PreToolUse</code>, <code>PostToolUse</code>, etc., identity on Claude+Codex per <a href="0009-hook-schema.html">ADR-0009</a>). Per-host emit rewrites are declared in the schema's existing tables:</p>
+<ul>
+<li><code>template.source_locations[]</code> declares <code>file</code>, <code>json_path</code> or <code>toml_path</code>, plus the per-host key name (e.g., <code>mcp_servers</code> for codex).</li>
+<li><code>cross_ecosystem_event_aliases[]</code> in <code>schema/hook.yaml</code> declares the Gemini event-name map.</li>
+</ul>
+<p>Adapters consult the schema; they do not carry duplicate copies of mapping tables.</p>
+<h3 id="6-timeout-unit-conversion-canonical-seconds-gemini-multiplies-on-emit">6. Timeout unit conversion — canonical seconds, Gemini multiplies on emit</h3>
+<p>The canonical <code>timeout</code> field carries integer seconds. The Gemini adapter multiplies by 1000 on emit. The validator emits a warning when canonical <code>timeout &gt; 600</code> to catch the unit-confusion class documented in <a href="0009-hook-schema.html">ADR-0009</a> (shanraisshan corpus anomaly: 5000 and 30000 in a Claude-seconds field, almost certainly user error).</p>
+<h3 id="7-mcp-server-discriminated-transport-field-presence-not-adapter-concern">7. mcp-server discriminated transport — field presence, not adapter concern</h3>
+<p>Per <a href="0010-mcp-server-schema.html">ADR-0010</a>, transport is <code>command/args</code> (stdio) XOR <code>url</code> (HTTP), discriminated by field presence. This is a <strong>validator</strong> invariant, not an adapter responsibility — adapters emit whichever transport fields are present on a validated resource. The validator's machine-readable <code>oneOf</code> / <code>discriminator</code> semantics is deferred to MVP implementation (#5).</p>
+<h3 id="8-per-instance-lossy-detection-schema-declared-aliases-host-field_name">8. Per-instance lossy detection — schema-declared <code>aliases: [{host, field_name}, ...]</code></h3>
+<p>This supersedes the adapter-declared <code>lossy_when_fields</code> decision in <a href="0003-universal-kinds-with-adapter-capability-matrix.html">ADR-0003</a>'s 2026-05-24 addendum.</p>
+<p>Each <code>deliberately_excluded</code> entry in a schema gains a <code>canonical_concept</code> slug, an <code>aliases</code> object array, and an optional <code>lossy_when_dropped</code> boolean (default <code>true</code>). Optional <code>canonicalises_to:</code> names a universal-core field that the concept is equivalent to (for Scenario B deferral — see Consequences). Example (mcp-server):</p>
+<pre><code class="language-yaml">deliberately_excluded:
+  - canonical_concept: per_tool_approval
+    aliases:
+      - host: codex
+        field_name: &quot;tools.&lt;id&gt;.approval_mode&quot;
+    # lossy_when_dropped defaults to true — dropping a security control is lossy
+    reason: |
+      ...
+  - canonical_concept: stdio_working_dir
+    aliases:
+      - host: gemini-cli
+        field_name: cwd
+      - host: codex
+        field_name: cwd
+    reason: |
+      ...
+  - canonical_concept: transport_type_marker
+    aliases: []                          # no host parses semantically
+    lossy_when_dropped: false            # pass-through metadata; dropping is a no-op
+    reason: |
+      ...
+  - canonical_concept: gemini_http_url_alias
+    aliases:
+      - host: gemini-cli
+        field_name: httpUrl
+    canonicalises_to: url                # Scenario B: same concept as universal `url`
+    reason: |
+      ...
+</code></pre>
+<p>Lossy-detection algorithm (orchestrator-side, after <code>Plan</code> returns): walk the resource's <code>Extensions</code>; for each present field, find the matching <code>canonical_concept</code> in the kind's schema. If <code>lossy_when_dropped: false</code>, skip — this concept is pass-through metadata (<code>name</code>/<code>description</code> for Gemini's <code>enabled</code> registry, <code>transport_type_marker</code> for mcp-server, <code>discovery_keywords</code> for skill, etc.). Otherwise, the set of supporting hosts is <code>aliases[].host</code>; if the install's target host is not in that set, append a <code>LossyReason</code>. Aggregate across all sub-adapters when a CLI flag fans out (e.g., <code>--agent agents-cli</code> requires <code>--allow-lossy</code> if <strong>any</strong> sub-adapter would drop <strong>any</strong> field whose concept is <code>lossy_when_dropped: true</code>).</p>
+<p>The <code>lossy_when_dropped: false</code> escape hatch exists because some host-specific fields encode bookkeeping or aliases with no runtime effect elsewhere: dropping them on a non-supporting host changes nothing observable. Requiring <code>--allow-lossy</code> for those would be over-strict friction with no safety upside. The default stays <code>true</code> because the safer-failure-mode argument (silent semantic drop is worse than loud over-strict block) holds for everything semantically load-bearing — the override must be explicit and justified per-entry.</p>
+<p><code>canonicalises_to:</code> is a Scenario B anchor — when the universal core promotes one host's name (e.g., <code>url</code> from Codex) but another host uses a different name for the same concept (e.g., <code>httpUrl</code> on Gemini), the alias entry annotates the canonical field it folds into. For MVP, the translator is expected to canonicalise on import; if it fails to, lossy detection over-fires (the resource carries the host-specific name and the target host isn't in <code>aliases</code>). The annotation makes the eventual ADR-0017 alias-aware translation mechanical rather than archaeological.</p>
+<p>The object-array form (not a map keyed by host) is chosen because (a) it matches the schema's existing convention in <code>template.source_locations</code>, (b) it nudges Go code toward data-driven iteration (<code>for _, alias := range aliases</code>) rather than baked-in host enums, and (c) it extends per-host without restructuring (a future <code>deprecated_alias: ["headers"]</code> annotation on a Codex entry is a field-add, not a shape change).</p>
+<p>A separate per-field <code>host_support: [...]</code> projection is not stored — it would be redundant with <code>aliases[].host</code> and create drift risk. Adapters that need the projection compute it from <code>aliases</code>.</p>
+<h3 id="9-manifest-merged_keys-populated-from-the-install-plan">9. Manifest <code>merged_keys</code> — populated from the install plan</h3>
+<p>Per <a href="0004-manifest-as-install-provenance-source-of-truth.html">ADR-0004</a>. Adapter plans carry <code>MergedKeys</code>; the orchestrator persists them into <code>~/.dotpack/installs.yaml</code>. Multiple keys per hook install (one per binding leaf path, e.g., <code>$.hooks.PreToolUse[3]</code>), one per mcp-server install (<code>$.mcpServers.{name}</code> or <code>mcp_servers.{name}</code> per host).</p>
+<h3 id="10-schema-as-adapter-contract-comprehensive-inline-documentation-required">10. Schema as adapter contract — comprehensive inline documentation required</h3>
+<p>The architecture above makes the schema the single source of truth for adapter behaviour: source locations, key names, event aliases, transport discrimination, canonical concepts, per-host aliases, deliberate exclusions. Adapters are mechanical consumers; the schema is what carries the design intent.</p>
+<p>Therefore every schema entry that an adapter or future contributor (human or AI) might consume must carry inline documentation sufficient to extend it without out-of-band knowledge:</p>
+<ul>
+<li>Every field in <code>structure:</code> or <code>server_entry_fields:</code> already has <code>notes:</code> — keep this discipline.</li>
+<li>Every <code>deliberately_excluded</code> entry must have a <code>canonical_concept</code> slug, an <code>aliases</code> array, and a <code>reason:</code> block stating (i) what semantics the field encodes, (ii) why it's not in the universal core, (iii) which hosts support the concept and under what native names, (iv) what an adapter should do when it encounters it (emit natively, surface as lossy, drop silently with warning).</li>
+<li>Every <code>cross_ecosystem_event_aliases</code> or similar mapping table must document the canonical name choice, the alias direction, and what triggers a warning during conversion.</li>
+<li>Every <code>ecosystem_notes</code> bullet must specify whether it's a translator concern, adapter concern, validator concern, or security-agent concern — the same observation triggers different code in different stages.</li>
+</ul>
+<p>This bar exists because the survey LLM has shape-regressed on four of six kinds during Phase 0 (<a href="0009-hook-schema.html">ADR-0009</a> methodology note); without inline documentation as the authoritative spec, the regressed shape would look as plausible as the correct one. The schema is the contract, and the contract is read by AI agents at every re-survey and extension.</p>
+<h2 id="why">Why</h2>
+<ul>
+<li><strong>Two sub-adapters over one umbrella.</strong> Per-host asymmetry (a Codex-rich mcp-server is native on <code>codex</code>, lossy on <code>gemini</code>) is real and the single-row collapse hides it. The umbrella special-case at the orchestrator handles file-drop convergence without forcing the adapter abstraction to lie.</li>
+<li><strong>Plan-returning interface.</strong> Testability, dry-run, manifest construction all become trivial. The cost (one extra indirection) is uniform across all adapters.</li>
+<li><strong>Typed structs over generic maps.</strong> Per-kind shape divergence (already documented in every schema file) means a generic walker mostly does conditional-branching on kind anyway; typed structs make this branching explicit and let the Go compiler enforce the per-kind contract.</li>
+<li><strong>Go libraries over yq.</strong> Subprocess-shelling in the install hot path is fragile (PATH dependencies, version skew, error handling). <code>pelletier/go-toml/v2</code> is the mature pure-Go choice and adds one direct dependency.</li>
+<li><strong>Schema-declared aliases over adapter-declared lossy lists.</strong> Three asymmetric arguments:</li>
+<li><strong>Failure-mode safety.</strong> Forgetting to update an adapter-declared list when the corpus grows produces <em>silent</em> lossy-install failures — exactly what dotpack exists to prevent. Forgetting to update a schema alias produces an <em>over-strict</em> block requiring <code>--allow-lossy</code> — loud and recoverable.</li>
+<li><strong>Single source of truth.</strong> The schema already enumerates excluded fields with reasons; restating them in adapter code is duplicate knowledge that drifts.</li>
+<li><strong>New-adapter onboarding cost.</strong> Under adapter-declared lists, every new adapter has to discover and restate the cross-host superset. Under schema-declared aliases, a new adapter declares its <code>HostID</code> and inherits lossy detection.</li>
+<li><strong>Object-array aliases over host-keyed map.</strong> Consistency with <code>source_locations</code>, runtime-data over compile-time host enums, per-host extensibility.</li>
+<li><strong>Canonical = seconds + PascalCase + mcpServers.</strong> Matches the majority of hosts and the spec-canonical forms. Minimises the surface area of per-host rewrites (Gemini-only for both event names and timeout unit).</li>
+<li><strong>Inline schema documentation as a hard requirement.</strong> Phase 0 produced empirical evidence (shape regressions on four of six kinds) that the schema, not the methodology, is what survives across re-surveys. The methodology can drift; the schema is what's read every time.</li>
+</ul>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li><strong><a href="0003-universal-kinds-with-adapter-capability-matrix.html">ADR-0003</a> 2026-05-24 addendum partially superseded.</strong> The sentence "MVP needs adapter-side <code>lossy_when_fields: [...]</code> declarations" is replaced by this ADR's schema-declared <code>aliases</code> mechanism. The rest of the addendum (per-resource install-time check, default-deny without <code>--allow-lossy</code>) stands. ADR-0003 to be updated with a back-reference.</li>
+<li><strong>Schema files need a one-shot pass to add <code>canonical_concept</code> + <code>aliases</code> to existing <code>deliberately_excluded</code> entries.</strong> Mechanical work; falls into #5 (MVP implementation). The current entries already encode the data informally in <code>reason:</code> and <code>ecosystem_notes</code>; this is restructuring, not new survey work.</li>
+<li><strong>Cross-host concept-equivalence under different names (Scenario B from the design conversation) is not handled here.</strong> Today's only ambiguous case (<code>headers</code> vs <code>http_headers</code>) is intra-Codex and translator-handled. If a future kind exhibits a real cross-host alias case (e.g., Cursor adopting per-tool approval under a different name from Codex's <code>tools.&lt;id&gt;.approval_mode</code>), the current <code>aliases</code> object array already accommodates it — but the <em>translator</em> would need an additional concept-equivalence rewrite step at import time. Deferred to ADR-0017 if/when the corpus surfaces a concrete case.</li>
+<li><strong>Orchestrator gains a CLI-flag-to-adapter-set alias table.</strong> <code>agents-cli → {gemini, codex}</code> is the first entry; future flags (<code>all</code>, <code>cursor-ish</code>) live in the same table. The flag set is small enough to keep as a Go map; not a config file.</li>
+<li><strong>One new direct dependency.</strong> <code>github.com/pelletier/go-toml/v2</code>. No transitive churn.</li>
+<li><strong>The schema is now the adapter contract.</strong> Future schema changes are adapter-affecting changes; the survey methodology in <a href="0001-empirically-derived-schema-via-corpus-survey.html">ADR-0001</a> implicitly assumed the schema was only the validator's input. ADR-0001 should be updated to reflect the broader role.</li>
+<li><strong>No test architecture is settled here.</strong> Per the task-list note: test architecture is discovered TDD-style during #5, not pre-designed.</li>
+</ul>
+<h2 id="artefacts">Artefacts</h2>
+<ul>
+<li>This ADR</li>
+<li>Updates pending: <a href="0003-universal-kinds-with-adapter-capability-matrix.html">ADR-0003</a> (back-reference + addendum sentence supersession), <a href="0001-empirically-derived-schema-via-corpus-survey.html">ADR-0001</a> (schema-as-contract role)</li>
+<li>Schema updates pending in #5: <code>aliases</code> + <code>canonical_concept</code> on every existing <code>deliberately_excluded</code> entry across the six kind schemas</li>
+<li>Code pending in #5: <code>internal/adapter/</code>, <code>internal/resource/</code>, orchestrator's plan-apply + manifest persistence, per-instance lossy detection</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.tabs", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

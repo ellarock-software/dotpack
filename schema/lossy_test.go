@@ -66,7 +66,7 @@ func TestLossyExtensions_AllowedToolsOnGeminiCLI_Lossy(t *testing.T) {
 }
 
 func TestLossyExtensions_PassThroughMetadata_NeverLossy(t *testing.T) {
-	// ADR-0016 §8 pass-through skip: concepts with lossy_when_dropped:
+	// ADR-0012 §8 pass-through skip: concepts with lossy_when_dropped:
 	// false (discovery_keywords, metadata_bucket) are never lossy on
 	// any host, because dropping them changes nothing observable.
 	// The schema binds the on-disk field names via Concept.FieldNames
@@ -140,7 +140,7 @@ deliberately_excluded:
 }
 
 func TestLossyExtensions_UnknownField_Lossy_UnknownConcept(t *testing.T) {
-	// Per ADR-0016 §Why (failure-mode safety): an extension not listed
+	// Per ADR-0012 §Why (failure-mode safety): an extension not listed
 	// in any deliberately_excluded entry is lossy by default. The
 	// CanonicalConcept field stays empty so the CLI can render it as
 	// "(unknown field)" rather than a misleading concept slug.

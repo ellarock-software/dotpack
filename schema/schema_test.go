@@ -55,7 +55,7 @@ func TestHostKeepsExtension_UnknownField_FalseAndNoPanic(t *testing.T) {
 		}
 	}()
 	if s.HostKeepsExtension("claude-code", "totally_made_up_field") {
-		t.Error("HostKeepsExtension(claude-code, unknown) = true; want false (unknown fields are lossy per ADR-0016 §Why failure-mode safety)")
+		t.Error("HostKeepsExtension(claude-code, unknown) = true; want false (unknown fields are lossy per ADR-0012 §Why failure-mode safety)")
 	}
 }
 

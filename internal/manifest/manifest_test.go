@@ -57,7 +57,7 @@ func TestStore_UpsertThenLoadRoundtrip(t *testing.T) {
 }
 
 func TestStore_UpsertIsAtomic_NoLingeringTempFile(t *testing.T) {
-	// Per ADR-0008: write atomically (write to tmp, rename). After
+	// Per ADR-0004: write atomically (write to tmp, rename). After
 	// Upsert returns, no .tmp scratch files should remain in the
 	// manifest's directory.
 	tmp := t.TempDir()
@@ -115,7 +115,7 @@ func TestStore_UpsertReplacesRecordWithSameID(t *testing.T) {
 	// duplicate manifest record. The ID `host:kind:name` is unique per
 	// install slot; the second Upsert replaces the first record's
 	// content in place (new InstalledAt, new CacheKey, new Files list).
-	// Per ADR-0008 the manifest is the reconcile source of truth, and
+	// Per ADR-0004 the manifest is the reconcile source of truth, and
 	// dedupe is the precondition for #5 (uninstall + list).
 	path := filepath.Join(t.TempDir(), "installs.yaml")
 	store := manifest.NewStore(path)
@@ -152,7 +152,7 @@ func TestStore_UpsertRejectsEmptyID(t *testing.T) {
 	// resourceName() falls through to "" (default branch in
 	// orchestrator.resourceName), every unnamed install of that kind
 	// silently replaces the prior one. Reject at the manifest layer —
-	// the manifest is the reconcile source of truth (ADR-0008) and
+	// the manifest is the reconcile source of truth (ADR-0004) and
 	// must not store unidentifiable rows.
 	path := filepath.Join(t.TempDir(), "installs.yaml")
 	store := manifest.NewStore(path)

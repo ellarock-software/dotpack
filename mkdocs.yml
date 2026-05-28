@@ -1,0 +1,42 @@
+site_name: dotpack Schema Documentation
+site_description: Documentation for the dotpack universal agent schemas
+use_directory_urls: false
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.tabs
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - tables
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Schemas:
+    - Agent: schemas/agent.md
+    - Command: schemas/command.md
+    - Hook: schemas/hook.md
+    - Mcp-Server: schemas/mcp-server.md
+    - Memory: schemas/memory.md
+    - Rule: schemas/rule.md
+    - Skill: schemas/skill.md
+  - Standards & Architecture (ADR):
+    - ADR 0001: adr/0001-empirically-derived-schema-via-corpus-survey.md
+    - ADR 0002: adr/0002-schema-template-as-anchor.md
+    - ADR 0003: adr/0003-universal-kinds-with-adapter-capability-matrix.md
+    - ADR 0004: adr/0004-manifest-as-install-provenance-source-of-truth.md
+    - ADR 0005: adr/0005-skill-schema.md
+    - ADR 0006: adr/0006-agent-schema.md
+    - ADR 0007: adr/0007-command-schema.md
+    - ADR 0008: adr/0008-memory-schema.md
+    - ADR 0009: adr/0009-hook-schema.md
+    - ADR 0010: adr/0010-mcp-server-schema.md
+    - ADR 0011: adr/0011-floor-rule-deviation-criterion.md
+    - ADR 0012: adr/0012-agents-cli-adapter-fan-out-and-schema-driven-lossy-detection.md
+    - ADR 0013: adr/0013-rule-schema.md

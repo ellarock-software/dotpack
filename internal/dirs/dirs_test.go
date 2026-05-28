@@ -211,7 +211,7 @@ func TestFromEnv_AgentsHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
 	// Codex's only documented native skill path is ~/.agents/skills/
 	// (per developers.openai.com/codex/skills), so the codex adapter
 	// targets <AgentsHome>/skills/<name>/ for user scope. AgentsHome is
-	// shared infrastructure: agents-cli umbrella (ADR-0016 §1) will
+	// shared infrastructure: agents-cli umbrella (ADR-0012 §1) will
 	// eventually special-case the same root for write-once convergence.
 	// Same class of bug as Claude/Gemini: relative env values silently
 	// break across chdir.

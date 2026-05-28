@@ -23,7 +23,7 @@ import (
 // future kind or host needs it.
 //
 // Raw is the original on-disk bytes the parser was given (cache copy
-// guarantee from ADR-0008). Translator-produced Agents leave it nil.
+// guarantee from ADR-0004). Translator-produced Agents leave it nil.
 type Agent struct {
 	Name        string
 	Description string
@@ -58,7 +58,7 @@ func (a *Agent) WithExtensions(m map[string]any) *Agent {
 // ParseAgent parses agent frontmatter (the bytes between the first two
 // `---` lines, then markdown body) into an *Agent. Tools is normalised
 // to []string regardless of source shape — comma-separated string or
-// YAML array. Per ADR-0008, Raw is preserved so a byte-identical
+// YAML array. Per ADR-0004, Raw is preserved so a byte-identical
 // pass-through path could be added later; today's claudecode.planAgent
 // always re-encodes so the tools form is the host's preferred shape.
 func ParseAgent(raw []byte) (*Agent, error) {

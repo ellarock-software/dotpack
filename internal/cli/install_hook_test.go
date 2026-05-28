@@ -13,7 +13,7 @@ import (
 )
 
 // TestInstall_HookOnClaudeCode_ProjectScope_FreshFile is the tracer
-// bullet for the hook kind on the configfrag pattern per ADR-0016
+// bullet for the hook kind on the configfrag pattern per ADR-0012
 // §5–§7 + §9. Smallest meaningful vertical slice: one event × one
 // binding × one hook-spec on one host (claude-code), JSON-only, one
 // scope (project), fresh file (no existing .claude/settings.json).

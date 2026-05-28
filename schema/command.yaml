@@ -50,7 +50,7 @@ fields:
       changes runtime semantics in Claude Code (without it, every Bash
       invocation prompts for approval; with it, listed tools are
       auto-approved). The anthropics official example uses
-      "Bash(git add:*), Bash(git commit:*)" filter syntax. Per ADR-0007,
+      "Bash(git add:*), Bash(git commit:*)" filter syntax. Per ADR-0003,
       this is technically adapter-layer (runtime permissions), but is
       retained here because Claude's documented spec includes it and
       it has corpus presence. Adapters that don't support it warn at
@@ -69,7 +69,7 @@ ecosystem_notes:
     Claude uses subdir prefixes; Gemini uses colons (`agents/start.toml`
     becomes `/agents:start`)."
 deliberately_excluded:
-  # Per ADR-0016 §8, each deliberately_excluded entry declares a
+  # Per ADR-0012 §8, each deliberately_excluded entry declares a
   # canonical_concept + aliases [{host, field_name}, ...]. Orchestrator's
   # per-instance lossy detection: if a resource's Extensions carry a field
   # listed under aliases[].field_name, install is lossy on hosts NOT in
@@ -96,7 +96,7 @@ deliberately_excluded:
         lacks the concept would change runtime invocation semantics.
         Install proceeds only with `--allow-lossy`.
       Note: the universal `allowed-tools` field is PROMOTED to the schema
-      (not deliberately_excluded) under the Deviation 2 rule of ADR-0015
+      (not deliberately_excluded) under the Deviation 2 rule of ADR-0011
       — see the field's notes block above. It is NOT a lossy-detection
       concern; adapters that don't support it warn at install time
       rather than block.
@@ -106,6 +106,6 @@ deliberately_excluded:
         Survey clusters.md noted recurring body sections in wshobson
         Markdown commands (## Context, ## Requirements, ## Instructions).
         Not adopted — these are author conventions for prompt structure,
-        not parseable schema. Same posture as ADR-0010 for agent body.
+        not parseable schema. Same posture as ADR-0006 for agent body.
         NOT a field; no canonical_concept; not a lossy-detection
         participant.

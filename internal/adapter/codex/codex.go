@@ -3,7 +3,7 @@
 //
 //   - skill → internal/adapter/filedrop (one file written per resource).
 //   - mcp-server + hook → internal/adapter/configfrag (one or more
-//     (path, value) merges into ~/.codex/config.toml; ADR-0016 §5–§7+§9).
+//     (path, value) merges into ~/.codex/config.toml; ADR-0012 §5–§7+§9).
 //
 // Both modules implement adapter.Adapter; the shell's job is to declare
 // the per-host policy data (Policy for filedrop; configfragPolicy() for
@@ -31,7 +31,7 @@
 // as a convergence path, but the gemini-cli adapter writes to its
 // host-specific path so `--agent codex` and `--agent gemini-cli` don't
 // collide here today. The `--agent agents-cli` umbrella flag
-// (ADR-0016 §1) writes to AgentsHome/skills/ as its write-once
+// (ADR-0012 §1) writes to AgentsHome/skills/ as its write-once
 // convergence; collision handling is owned by that umbrella's CLI-flag-
 // to-adapter-set special case.
 //
@@ -134,11 +134,11 @@ func userConfigRoot(d dirs.Dirs) (string, error) {
 //
 // Value layout: universal core (command, args, url, env) PLUS the
 // codex-superset extension fields verbatim from m.Extensions(). Per
-// schema/mcp-server.yaml's ecosystem_notes + ADR-0014, codex's
+// schema/mcp-server.yaml's ecosystem_notes + ADR-0010, codex's
 // mcp-server schema is a SUPERSET of the cross-host common core; the
 // codex adapter preserves extensions on round-trip (`enabled_tools`,
 // `http_headers`, `bearer_token_env_var`, `tools.<id>.approval_mode`,
-// etc.). Per-instance lossy detection (ADR-0007 addendum) is a
+// etc.). Per-instance lossy detection (ADR-0003 addendum) is a
 // non-codex adapter concern; codex emit is non-lossy by definition.
 //
 // Schema's `headers` vs `http_headers` normalization is INTENTIONALLY

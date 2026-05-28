@@ -23,7 +23,7 @@ type Dirs struct {
 
 	// ClaudeHome is the root of Claude Code's user config, e.g.
 	// ~/.claude. The claude-code adapter writes user-scope skills to
-	// ClaudeHome/skills/<name>/SKILL.md (per ADR-0009).
+	// ClaudeHome/skills/<name>/SKILL.md (per ADR-0005).
 	ClaudeHome string
 
 	// GeminiHome is the root of Gemini CLI's user config, e.g.
@@ -46,21 +46,21 @@ type Dirs struct {
 	// but the gemini-cli adapter writes to its host-specific path so
 	// `--agent gemini-cli` doesn't collide with `--agent codex` at the
 	// shared root. The future `--agent agents-cli` umbrella flag
-	// (ADR-0016 §1) special-cases AgentsHome/skills/ for write-once
+	// (ADR-0012 §1) special-cases AgentsHome/skills/ for write-once
 	// convergence; until then, `--agent codex` is the only writer.
 	AgentsHome string
 
 	// CodexHome is the root of Codex CLI's user config, e.g. ~/.codex.
 	// The codex adapter writes user-scope mcp-server installs to
 	// CodexHome/config.toml (per schema/mcp-server.yaml's
-	// template.source_locations entry for host codex; ADR-0014). Distinct
+	// template.source_locations entry for host codex; ADR-0010). Distinct
 	// from AgentsHome — skills live at AgentsHome/skills/ (cross-host
 	// convergence root), but config.toml is codex-specific and lives at
 	// CodexHome.
 	CodexHome string
 
 	// DotpackHome is the root of dotpack's own state, e.g. ~/.dotpack.
-	// The manifest store writes installs.yaml here (per ADR-0008).
+	// The manifest store writes installs.yaml here (per ADR-0004).
 	DotpackHome string
 
 	// ProjectHome is the root of the user's current project, used by

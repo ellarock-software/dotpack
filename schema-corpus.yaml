@@ -85,7 +85,7 @@ kinds:
       #   max_turns (snake_case) vs Claude's maxTurns (camelCase), kind: local
       #   field. Real-world ~/.gemini/agents/*.md adoption is sparse — no
       #   verified third-party corpus available. The ecosystem divergence is
-      #   documented in docs/adr/0010-agent-schema.md based on the Gemini spec.
+      #   documented in docs/adr/0006-agent-schema.md based on the Gemini spec.
 
   command:
     fixture_shape: file_with_frontmatter
@@ -150,7 +150,7 @@ kinds:
       # section conventions, length norms, and naming-discovery rules
       # (CLAUDE.md vs GEMINI.md vs AGENTS.md filename divergence).
       # Output may diverge in shape from skill/agent/command schemas —
-      # that's expected (called out in docs/adr/0009-skill-schema.md
+      # that's expected (called out in docs/adr/0005-skill-schema.md
       # consequences re: memory shape-divergence).
 
   hook:
@@ -246,7 +246,7 @@ kinds:
       #   Codex spec uses `[mcp_servers.<id>]`. May be wishful/legacy syntax;
       #   translator should reject or remap on import.
 
-      # ECOSYSTEM CALLOUTS DOCUMENTED IN ADR-0014:
+      # ECOSYSTEM CALLOUTS DOCUMENTED IN ADR-0010:
       # - Gemini CLI: mcpServers lives in .gemini/settings.json (same key
       #   name as Claude, slightly extended field set with httpUrl/headers/
       #   cwd/timeout/trust). No popular real-world .gemini/settings.json

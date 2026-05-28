@@ -1,6 +1,6 @@
 // Package resource holds the canonical-form in-memory representations of
 // dotpack resources (skill, agent, command, memory, hook, mcp-server),
-// per ADR-0016 §3. Each kind is a typed struct mirroring its schema.
+// per ADR-0012 §3. Each kind is a typed struct mirroring its schema.
 package resource
 
 import (
@@ -16,7 +16,7 @@ import (
 // lossy check inspects (access via Extensions()).
 //
 // Raw is the original SKILL.md bytes the parser was given, kept so
-// adapters can satisfy ADR-0008's "byte-identical to the cache copy"
+// adapters can satisfy ADR-0004's "byte-identical to the cache copy"
 // guarantee without re-encoding. ParseSkill always populates it;
 // translator-produced Skills (where there is no source file) leave it
 // nil and the adapter falls back to re-encoding the universal core.
@@ -24,7 +24,7 @@ import (
 // Invariant: when Raw is non-empty, Raw and the extension map are
 // consistent — the map reflects every non-universal-core frontmatter
 // key in Raw. Code that mutates extensions without rewriting Raw
-// breaks the ADR-0008 byte-pass-through guarantee (canPassThrough
+// breaks the ADR-0004 byte-pass-through guarantee (canPassThrough
 // would emit Raw bytes that no longer match the in-memory extension
 // set). Mutators (WithExtensions etc.) drop Raw to preserve this.
 type Skill struct {
@@ -57,7 +57,7 @@ func (s *Skill) WithExtensions(m map[string]any) *Skill {
 
 // ParseSkill parses SKILL.md bytes (YAML frontmatter delimited by `---`
 // lines, followed by a markdown body) into a *Skill. The bytes are not
-// re-encoded by dotpack on install — per ADR-0008, drop-file resources
+// re-encoded by dotpack on install — per ADR-0004, drop-file resources
 // are byte-identical to their cache copy; ParseSkill exists for
 // validation, not for round-tripping.
 func ParseSkill(raw []byte) (*Skill, error) {

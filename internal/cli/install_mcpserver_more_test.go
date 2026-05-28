@@ -158,7 +158,7 @@ func TestInstall_MCPServerOnClaudeCode_UserEditedCollision_RefusedAndForced(t *t
 }
 
 // TestInstall_MCPServerOnClaudeCode_ValidatorRejectsAmbiguousTransport
-// pins ADR-0016 §7's discriminated-transport invariant: a source
+// pins ADR-0012 §7's discriminated-transport invariant: a source
 // declaring both `command` and `url` is structurally ill-formed and
 // must be rejected at parse-time, not silently coerced to one or the
 // other.

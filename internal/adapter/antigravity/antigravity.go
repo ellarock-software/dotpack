@@ -4,7 +4,7 @@
 //   - skill + agent → internal/adapter/filedrop (one file written per
 //     resource; no config merging).
 //   - mcp-server → internal/adapter/configfrag (one (path, value) merge
-//     into Antigravity's settings.json; ADR-0016 §5-§7).
+//     into Antigravity's settings.json; ADR-0012 §5-§7).
 //
 // Both modules implement adapter.Adapter; this package declares the
 // host-specific policy data and dispatches Plan by resource Kind.
@@ -29,7 +29,7 @@
 // and `--agent codex` produce distinct manifest-tracked targets. The
 // antigravity-cli runtime still picks up the codex-installed skill via its
 // read-side convergence. The future `--agent agents-cli` umbrella
-// flag (ADR-0016 §1) will special-case writing to ~/.agents/skills/
+// flag (ADR-0012 §1) will special-case writing to ~/.agents/skills/
 // once for both hosts.
 package antigravity
 

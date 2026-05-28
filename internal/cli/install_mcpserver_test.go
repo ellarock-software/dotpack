@@ -12,7 +12,7 @@ import (
 )
 
 // TestInstall_MCPServerOnClaudeCode_ProjectScope_FreshFile is the tracer
-// bullet for hook + mcp-server kinds per ADR-0016 §5–§7 + §9. Smallest
+// bullet for hook + mcp-server kinds per ADR-0012 §5–§7 + §9. Smallest
 // meaningful vertical slice: one kind (mcp-server) on one host
 // (claude-code), JSON-only (no TOML), one scope (project), fresh file
 // (no existing .mcp.json). Forces all the architectural elements:

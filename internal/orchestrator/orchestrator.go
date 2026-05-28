@@ -1,5 +1,5 @@
 // Package orchestrator applies an adapter's InstallPlan to the
-// filesystem and persists the manifest record. Per ADR-0016 §2 the
+// filesystem and persists the manifest record. Per ADR-0012 §2 the
 // orchestrator owns: filesystem mutation, manifest construction, and
 // the --allow-lossy gate. Adapters return plans; the orchestrator
 // runs them.
@@ -14,7 +14,7 @@
 //
 // The split replaces an earlier single Orchestrator type whose New(d, a, mf)
 // accepted a nil adapter for List + Uninstall — honest about today's
-// behaviour but actively misleading when ADR-0016 §9's un-merge-keys
+// behaviour but actively misleading when ADR-0012 §9's un-merge-keys
 // step lands and Uninstall starts needing the adapter. With the split,
 // the §9 migration is a method move (Reader.Uninstall → Installer.Uninstall),
 // not an API redesign.
@@ -46,7 +46,7 @@ import (
 // CLI's `dotpack list` and `dotpack uninstall` use this type — neither
 // needs to know about per-host adapter wiring.
 //
-// ADR-0016 §9 refinement (2026-05-25): the prior framing said
+// ADR-0012 §9 refinement (2026-05-25): the prior framing said
 // "Uninstall will gain an un-merge step that requires the host adapter,
 // at which point Uninstall moves to Installer". Empirically the
 // un-merge is FORMAT-specific (JSON vs TOML walker), not host-specific
@@ -64,7 +64,7 @@ type Reader struct {
 
 // Installer handles Install. Holds the target adapter — the only
 // operation that actually traverses it today. One Installer handles one
-// (host, manifest) pair; --agent agents-cli fan-out (ADR-0016 §1) is a
+// (host, manifest) pair; --agent agents-cli fan-out (ADR-0012 §1) is a
 // higher layer that constructs multiple Installers.
 type Installer struct {
 	dirs     dirs.Dirs
@@ -92,7 +92,7 @@ func NewInstaller(d dirs.Dirs, a adapter.Adapter, m *manifest.Store) *Installer 
 type InstallOptions struct {
 	Source     string
 	AllowLossy bool
-	// Force bypasses the pre-flight collision check (ADR-0008 hygiene:
+	// Force bypasses the pre-flight collision check (ADR-0004 hygiene:
 	// the orchestrator refuses to overwrite untracked files at an
 	// install target). Use only when the user has audited the
 	// collision and accepts the overwrite — mirrors --allow-lossy.
@@ -178,7 +178,7 @@ func (e *LossyError) Error() string {
 
 // Install runs the adapter's Plan against the resource, applies file
 // writes to disk, and appends a manifest record. Per-instance lossy
-// detection (ADR-0016 §8) is computed here from the schema against
+// detection (ADR-0012 §8) is computed here from the schema against
 // the resource's Extensions — the adapter's Plan does not carry lossy
 // state; the schema is the single source of truth.
 func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts InstallOptions) (InstallResult, error) {
@@ -369,7 +369,7 @@ func (r *Reader) Uninstall(id string) (UninstallResult, error) {
 		}
 	}
 
-	// Config-fragment un-merge per ADR-0016 §9. Each manifest MergedKey
+	// Config-fragment un-merge per ADR-0012 §9. Each manifest MergedKey
 	// names the file the install merged into and the format-native path
 	// it merged at; unmergeKey dispatches by file extension (JSON today;
 	// TOML when codex lands) and atomic-writes the result. Per advisor
@@ -616,7 +616,7 @@ func resourceName(r resource.Resource) (string, error) {
 }
 
 // cacheKey hashes the install plan's contents to give the manifest a
-// deduplication / drift-detection handle. Per ADR-0008 the manifest
+// deduplication / drift-detection handle. Per ADR-0004 the manifest
 // carries a cache_key field; in slice 1 the cache layer doesn't yet
 // exist, so we synthesise the key from the bytes the adapter emitted.
 //

@@ -49,7 +49,7 @@ func TestClaudeCode_PlanSkill_UserScope_WritesToClaudeHome(t *testing.T) {
 
 func TestClaudeCode_PlanSkill_ProjectScope_WritesToProjectClaudeDir(t *testing.T) {
 	// ScopeProject targets <ProjectHome>/.claude/skills/<name>/SKILL.md
-	// per ADR-0009 + slice 2 task #2 (project paths absolute, rooted at
+	// per ADR-0005 + slice 2 task #2 (project paths absolute, rooted at
 	// dirs.ProjectHome rather than CWD-relative). The manifest record's
 	// paths must be absolute so uninstall/list from any CWD resolve.
 	home := t.TempDir()
@@ -101,7 +101,7 @@ func TestClaudeCode_PlanSkill_FallbackEncodeEmitsFrontmatterAndBody(t *testing.T
 	// stable target if it ever exercises this path. Re-encoding is NOT
 	// the production code path for installed-from-source resources —
 	// see TestClaudeCode_PlanSkill_BytePerfectPassThroughOfParsedSource
-	// below for the ADR-0008 guarantee.
+	// below for the ADR-0004 guarantee.
 	a := claudecode.New(dirs.Dirs{ClaudeHome: t.TempDir()})
 	skill := &resource.Skill{
 		Name:        "fixture",
@@ -126,7 +126,7 @@ func TestClaudeCode_PlanSkill_FallbackEncodeEmitsFrontmatterAndBody(t *testing.T
 }
 
 func TestClaudeCode_PlanSkill_BytePerfectPassThroughOfParsedSource(t *testing.T) {
-	// Per ADR-0008: installed drop-file resources are byte-identical to
+	// Per ADR-0004: installed drop-file resources are byte-identical to
 	// their cache copy. When ParseSkill captured Raw bytes and no
 	// Extensions need re-encoding, plan.Files[0].Content MUST equal
 	// the source bytes. Authorial formatting (folded scalars, comments,
@@ -145,7 +145,7 @@ func TestClaudeCode_PlanSkill_BytePerfectPassThroughOfParsedSource(t *testing.T)
 		t.Fatalf("Plan: %v", err)
 	}
 	if !bytes.Equal(plan.Files[0].Content, src) {
-		t.Errorf("plan content diverges from source bytes (ADR-0008 violation).\n"+
+		t.Errorf("plan content diverges from source bytes (ADR-0004 violation).\n"+
 			"--- source ---\n%s\n--- plan ---\n%s", string(src), string(plan.Files[0].Content))
 	}
 }

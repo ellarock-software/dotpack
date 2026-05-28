@@ -1,7 +1,7 @@
 // Package configfrag is the deep Adapter implementation for hosts whose
 // kinds install as config fragments — merges into an existing host
 // config file rather than dropping a new file. Hook + mcp-server are
-// config-fragment kinds per ADR-0016 §5–§7; their installs return
+// config-fragment kinds per ADR-0012 §5–§7; their installs return
 // InstallPlan.MergedKeys (not Files), which the orchestrator applies
 // via format-aware read-modify-write on the target file.
 //
@@ -14,7 +14,7 @@
 //     per-host shell dispatches by Kind, delegating to whichever module
 //     owns that kind's apply contract.
 //   - filedrop's package docstring already pre-positioned this:
-//     "The hook + mcp-server kinds (per ADR-0016 §5–§7) are NOT file-drop
+//     "The hook + mcp-server kinds (per ADR-0012 §5–§7) are NOT file-drop
 //     — they merge config fragments into existing JSON / TOML files.
 //     Those will live in a sibling adapter module when they land, not
 //     here."
@@ -86,7 +86,7 @@ type ScopeFiles struct {
 //
 // Emit signature: returns the list of (path, value) tuples this resource
 // merges. For mcp-server today that's exactly one tuple; for hook it
-// will be one tuple per binding leaf path (per ADR-0016 §9: "Multiple
+// will be one tuple per binding leaf path (per ADR-0012 §9: "Multiple
 // keys per hook install (one per binding leaf path)") so the slice-of-
 // tuples shape is the right surface from day 1 even though the tracer
 // bullet uses a single tuple.
@@ -102,7 +102,7 @@ type KindConfig struct {
 //
 // Path is in the file's native syntax for KindConfig.Format — adapters
 // emit in the format the file uses, the orchestrator's walker consumes
-// in that same format. Per ADR-0016 §5 the path keys are
+// in that same format. Per ADR-0012 §5 the path keys are
 // schema-declared (see schema/<kind>.yaml's template.source_locations).
 //
 // Op selects between set-leaf (mcp-server's default — the path names a

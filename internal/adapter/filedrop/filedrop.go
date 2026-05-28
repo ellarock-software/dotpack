@@ -7,7 +7,7 @@
 // addScalar that this module replaces was the architecture review's
 // card #1.
 //
-// The hook + mcp-server kinds (per ADR-0016 §5–§7) are NOT file-drop —
+// The hook + mcp-server kinds (per ADR-0012 §5–§7) are NOT file-drop —
 // they merge config fragments into existing JSON / TOML files. Those
 // will live in a sibling adapter module when they land, not here.
 package filedrop
@@ -215,7 +215,7 @@ func (a *Adapter) encode(r resource.Resource) ([]byte, error) {
 	}
 }
 
-// encodeSkill emits SKILL.md bytes. ADR-0008 byte-identity: when Raw is
+// encodeSkill emits SKILL.md bytes. ADR-0004 byte-identity: when Raw is
 // set AND every extension would be kept by this host, ship Raw
 // verbatim. Otherwise re-encode the universal core + retained
 // extensions in deterministic order.

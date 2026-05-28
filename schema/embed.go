@@ -1,5 +1,5 @@
 // Package schema loads dotpack's per-kind YAML schemas (skill, agent,
-// command, memory, hook, mcp-server, rule) and implements the ADR-0016 §8
+// command, memory, hook, mcp-server, rule) and implements the ADR-0012 §8
 // per-instance lossy-detection algorithm.
 //
 // The schema YAML files in this directory are embedded into the binary
