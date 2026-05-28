@@ -1,13 +1,10 @@
 package codex_test
 
 import (
-	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter"
 	"github.com/ellarock/dotpack/internal/adapter/codex"
 	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
 )
 
 func TestCodex_HostID(t *testing.T) {
@@ -23,23 +20,4 @@ func TestCodex_HostID(t *testing.T) {
 	}
 }
 
-func TestCodex_Plan_AgentKind_ReturnsUnsupportedError(t *testing.T) {
-	// Adapter-level enforcement of KindAgent absent from Policy.Layouts.
-	// Even if a future CLI bug routes an agent resource to the codex
-	// adapter, Plan must return a structured error rather than silently
-	// writing the agent to some fictional path. The error mentions both
-	// the host ("codex") and the kind ("agent") so the CLI surfaces an
-	// actionable message.
-	a := codex.New(dirs.Dirs{AgentsHome: t.TempDir()})
-	ag := &resource.Agent{Name: "x", Description: "d", Body: "b"}
-	_, err := a.Plan(ag, adapter.ScopeUser)
-	if err == nil {
-		t.Fatal("expected error when planning an agent on codex (kind unsupported), got nil")
-	}
-	if !strings.Contains(err.Error(), "codex") {
-		t.Errorf("error must name the host (codex); got %v", err)
-	}
-	if !strings.Contains(err.Error(), "agent") {
-		t.Errorf("error must name the unsupported kind (agent); got %v", err)
-	}
-}
+

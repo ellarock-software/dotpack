@@ -19,6 +19,7 @@ func setupCodexEnv(t *testing.T) (agentsHome, dotpackHome string) {
 	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
 	t.Setenv("DOTPACK_GEMINI_HOME", t.TempDir())
 	t.Setenv("DOTPACK_AGENTS_HOME", agentsHome)
+	t.Setenv("DOTPACK_CODEX_HOME", t.TempDir())
 	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
 	t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
 	return agentsHome, dotpackHome
@@ -152,21 +153,14 @@ body content
 	}
 }
 
-func TestInstall_AgentOnCodex_ReturnsUnsupportedError(t *testing.T) {
-	// Codex leaves KindAgent absent from Policy.Layouts (no native codex
-	// agent loading path per OpenAI docs); filedrop.Plan returns "codex:
-	// kind agent not yet supported". CLI must surface that as a normal
-	// error (not panic, not silent success), so the user sees an
-	// actionable message instead of fishing in the manifest for a write
-	// that never happened. Pins the contract: CLI does NOT pre-filter on
-	// host-kind support — the adapter's Plan is the enforcement point.
+func TestInstall_AgentOnCodex_Supported(t *testing.T) {
 	setupCodexEnv(t)
 
 	tmp := t.TempDir()
-	src := filepath.Join(tmp, "would-be-codex-agent.md")
+	src := filepath.Join(tmp, "codex-agent.md")
 	body := []byte(`---
-name: would-be-codex-agent
-description: an agent that codex cannot host
+name: codex-agent
+description: an agent that codex can host
 ---
 agent body
 `)
@@ -177,18 +171,16 @@ agent body
 	cmd := NewRootCmd()
 	cmd.SetOut(io_DiscardWriter())
 	cmd.SetErr(io_DiscardWriter())
-	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--kind", "agent"})
+	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--kind", "agent", "--scope", "user"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for agent kind on codex (KindAgent unsupported), got nil")
+	if err != nil {
+		t.Fatalf("expected install to succeed for agent kind on codex, got %v", err)
 	}
-	msg := err.Error()
-	if !strings.Contains(msg, "codex") {
-		t.Errorf("error must name the host; got %q", msg)
-	}
-	if !strings.Contains(msg, "agent") {
-		t.Errorf("error must name the unsupported kind; got %q", msg)
+
+	codexPath := filepath.Join(os.Getenv("DOTPACK_CODEX_HOME"), "agents", "codex-agent.toml")
+	if _, err := os.Stat(codexPath); err != nil {
+		t.Errorf("expected TOML agent file at codex path %s: %v", codexPath, err)
 	}
 }
 
