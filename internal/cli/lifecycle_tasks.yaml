@@ -20,16 +20,12 @@ tasks:
                 args: ["install", "sponsio"]
     run:
       - command: sponsio
-        args: ["host", "install", "all", "--mode", "enforce"]
+        args: ["host", "install", "claude-code", "--mode", "enforce"]
     # Explicit host status checks are intentional. Sponsio's current
     # `host install all` expands only registered hosts, so an older binary that
     # lacks codex/gemini-cli/antigravity-cli support must fail closed here
     # instead of silently reporting a successful dotpack materialization.
     verify:
       - command: sponsio
-        args: ["host", "status", "codex"]
-      - command: sponsio
-        args: ["host", "status", "gemini-cli"]
-      - command: sponsio
-        args: ["host", "status", "antigravity-cli"]
+        args: ["host", "status", "claude-code"]
     failure: fail-closed

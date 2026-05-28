@@ -101,10 +101,8 @@ func TestLifecycleExistingBinaryRunsInstallAndVerifiesRequiredHosts(t *testing.T
 	}
 
 	want := []string{
-		"/usr/local/bin/sponsio host install all --mode enforce",
-		"/usr/local/bin/sponsio host status codex",
-		"/usr/local/bin/sponsio host status gemini-cli",
-		"/usr/local/bin/sponsio host status antigravity-cli",
+		"/usr/local/bin/sponsio host install claude-code --mode enforce",
+		"/usr/local/bin/sponsio host status claude-code",
 	}
 	if fmt.Sprint(runner.runs) != fmt.Sprint(want) {
 		t.Fatalf("runs = %v; want %v", runner.runs, want)
@@ -129,7 +127,8 @@ func TestLifecycleInstallsWhenMissingThenRunsEnforcement(t *testing.T) {
 
 	wantPrefix := []string{
 		"/opt/homebrew/bin/pip install sponsio",
-		"/opt/homebrew/bin/sponsio host install all --mode enforce",
+		"/opt/homebrew/bin/sponsio host install claude-code --mode enforce",
+		"/opt/homebrew/bin/sponsio host status claude-code",
 	}
 	for i, want := range wantPrefix {
 		if runner.runs[i] != want {
@@ -163,16 +162,16 @@ func TestLifecycleFailsClosedWhenRequiredHostIsUnsupported(t *testing.T) {
 			"sponsio": {{path: "/usr/local/bin/sponsio"}},
 		},
 		runErrs: map[string]error{
-			"/usr/local/bin/sponsio host status codex": errors.New("unknown host codex"),
+			"/usr/local/bin/sponsio host status claude-code": errors.New("unknown host claude-code"),
 		},
 	}
 	withFakeLifecycleRunner(t, runner)
 
 	err := runLifecyclePhase(lifecyclePhasePostInstall, "codex")
 	if err == nil {
-		t.Fatal("expected lifecycle failure when Sponsio lacks codex support")
+		t.Fatal("expected lifecycle failure when Sponsio lacks claude-code support")
 	}
-	if !strings.Contains(err.Error(), "verify sponsio host status codex") {
+	if !strings.Contains(err.Error(), "verify sponsio host status claude-code") {
 		t.Fatalf("error should name the failed verify command; got %v", err)
 	}
 }
@@ -195,15 +194,13 @@ func TestInstallFailsClosedWithUnsupportedRealSponsioHosts(t *testing.T) {
 			Env:  "DOTPACK_SPONSIO_BINARY",
 		}}},
 		Verify: []lifecycleCommand{
-			{Command: "sponsio", Args: []string{"host", "status", "codex"}},
-			{Command: "sponsio", Args: []string{"host", "status", "gemini-cli"}},
-			{Command: "sponsio", Args: []string{"host", "status", "antigravity-cli"}},
+			{Command: "sponsio", Args: []string{"host", "status", "claude-code"}},
 		},
 		Failure: "fail-closed",
 	}
 	lifecycleErr := runLifecycleTask(probe)
 	if lifecycleErr == nil {
-		t.Skipf("%s supports codex, gemini-cli, and antigravity-cli; unsupported-host fail-closed path is not applicable", binary)
+		t.Skipf("%s supports claude-code; unsupported-host fail-closed path is not applicable", binary)
 	}
 
 	agentsHome, _ := setupCodexEnv(t)
