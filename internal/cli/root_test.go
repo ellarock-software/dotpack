@@ -46,7 +46,8 @@ func TestInstallHelpDocumentsAgentsToHostTranslation(t *testing.T) {
 		".claude/skills/<name>/SKILL.md",
 		".gemini/skills/<name>/SKILL.md",
 		".codex/config.toml",
-		"agents-cli  -> .agents/skills/<name>/SKILL.md once for Gemini + Codex",
+		"agents-cli      -> .agents/skills/<name>/SKILL.md once for sub-adapters",
+		"post-install lifecycle tasks from",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("install help missing %q:\n%s", want, got)

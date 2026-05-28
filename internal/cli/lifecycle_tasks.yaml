@@ -1,0 +1,31 @@
+version: 1
+tasks:
+  - name: sponsio-enforcement
+    phase: post-install
+    applies_to:
+      agents:
+        - codex
+        - gemini-cli
+        - antigravity-cli
+        - agents-cli
+    ensure:
+      binaries:
+        - name: sponsio
+          env: DOTPACK_SPONSIO_BINARY
+          install:
+            candidates:
+              - command: pip
+                args: ["install", "sponsio"]
+              - command: pip3
+                args: ["install", "sponsio"]
+    run:
+      - command: sponsio
+        args: ["host", "install", "all", "--mode", "enforce"]
+    verify:
+      - command: sponsio
+        args: ["host", "status", "codex"]
+      - command: sponsio
+        args: ["host", "status", "gemini-cli"]
+      - command: sponsio
+        args: ["host", "status", "antigravity-cli"]
+    failure: fail-closed

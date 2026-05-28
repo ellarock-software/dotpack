@@ -11,10 +11,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ellarock/dotpack/internal/adapter"
+	"github.com/ellarock/dotpack/internal/adapter/antigravity"
 	"github.com/ellarock/dotpack/internal/adapter/claudecode"
 	"github.com/ellarock/dotpack/internal/adapter/codex"
 	"github.com/ellarock/dotpack/internal/adapter/gemini"
-	"github.com/ellarock/dotpack/internal/adapter/antigravity"
 	"github.com/ellarock/dotpack/internal/dirs"
 	"github.com/ellarock/dotpack/internal/manifest"
 	"github.com/ellarock/dotpack/internal/orchestrator"
@@ -95,7 +95,13 @@ through ` + "`dotpack list`" + ` and uninstall. Lossy aggregation across the
 sub-adapter set is the strict union per ADR-0016 §8: a field whose
 canonical_concept is unsupported by ANY sub-adapter requires --allow-lossy.
 Sub-adapter set and per-kind writer lists are declared in umbrellaFactories
-(this file).`,
+(this file).
+
+After materialization, install runs matching post-install lifecycle tasks from
+lifecycle_tasks.yaml. Those tasks are declarative command hooks with their own
+agent filters, binary-install steps, verification commands, and failure policy;
+the install command only owns the lifecycle extension point and failure
+reporting.`,
 		Example: `  dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent gemini-cli --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent codex --scope project
@@ -196,6 +202,10 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 		return err
 	}
 
+	if err := runPostInstallLifecycle(agentName); err != nil {
+		return fmt.Errorf("installed %s, but post-install lifecycle failed: %w", result.Record.ID, err)
+	}
+
 	cmd.Printf("Installed %s onto %s\n", result.Record.ID, agentName)
 	for _, f := range result.Plan.Files {
 		cmd.Printf("  wrote %s\n", f.Path)
@@ -244,6 +254,10 @@ func runUmbrellaInstall(cmd *cobra.Command, source, agentName string, kind resou
 			return ce
 		}
 		return err
+	}
+
+	if err := runPostInstallLifecycle(agentName); err != nil {
+		return fmt.Errorf("installed %s, but post-install lifecycle failed: %w", result.Record.ID, err)
 	}
 
 	cmd.Printf("Installed %s onto %s\n", result.Record.ID, agentName)

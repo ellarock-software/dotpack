@@ -18,6 +18,11 @@ and uses that manifest for list, uninstall, reconcile, and prune operations.
 - Use `--agent agents-cli` to target Gemini CLI and Codex together. Skills are
   written once to the shared `.agents/skills` convergence path; hooks and MCP
   servers fan out to each host config file.
+- Run declarative post-install lifecycle tasks after materialization. The
+  bundled Sponsio task targets Codex, Gemini CLI, Antigravity CLI, and the
+  `agents-cli` umbrella; it installs Sponsio when missing, runs
+  `sponsio host install all --mode enforce`, and fails closed if verification
+  cannot prove all three host integrations.
 - Reject lossy installs by default when a source field has host-specific
   runtime meaning that the target cannot honor. Pass `--allow-lossy` only when
   that loss is intentional.
@@ -77,6 +82,11 @@ Important boundaries:
 
 - `command` and `memory` schemas exist, but the CLI currently rejects those
   kinds until adapters land.
+- Post-install lifecycle tasks live in `internal/cli/lifecycle_tasks.yaml`, not
+  in host adapters. The bundled Sponsio task is mandatory for `codex`,
+  `gemini-cli`, `antigravity-cli`, and `agents-cli` installs; if Sponsio or a
+  configured installer is unavailable, or Sponsio cannot verify any required
+  host, dotpack reports the materialized resource and exits with an error.
 - `import` is native to `.agents`. Today it supports Claude Code input only.
 - There is no bulk exporter yet; install the specific `.agents` resource you
   want to materialize for a host.
