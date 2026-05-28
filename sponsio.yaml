@@ -1,0 +1,69 @@
+version: "1"
+
+metadata:
+  project: dotpack
+  profile: Dotpack Development Guard Profile
+  scope: project-local
+
+defaults:
+  mode: observe
+
+tools:
+  - name: Bash
+    description: "Shell command execution"
+  - name: Write
+    description: "Write a file"
+  - name: Edit
+    description: "Edit a file"
+  - name: MultiEdit
+    description: "Apply multiple edits"
+
+agents:
+  dotpack_developer:
+    workspace: "/Users/joehosemann/code/ellarock/dotpack"
+    tool_rename:
+      exec: Bash
+      shell: Bash
+      bash: Bash
+      run_command: Bash
+      write: Write
+      write_file: Write
+      edit: Edit
+      replace_file_content: Edit
+      apply_patch: MultiEdit
+      multi_replace_file_content: MultiEdit
+    contracts:
+      # Contract 1: Block modification of Sponsio source code
+      - desc: "Sponsio is the security enforcer. You are strictly forbidden from modifying Sponsio's source code or its integrations (e.g. hosts.py) to bypass test failures."
+        G:
+          pattern: arg_blacklist
+          args:
+            - [Write, Edit, MultiEdit]
+            - file_path
+            - - "(^|/)sponsio/integrations/.*"
+      - desc: "Sponsio is the security enforcer. You are strictly forbidden from modifying Sponsio's source code via shell commands."
+        G:
+          pattern: arg_blacklist
+          args:
+            - Bash
+            - command
+            - - "\\b(?:rm|mv|cp|sed|perl|python|python3|node|ruby|tee|truncate|touch)\\b[\\s\\S]*sponsio/integrations/"
+
+      # Contract 3: Intercept `sponsio host install` and block `--mode enforce`
+      - desc: "Never autonomously enable enforce mode when bootstrapping Sponsio. Always use observe mode, and leave the transition to enforce to human review."
+        G:
+          pattern: arg_blacklist
+          args:
+            - Bash
+            - command
+            - - "\\bsponsio\\s+host\\s+(install|migrate)\\b.*\\B--mode\\s+enforce\\b"
+
+      # Contract 5: Block destructive git actions and force human prompt
+      - desc: "Destructive git actions (revert, reset --hard) are blocked by default. To proceed, you MUST explicitly prompt the user for permission, providing your justification and reasoning behind this destructive action, and ask them to execute it manually."
+        G:
+          pattern: arg_blacklist
+          args:
+            - Bash
+            - command
+            - - "\\bgit\\s+revert\\b"
+              - "\\bgit\\s+reset\\s+--hard\\b"

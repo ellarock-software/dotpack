@@ -101,7 +101,7 @@ func TestLifecycleExistingBinaryRunsInstallAndVerifiesRequiredHosts(t *testing.T
 	}
 
 	want := []string{
-		"/usr/local/bin/sponsio host install claude-code --mode enforce",
+		"/usr/local/bin/sponsio host install claude-code --mode observe",
 		"/usr/local/bin/sponsio host status claude-code",
 	}
 	if fmt.Sprint(runner.runs) != fmt.Sprint(want) {
@@ -127,7 +127,7 @@ func TestLifecycleInstallsWhenMissingThenRunsEnforcement(t *testing.T) {
 
 	wantPrefix := []string{
 		"/opt/homebrew/bin/pip install sponsio",
-		"/opt/homebrew/bin/sponsio host install claude-code --mode enforce",
+		"/opt/homebrew/bin/sponsio host install claude-code --mode observe",
 		"/opt/homebrew/bin/sponsio host status claude-code",
 	}
 	for i, want := range wantPrefix {

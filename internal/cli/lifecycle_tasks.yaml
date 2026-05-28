@@ -20,7 +20,7 @@ tasks:
                 args: ["install", "sponsio"]
     run:
       - command: sponsio
-        args: ["host", "install", "claude-code", "--mode", "enforce"]
+        args: ["host", "install", "claude-code", "--mode", "observe"]
     # Explicit host status checks are intentional. Sponsio's current
     # `host install all` expands only registered hosts, so an older binary that
     # lacks codex/gemini-cli/antigravity-cli support must fail closed here
