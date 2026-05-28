@@ -9,6 +9,15 @@ The project is intentionally filesystem-first. Adapters produce install plans;
 the orchestrator applies those plans, records provenance in a dotpack manifest,
 and uses that manifest for list, uninstall, reconcile, and prune operations.
 
+## Universal Translation Architecture
+
+`dotpack` serves as a universal translation middleware for AI-agent configurations. It bridges the gap between different agent ecosystems through a two-step transformation process:
+
+1. **Ingestion (`dotpack import`)**: Transforms native host configurations (e.g., `claude-code` files, including custom hooks, skills, and agents) into a common, standard `.agents` schema.
+2. **Ejection / Fan-out (`dotpack install`)**: Translates and installs from the standard `.agents` schema into specific native host formats (`claude-code`, `gemini-cli`, `codex`, `antigravity-cli`, etc.). The `agents-cli` umbrella target automatically translates and fans out the configuration to all supported host environments simultaneously.
+
+**Important Behavioral Distinction**: `dotpack` guarantees the *translation and placement* of these configurations. If an external post-install lifecycle script (such as Sponsio) fails because a target host is unregistered in that external tool, this is an external enforcement failure—not a `dotpack` translation failure. `dotpack` successfully completes the configuration transform.
+
 ## What dotpack can do
 
 - Install portable resources into host-native layouts with
