@@ -79,7 +79,9 @@ one resource at a time.
 | Kind | `claude-code` target | `gemini-cli` target | `antigravity-cli` target | `codex` target | `agents-cli` target |
 | --- | --- | --- | --- | --- | --- |
 | `skill` | `.claude/skills/<name>/SKILL.md` | `.gemini/skills/<name>/SKILL.md` | `.antigravity/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` once for sub-adapters |
-| `agent` | `.claude/agents/<name>.md` | `.gemini/agents/<name>.md` | `.antigravity/agents/<name>.md` | unsupported | unsupported |
+| `agent` | `.claude/agents/<name>.md` | `.gemini/agents/<name>.md` | `.antigravity/agents/<name>.md` | `.codex/agents/<name>.toml` | fans out to sub-adapter agent files |
+| `command` | `.claude/commands/<name>.md` | `.gemini/commands/<name>.toml` | `.antigravity/commands/<name>.md` | `.codex/commands/<name>.md` | unsupported until a cross-host command convergence path is defined |
+| `memory` | `CLAUDE.md` | `GEMINI.md` | `ANTIGRAVITY.md` | `AGENTS.md` | unsupported until a cross-host memory convergence path is defined |
 | `mcp-server` | `.mcp.json` or `~/.claude.json` | `.gemini/settings.json` | `.antigravity/settings.json` | `.codex/config.toml` | fans out to sub-adapter config files |
 | `hook` | `.claude/settings.json` | `.gemini/settings.json` | `.antigravity/settings.json` | `.codex/config.toml` | fans out to sub-adapter config files |
 
@@ -89,8 +91,6 @@ paths at `DOTPACK_PROJECT_HOME` or the current working directory.
 
 Important boundaries:
 
-- `command` and `memory` schemas exist, but the CLI currently rejects those
-  kinds until adapters land.
 - Post-install lifecycle tasks live in `internal/cli/lifecycle_tasks.yaml`, not
   in host adapters. The bundled Sponsio task is mandatory for `codex`,
   `gemini-cli`, `antigravity-cli`, and `agents-cli` installs; if Sponsio or a

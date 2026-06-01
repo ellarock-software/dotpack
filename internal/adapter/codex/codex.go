@@ -116,6 +116,19 @@ var Policy = filedrop.Policy{
 			KindDir:       "rules",
 			Nested:        false,
 		},
+		resource.KindCommand: {
+			UserRoot:      userConfigRoot,
+			ProjectSubdir: ".codex",
+			KindDir:       "commands",
+			Nested:        false,
+		},
+		resource.KindMemory: {
+			UserRoot:      userConfigRoot,
+			ProjectSubdir: "",
+			KindDir:       "",
+			Nested:        false,
+			PreserveName:  true,
+		},
 	},
 }
 
@@ -430,7 +443,7 @@ func (a *Adapter) HostID() string { return hostID }
 // paths already produce that message, so we delegate.
 func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.InstallPlan, error) {
 	switch r.Kind() {
-	case resource.KindSkill, resource.KindRule:
+	case resource.KindSkill, resource.KindRule, resource.KindCommand, resource.KindMemory:
 		return a.filedrop.Plan(r, scope)
 	case resource.KindAgent:
 		return planAgentCodex(r, scope, a.dirs)

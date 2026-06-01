@@ -281,6 +281,119 @@ func TestFiledrop_PlanAgent_ToolsShape_DrivesEmitShape(t *testing.T) {
 	}
 }
 
+func TestFiledrop_PlanCommand_ReencodesMarkdownForGeminiTOML(t *testing.T) {
+	tmpDir := t.TempDir()
+	cmd, err := resource.ParseCommand([]byte(`---
+description: Demo command
+---
+Run demo.
+`))
+	if err != nil {
+		t.Fatalf("ParseCommand: %v", err)
+	}
+	cmd.WithName("demo")
+
+	a := filedrop.New(dirs.Dirs{}, filedrop.Policy{
+		HostID: "gemini-cli",
+		Layouts: map[resource.Kind]filedrop.Layout{
+			resource.KindCommand: {
+				UserRoot: func(d dirs.Dirs) (string, error) { return tmpDir, nil },
+				KindDir:  "commands",
+				FlatExt:  ".toml",
+			},
+		},
+		AgentToolsShape: filedrop.ToolsYAMLArray,
+	})
+
+	plan, err := a.Plan(cmd, adapter.ScopeUser)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if got, want := plan.Files[0].Path, filepath.Join(tmpDir, "commands", "demo.toml"); got != want {
+		t.Fatalf("target path = %q; want %q", got, want)
+	}
+	content := string(plan.Files[0].Content)
+	if strings.HasPrefix(content, "---") {
+		t.Fatalf("Gemini command must be TOML, got markdown:\n%s", content)
+	}
+	if !strings.Contains(content, "prompt =") || !strings.Contains(content, "Run demo.") {
+		t.Fatalf("Gemini TOML command missing prompt:\n%s", content)
+	}
+}
+
+func TestFiledrop_PlanCommand_ReencodesTOMLForMarkdownHosts(t *testing.T) {
+	tmpDir := t.TempDir()
+	cmd, err := resource.ParseCommand([]byte(`description = "Demo command"
+prompt = "Run demo."
+`))
+	if err != nil {
+		t.Fatalf("ParseCommand: %v", err)
+	}
+	cmd.WithName("demo")
+
+	a := filedrop.New(dirs.Dirs{}, filedrop.Policy{
+		HostID: "claude-code",
+		Layouts: map[resource.Kind]filedrop.Layout{
+			resource.KindCommand: {
+				UserRoot: func(d dirs.Dirs) (string, error) { return tmpDir, nil },
+				KindDir:  "commands",
+			},
+		},
+		AgentToolsShape: filedrop.ToolsCommaString,
+	})
+
+	plan, err := a.Plan(cmd, adapter.ScopeUser)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if got, want := plan.Files[0].Path, filepath.Join(tmpDir, "commands", "demo.md"); got != want {
+		t.Fatalf("target path = %q; want %q", got, want)
+	}
+	content := string(plan.Files[0].Content)
+	if !strings.HasPrefix(content, "---\n") {
+		t.Fatalf("Markdown host command must have YAML frontmatter:\n%s", content)
+	}
+	if !strings.Contains(content, "Run demo.") {
+		t.Fatalf("Markdown host command missing body prompt:\n%s", content)
+	}
+}
+
+func TestFiledrop_PlanMemory_UsesHostNativeFilename(t *testing.T) {
+	tmpDir := t.TempDir()
+	memory := (&resource.Memory{Body: "# Memory\n", Raw: []byte("# Memory\n")}).WithName("AGENTS.md")
+
+	cases := []struct {
+		host string
+		want string
+	}{
+		{host: "claude-code", want: "CLAUDE.md"},
+		{host: "gemini-cli", want: "GEMINI.md"},
+		{host: "antigravity-cli", want: "ANTIGRAVITY.md"},
+		{host: "codex", want: "AGENTS.md"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.host, func(t *testing.T) {
+			a := filedrop.New(dirs.Dirs{}, filedrop.Policy{
+				HostID: c.host,
+				Layouts: map[resource.Kind]filedrop.Layout{
+					resource.KindMemory: {
+						UserRoot:     func(d dirs.Dirs) (string, error) { return tmpDir, nil },
+						PreserveName: true,
+					},
+				},
+			})
+			plan, err := a.Plan(memory, adapter.ScopeUser)
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			if got, want := plan.Files[0].Path, filepath.Join(tmpDir, c.want); got != want {
+				t.Fatalf("target path = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestFiledrop_Plan_KindNotInLayouts_ReturnsTypedError(t *testing.T) {
 	// Generalisation of codex's "kind agent not yet supported": missing
 	// Layout entry = unsupported kind. Error must name the host and the

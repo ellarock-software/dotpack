@@ -22,6 +22,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/pelletier/go-toml/v2"
+
 	"github.com/ellarock/dotpack/internal/adapter"
 	"github.com/ellarock/dotpack/internal/dirs"
 	"github.com/ellarock/dotpack/internal/resource"
@@ -51,13 +53,13 @@ const (
 //   - Nested (skill): <root>/<KindDir>/<name>/<NestedFile> — host
 //     owns the per-name subdir; TargetDir is set so uninstall can
 //     reclaim it.
-//   - Flat (agent/rule): <root>/<KindDir>/<name>.md — sibling resources
-//     share the dir; TargetDir is empty so uninstall does NOT reclaim.
+//   - Flat (agent/rule/command/memory): <root>/<KindDir>/<name><ext>
+//     — sibling resources share the dir; TargetDir is empty so uninstall
+//     does NOT reclaim.
 //
-// The flat-layout file extension is hardcoded ".md" — every corpus
-// kind today uses .md. A future kind requiring a different extension
-// adds a FlatExt field; until then, hardcoding keeps the Layout API
-// minimal.
+// Flat layouts default to ".md"; FlatExt overrides that for hosts like
+// Gemini commands, and PreserveName writes a complete filename exactly
+// for memory files.
 type Layout struct {
 	// UserRoot resolves the per-host user-scope root (e.g. ClaudeHome)
 	// from the Dirs value. A function rather than a Dirs field name so
@@ -73,12 +75,18 @@ type Layout struct {
 	KindDir string
 	// Nested switches between the two on-disk patterns:
 	//   true  → <root>/<KindDir>/<name>/<NestedFile>  (host owns subdir)
-	//   false → <root>/<KindDir>/<name>.md            (shared dir)
+	//   false → <root>/<KindDir>/<name><ext>          (shared dir)
 	Nested bool
 	// NestedFile is the filename inside the per-name subdir when
 	// Nested=true (e.g. "SKILL.md"). UNUSED when Nested=false — the
-	// flat path hardcodes <name>.md.
+	// flat path hardcodes <name>.md unless FlatExt is set.
 	NestedFile string
+	// FlatExt overrides the default ".md" extension for flat layouts.
+	FlatExt string
+	// PreserveName writes the resource name exactly for flat layouts.
+	// Memory resources use this because their host-native name is the
+	// complete filename (CLAUDE.md, GEMINI.md, AGENTS.md, ...).
+	PreserveName bool
 }
 
 // Policy is the per-host data the deep filedrop module dispatches on.
@@ -141,7 +149,11 @@ func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.Instal
 	if !ok {
 		return adapter.InstallPlan{}, fmt.Errorf("%s: kind %q has no name-derivation path", a.policy.HostID, r.Kind())
 	}
-	target, err := a.targetPath(layout, scope, named.ResourceName())
+	name := named.ResourceName()
+	if memory, ok := r.(*resource.Memory); ok {
+		name = a.memoryFilename(memory)
+	}
+	target, err := a.targetPath(layout, scope, name)
 	if err != nil {
 		return adapter.InstallPlan{}, err
 	}
@@ -188,7 +200,20 @@ func (a *Adapter) targetPath(layout Layout, scope adapter.Scope, name string) (s
 	if layout.Nested {
 		return filepath.Join(root, layout.KindDir, name, layout.NestedFile), nil
 	}
-	return filepath.Join(root, layout.KindDir, name+".md"), nil
+	if layout.PreserveName {
+		if layout.KindDir == "" {
+			return filepath.Join(root, name), nil
+		}
+		return filepath.Join(root, layout.KindDir, name), nil
+	}
+	ext := ".md"
+	if layout.FlatExt != "" {
+		ext = layout.FlatExt
+	}
+	if layout.KindDir == "" {
+		return filepath.Join(root, name+ext), nil
+	}
+	return filepath.Join(root, layout.KindDir, name+ext), nil
 }
 
 // encode dispatches per-kind:
@@ -210,6 +235,10 @@ func (a *Adapter) encode(r resource.Resource) ([]byte, error) {
 		return a.encodeAgent(v)
 	case *resource.Rule:
 		return a.encodeRule(v)
+	case *resource.Command:
+		return a.encodeCommand(v)
+	case *resource.Memory:
+		return a.encodeMemory(v)
 	default:
 		return nil, fmt.Errorf("%s: encode: kind %q has no encoder", a.policy.HostID, r.Kind())
 	}
@@ -356,6 +385,117 @@ func (a *Adapter) reencodeRule(r *resource.Rule) ([]byte, error) {
 		return nil, encodeErr
 	}
 	return marshalFrontmatterAndBody(front, r.Body)
+}
+
+func (a *Adapter) encodeCommand(c *resource.Command) ([]byte, error) {
+	if len(c.Raw) > 0 && a.commandRawMatchesTarget(c) {
+		pass, err := a.canPassThrough(c)
+		if err != nil {
+			return nil, fmt.Errorf("%s: schema unavailable for pass-through check: %w", a.policy.HostID, err)
+		}
+		if pass {
+			return c.Raw, nil
+		}
+	}
+	return a.reencodeCommand(c)
+}
+
+func (a *Adapter) commandRawMatchesTarget(c *resource.Command) bool {
+	sourceIsMarkdown := bytes.HasPrefix(c.Raw, []byte("---"))
+	targetIsTOML := a.policy.Layouts[resource.KindCommand].FlatExt == ".toml"
+	return sourceIsMarkdown != targetIsTOML
+}
+
+func (a *Adapter) reencodeCommand(c *resource.Command) ([]byte, error) {
+	front := []*yaml.Node{}
+	var encodeErr error
+	addScalar := mkAddScalar(&front, &encodeErr)
+
+	if c.Description != "" {
+		addScalar("description", c.Description)
+	}
+	if c.Model != "" {
+		addScalar("model", c.Model)
+	}
+	if len(c.AllowedTools) > 0 {
+		switch a.policy.AgentToolsShape {
+		case ToolsCommaString:
+			addScalar("allowed-tools", strings.Join(c.AllowedTools, ", "))
+		case ToolsYAMLArray:
+			addScalar("allowed-tools", c.AllowedTools)
+		default:
+			// Fallback: command formatting isn't explicitly defined, use comma string if ToolsShapeUnused
+			if a.policy.HostID == "gemini-cli" {
+				addScalar("allowed-tools", c.AllowedTools)
+			} else {
+				addScalar("allowed-tools", strings.Join(c.AllowedTools, ", "))
+			}
+		}
+	}
+
+	if len(c.Extensions()) > 0 {
+		sc, err := schema.Load(resource.KindCommand)
+		if err != nil {
+			return nil, fmt.Errorf("%s: schema unavailable for re-encode: %w", a.policy.HostID, err)
+		}
+		keys := sortedKeys(c.Extensions())
+		for _, k := range keys {
+			if !sc.HostKeepsExtension(a.policy.HostID, k) {
+				continue
+			}
+			addScalar(k, c.Extensions()[k])
+		}
+	}
+
+	if encodeErr != nil {
+		return nil, encodeErr
+	}
+
+	if a.policy.HostID == "gemini-cli" {
+		tomlMap := map[string]any{
+			"prompt": c.Prompt,
+		}
+		if c.Description != "" {
+			tomlMap["description"] = c.Description
+		}
+		if c.Model != "" {
+			tomlMap["model"] = c.Model
+		}
+		if len(c.AllowedTools) > 0 {
+			tomlMap["allowed-tools"] = c.AllowedTools
+		}
+		for k, v := range c.Extensions() {
+			tomlMap[k] = v
+		}
+		return toml.Marshal(tomlMap)
+	}
+
+	return marshalFrontmatterAndBody(front, c.Prompt)
+}
+
+func (a *Adapter) encodeMemory(m *resource.Memory) ([]byte, error) {
+	if len(m.Raw) > 0 {
+		return m.Raw, nil
+	}
+	return []byte(m.Body), nil
+}
+
+func (a *Adapter) memoryFilename(m *resource.Memory) string {
+	switch a.policy.HostID {
+	case "claude-code":
+		return "CLAUDE.md"
+	case "gemini-cli":
+		return "GEMINI.md"
+	case "antigravity-cli":
+		return "ANTIGRAVITY.md"
+	case "codex":
+		return "AGENTS.md"
+	default:
+		if m.Name != "" {
+			return m.Name
+		}
+		return "AGENTS.md"
+	}
 }
 
 func (a *Adapter) staleRuleFiles(r *resource.Rule, target string, scope adapter.Scope) []adapter.FileRemove {

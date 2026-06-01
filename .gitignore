@@ -10,6 +10,16 @@
 # Scratch / ephemeral
 .scratchpad/
 .dotpack-workdirs/
+evidence/
+.evidence/
+**/evidence/
+**/.evidence/
+**/*-evidence.json
+**/*-evidence.jsonl
+**/browser-evidence.json
+**/runtime-evidence.json
+**/verification-evidence.json
+**/hook-health-evidence.json
 
 # Go
 *.test
@@ -21,4 +31,3 @@
 .codex/
 .gemini/
 .antigravity/
-

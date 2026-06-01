@@ -42,9 +42,11 @@ kind's schema and template before dotpack writes host files.
 
 Supported today:
   --agent claude-code | gemini-cli | antigravity-cli | codex | agents-cli
-  --kind  skill | agent | mcp-server | hook | rule (skill is inferred when
+  --kind  skill | agent | command | memory | mcp-server | hook | rule (skill is inferred when
           the source is named SKILL.md; rule is inferred for direct
-          .agents/rules/*.md files; agent/mcp-server/hook otherwise require
+          .agents/rules/*.md files; command is inferred for direct
+          .agents/commands/*.md/.toml files; memory is inferred for
+          CLAUDE.md/GEMINI.md/AGENTS.md/ANTIGRAVITY.md; agent/mcp-server/hook otherwise require
           --kind explicitly.)
   --scope user | project
 
@@ -61,6 +63,18 @@ Host translation map:
     antigravity-cli -> .antigravity/agents/<name>.md
     codex           -> .codex/agents/<name>.toml
     agents-cli      -> fans out to sub-adapters (markdown for most, TOML for codex)
+  command:
+    claude-code     -> .claude/commands/<name>.md
+    gemini-cli      -> .gemini/commands/<name>.toml
+    antigravity-cli -> .antigravity/commands/<name>.md
+    codex           -> .codex/commands/<name>.md
+    agents-cli      -> unsupported until a cross-host command convergence path is defined
+  memory:
+    claude-code     -> CLAUDE.md
+    gemini-cli      -> GEMINI.md
+    antigravity-cli -> ANTIGRAVITY.md
+    codex           -> AGENTS.md
+    agents-cli      -> unsupported until a cross-host memory convergence path is defined
   mcp-server:
     claude-code     -> .mcp.json (project) or ~/.claude.json (user)
     gemini-cli      -> .gemini/settings.json
@@ -293,8 +307,10 @@ func resolveKind(explicit, sourcePath string) (resource.Kind, error) {
 			return resource.KindHook, nil
 		case resource.KindRule:
 			return resource.KindRule, nil
-		case resource.KindCommand, resource.KindMemory:
-			return "", fmt.Errorf("kind %q not yet supported", explicit)
+		case resource.KindCommand:
+			return resource.KindCommand, nil
+		case resource.KindMemory:
+			return resource.KindMemory, nil
 		default:
 			return "", fmt.Errorf("unknown kind %q", explicit)
 		}
@@ -304,6 +320,12 @@ func resolveKind(explicit, sourcePath string) (resource.Kind, error) {
 	}
 	if isDirectAgentsRulePath(sourcePath) {
 		return resource.KindRule, nil
+	}
+	if isDirectAgentsCommandPath(sourcePath) {
+		return resource.KindCommand, nil
+	}
+	if isMemoryPath(sourcePath) {
+		return resource.KindMemory, nil
 	}
 	// No inference for mcp-server: the .mcp.json filename collides with
 	// non-resource fragments a user may have lying around (the JSON
@@ -319,6 +341,20 @@ func isDirectAgentsRulePath(sourcePath string) bool {
 	}
 	dir := filepath.ToSlash(filepath.Clean(filepath.Dir(sourcePath)))
 	return strings.HasSuffix(dir, "/.agents/rules") || dir == ".agents/rules"
+}
+
+func isDirectAgentsCommandPath(sourcePath string) bool {
+	ext := filepath.Ext(sourcePath)
+	if ext != ".md" && ext != ".toml" {
+		return false
+	}
+	dir := filepath.ToSlash(filepath.Clean(filepath.Dir(sourcePath)))
+	return strings.HasSuffix(dir, "/.agents/commands") || dir == ".agents/commands"
+}
+
+func isMemoryPath(sourcePath string) bool {
+	base := filepath.Base(sourcePath)
+	return base == "CLAUDE.md" || base == "GEMINI.md" || base == "AGENTS.md" || base == "ANTIGRAVITY.md"
 }
 
 func loadResource(kind resource.Kind, source string) (resource.Resource, error) {
@@ -380,6 +416,26 @@ func loadResource(kind resource.Kind, source string) (resource.Resource, error) 
 			return nil, validationError(errs)
 		}
 		return rule, nil
+	case resource.KindCommand:
+		command, err := resource.ParseCommand(raw)
+		if err != nil {
+			return nil, err
+		}
+		command.WithName(commandNameFromPath(source))
+		if errs := validator.ValidateCommand(command); len(errs) > 0 {
+			return nil, validationError(errs)
+		}
+		return command, nil
+	case resource.KindMemory:
+		memory, err := resource.ParseMemory(raw)
+		if err != nil {
+			return nil, err
+		}
+		memory.WithName(filepath.Base(source))
+		if errs := validator.ValidateMemory(memory); len(errs) > 0 {
+			return nil, validationError(errs)
+		}
+		return memory, nil
 	default:
 		return nil, fmt.Errorf("kind %q not supported", kind)
 	}
@@ -400,6 +456,14 @@ func hookNameFromPath(source string) string {
 		}
 	}
 	return base
+}
+
+// commandNameFromPath derives the install name for a command resource from
+// its source filename (stripping .md or .toml extension).
+func commandNameFromPath(source string) string {
+	base := filepath.Base(source)
+	ext := filepath.Ext(base)
+	return strings.TrimSuffix(base, ext)
 }
 
 // validationError formats a slice of validator errors as a single

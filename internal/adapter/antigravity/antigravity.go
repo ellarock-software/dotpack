@@ -102,6 +102,19 @@ var Policy = filedrop.Policy{
 			KindDir:       "rules",
 			Nested:        false,
 		},
+		resource.KindCommand: {
+			UserRoot:      userRoot,
+			ProjectSubdir: ".antigravity",
+			KindDir:       "commands",
+			Nested:        false,
+		},
+		resource.KindMemory: {
+			UserRoot:      userRoot,
+			ProjectSubdir: "",
+			KindDir:       "",
+			Nested:        false,
+			PreserveName:  true,
+		},
 	},
 	AgentToolsShape: filedrop.ToolsYAMLArray,
 }
@@ -334,7 +347,7 @@ func (a *Adapter) HostID() string { return hostID }
 // configfrag.
 func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.InstallPlan, error) {
 	switch r.Kind() {
-	case resource.KindSkill, resource.KindAgent, resource.KindRule:
+	case resource.KindSkill, resource.KindAgent, resource.KindRule, resource.KindCommand, resource.KindMemory:
 		return a.filedrop.Plan(r, scope)
 	case resource.KindMCPServer, resource.KindHook:
 		return a.configfrag.Plan(r, scope)
