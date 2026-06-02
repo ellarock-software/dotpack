@@ -464,8 +464,17 @@ func (a *Adapter) reencodeCommand(c *resource.Command) ([]byte, error) {
 		if len(c.AllowedTools) > 0 {
 			tomlMap["allowed-tools"] = c.AllowedTools
 		}
-		for k, v := range c.Extensions() {
-			tomlMap[k] = v
+		if len(c.Extensions()) > 0 {
+			sc, err := schema.Load(resource.KindCommand)
+			if err != nil {
+				return nil, fmt.Errorf("%s: schema unavailable for re-encode: %w", a.policy.HostID, err)
+			}
+			for k, v := range c.Extensions() {
+				if !sc.HostKeepsExtension(a.policy.HostID, k) {
+					continue
+				}
+				tomlMap[k] = v
+			}
 		}
 		return toml.Marshal(tomlMap)
 	}

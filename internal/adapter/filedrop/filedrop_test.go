@@ -394,6 +394,68 @@ func TestFiledrop_PlanMemory_UsesHostNativeFilename(t *testing.T) {
 	}
 }
 
+func TestGeminiLossyOmitsClaudeExtensions(t *testing.T) {
+	tmpDir := t.TempDir()
+	cmd, err := resource.ParseCommand([]byte(`---
+description: Demo command
+argument-hint: <file>
+disable-model-invocation: true
+---
+Run demo.
+`))
+	if err != nil {
+		t.Fatalf("ParseCommand: %v", err)
+	}
+	cmd.WithName("demo")
+
+	geminiPolicy := filedrop.Policy{
+		HostID: "gemini-cli",
+		Layouts: map[resource.Kind]filedrop.Layout{
+			resource.KindCommand: {
+				UserRoot: func(d dirs.Dirs) (string, error) { return tmpDir, nil },
+				KindDir:  "commands",
+				FlatExt:  ".toml",
+			},
+		},
+		AgentToolsShape: filedrop.ToolsYAMLArray,
+	}
+	claudePolicy := filedrop.Policy{
+		HostID: "claude-code",
+		Layouts: map[resource.Kind]filedrop.Layout{
+			resource.KindCommand: {
+				UserRoot: func(d dirs.Dirs) (string, error) { return tmpDir, nil },
+				KindDir:  "commands",
+			},
+		},
+		AgentToolsShape: filedrop.ToolsCommaString,
+	}
+
+	geminiPlan, err := filedrop.New(dirs.Dirs{}, geminiPolicy).Plan(cmd, adapter.ScopeUser)
+	if err != nil {
+		t.Fatalf("gemini Plan: %v", err)
+	}
+	claudePlan, err := filedrop.New(dirs.Dirs{}, claudePolicy).Plan(cmd, adapter.ScopeUser)
+	if err != nil {
+		t.Fatalf("claude Plan: %v", err)
+	}
+
+	geminiContent := string(geminiPlan.Files[0].Content)
+	if strings.Contains(geminiContent, "argument-hint") {
+		t.Errorf("gemini TOML must not contain Claude-only 'argument-hint'; got:\n%s", geminiContent)
+	}
+	if strings.Contains(geminiContent, "disable-model-invocation") {
+		t.Errorf("gemini TOML must not contain Claude-only 'disable-model-invocation'; got:\n%s", geminiContent)
+	}
+
+	claudeContent := string(claudePlan.Files[0].Content)
+	if !strings.Contains(claudeContent, "argument-hint") {
+		t.Errorf("claude-code markdown must retain 'argument-hint'; got:\n%s", claudeContent)
+	}
+	if !strings.Contains(claudeContent, "disable-model-invocation") {
+		t.Errorf("claude-code markdown must retain 'disable-model-invocation'; got:\n%s", claudeContent)
+	}
+}
+
 func TestFiledrop_Plan_KindNotInLayouts_ReturnsTypedError(t *testing.T) {
 	// Generalisation of codex's "kind agent not yet supported": missing
 	// Layout entry = unsupported kind. Error must name the host and the
