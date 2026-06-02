@@ -394,6 +394,44 @@ func TestFiledrop_PlanMemory_UsesHostNativeFilename(t *testing.T) {
 	}
 }
 
+func TestGeminiLossy_CommandExtensions_OmitsClaudeOnlyFields(t *testing.T) {
+	// Regression for MAN-181: when a Claude command has Claude-only
+	// extension fields (argument-hint, disable-model-invocation), the
+	// Gemini TOML encoder must drop them rather than leaking them into
+	// the output .toml file.
+	tmpDir := t.TempDir()
+	cmd, err := resource.ParseCommand([]byte("---\ndescription: Demo command\nargument-hint: \"<query>\"\ndisable-model-invocation: true\n---\nRun demo.\n"))
+	if err != nil {
+		t.Fatalf("ParseCommand: %v", err)
+	}
+	cmd.WithName("demo")
+
+	a := filedrop.New(dirs.Dirs{}, filedrop.Policy{
+		HostID: "gemini-cli",
+		Layouts: map[resource.Kind]filedrop.Layout{
+			resource.KindCommand: {
+				UserRoot: func(d dirs.Dirs) (string, error) { return tmpDir, nil },
+				KindDir:  "commands",
+				FlatExt:  ".toml",
+			},
+		},
+		AgentToolsShape: filedrop.ToolsYAMLArray,
+	})
+
+	plan, err := a.Plan(cmd, adapter.ScopeUser)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	content := string(plan.Files[0].Content)
+	if strings.Contains(content, "argument-hint") {
+		t.Errorf("Gemini TOML output must not contain Claude-only field 'argument-hint'; got:\n%s", content)
+	}
+	if strings.Contains(content, "disable-model-invocation") {
+		t.Errorf("Gemini TOML output must not contain Claude-only field 'disable-model-invocation'; got:\n%s", content)
+	}
+}
+
 func TestFiledrop_Plan_KindNotInLayouts_ReturnsTypedError(t *testing.T) {
 	// Generalisation of codex's "kind agent not yet supported": missing
 	// Layout entry = unsupported kind. Error must name the host and the
