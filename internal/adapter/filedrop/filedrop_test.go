@@ -11,6 +11,7 @@ import (
 	"github.com/ellarock/dotpack/internal/adapter/filedrop"
 	"github.com/ellarock/dotpack/internal/dirs"
 	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock/dotpack/schema"
 )
 
 // The filedrop module is the deep impl that the three per-host adapter
@@ -391,6 +392,61 @@ func TestFiledrop_PlanMemory_UsesHostNativeFilename(t *testing.T) {
 				t.Fatalf("target path = %q; want %q", got, want)
 			}
 		})
+	}
+}
+
+func TestGeminiCommand_LossyExtensionsOmittedFromTOML(t *testing.T) {
+	// Regression for MAN-181: when --allow-lossy is used, Claude-only command
+	// extension fields must be filtered from the Gemini TOML output.
+	// argument-hint and disable-model-invocation are claude-code-only per the
+	// command schema; they must not appear in the emitted TOML and must still
+	// be reported as lossy by the detection path.
+	tmpDir := t.TempDir()
+	cmd, err := resource.ParseCommand([]byte("---\ndescription: Greet the user\nargument-hint: \"<name>\"\ndisable-model-invocation: true\n---\nHello, world!\n"))
+	if err != nil {
+		t.Fatalf("ParseCommand: %v", err)
+	}
+	cmd.WithName("greet")
+
+	a := filedrop.New(dirs.Dirs{}, filedrop.Policy{
+		HostID: "gemini-cli",
+		Layouts: map[resource.Kind]filedrop.Layout{
+			resource.KindCommand: {
+				UserRoot: func(d dirs.Dirs) (string, error) { return tmpDir, nil },
+				KindDir:  "commands",
+				FlatExt:  ".toml",
+			},
+		},
+		AgentToolsShape: filedrop.ToolsYAMLArray,
+	})
+
+	plan, err := a.Plan(cmd, adapter.ScopeUser)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	content := string(plan.Files[0].Content)
+	if strings.Contains(content, "argument-hint") {
+		t.Errorf("Gemini TOML must not contain Claude-only field 'argument-hint'; got:\n%s", content)
+	}
+	if strings.Contains(content, "disable-model-invocation") {
+		t.Errorf("Gemini TOML must not contain Claude-only field 'disable-model-invocation'; got:\n%s", content)
+	}
+
+	// Lossy detection must still flag both fields for gemini-cli regardless of
+	// the encoder filtering — the two concerns are independent.
+	reasons, err := schema.LossyExtensions(resource.KindCommand, "gemini-cli", cmd.Extensions())
+	if err != nil {
+		t.Fatalf("LossyExtensions: %v", err)
+	}
+	lossyFields := make(map[string]bool, len(reasons))
+	for _, r := range reasons {
+		lossyFields[r.FieldPath] = true
+	}
+	for _, field := range []string{"argument-hint", "disable-model-invocation"} {
+		if !lossyFields[field] {
+			t.Errorf("LossyExtensions must report %q as lossy for gemini-cli; got reasons: %+v", field, reasons)
+		}
 	}
 }
 
