@@ -5,8 +5,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/schema"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/schema"
 )
 
 // yamlUnmarshal is a thin alias kept for clarity in tests that build

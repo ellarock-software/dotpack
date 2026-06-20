@@ -47,7 +47,7 @@ func TestInstallHelpDocumentsAgentsToHostTranslation(t *testing.T) {
 		".gemini/skills/<name>/SKILL.md",
 		".codex/config.toml",
 		"agents-cli      -> .agents/skills/<name>/SKILL.md once for sub-adapters",
-		"post-install lifecycle tasks from",
+		"Pass --run-lifecycle to run",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("install help missing %q:\n%s", want, got)
@@ -69,8 +69,8 @@ func TestImportHelpPointsToInstallForAgentsToHostTranslation(t *testing.T) {
 	got := stdout.String()
 	for _, want := range []string{
 		"To translate .agents resources back into .claude, .gemini, .codex/config.toml",
-		"use dotpack install on the specific",
-		"does not yet bulk-export an entire .agents tree",
+		"use dotpack install on a specific",
+		"dotpack install-all for a full canonical .agents tree",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("import help missing %q:\n%s", want, got)

@@ -31,8 +31,8 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/manifest"
 )
 
 // mergedFormat identifies the read-modify-write encoding for a target
@@ -904,22 +904,22 @@ func deleteJSONPath(root map[string]any, path []string) (bool, error) {
 // install-order positioning should explicitly uninstall + reinstall
 // EVERYTHING in the desired order. Documented here so a future
 // reader knows the choice is deliberate, not a bug.
-func unmergeExistingAppendsForID(store *manifest.Store, id string) error {
+func unmergeExistingAppendsForRecord(store *manifest.Store, rec manifest.Record) error {
 	m, err := store.Load()
 	if err != nil {
 		return fmt.Errorf("load manifest: %w", err)
 	}
-	var rec *manifest.Record
+	var found *manifest.Record
 	for i := range m.Installs {
-		if m.Installs[i].ID == id {
-			rec = &m.Installs[i]
+		if manifest.SameIdentity(m.Installs[i], rec) {
+			found = &m.Installs[i]
 			break
 		}
 	}
-	if rec == nil {
+	if found == nil {
 		return nil
 	}
-	for _, mk := range rec.MergedKeys {
+	for _, mk := range found.MergedKeys {
 		if adapter.MergedKeyOp(mk.Op) != adapter.MergedKeyAppend {
 			continue
 		}
@@ -958,7 +958,7 @@ func unmergeExistingAppendsForID(store *manifest.Store, id string) error {
 // hostile-review. Symlink defense is a TOCTOU posture against the
 // FILESYSTEM, not against a competing manifest record; it must run
 // regardless of whether dotpack already owns the merged keys.
-func preflightMergedKeyCollisions(store *manifest.Store, id string, mks []adapter.MergedKeyWrite) ([]string, error) {
+func preflightMergedKeyCollisions(store *manifest.Store, rec manifest.Record, mks []adapter.MergedKeyWrite) ([]string, error) {
 	m, err := store.Load()
 	if err != nil {
 		return nil, err
@@ -976,8 +976,8 @@ func preflightMergedKeyCollisions(store *manifest.Store, id string, mks []adapte
 	if len(collisions) > 0 {
 		return collisions, nil
 	}
-	for _, rec := range m.Installs {
-		if rec.ID == id {
+	for _, existing := range m.Installs {
+		if manifest.SameIdentity(existing, rec) {
 			return nil, nil
 		}
 	}

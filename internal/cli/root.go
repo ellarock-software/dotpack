@@ -4,8 +4,8 @@ import "github.com/spf13/cobra"
 
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "dotpack",
-		Short:         "Package manager and translator for AI-agent resources",
+		Use:   "dotpack",
+		Short: "Package manager and translator for AI-agent resources",
 		Long: `dotpack validates portable AI-agent resources and materializes them
 into host-native files.
 
@@ -16,8 +16,9 @@ The main direction is .agents -> host:
   - Codex CLI:       .agents/skills for skills, .codex/config.toml for config
   - agents-cli:      an umbrella target for all of the above
 
-Use install to translate a resource into a host. Use import to convert a
-native host tree into .agents; import currently supports Claude Code input.`,
+Use install to translate one resource into a host, or install-all to
+materialize a full canonical .agents tree. Use import to convert a native host
+tree into .agents; import currently supports Claude Code input.`,
 		Example: `  dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent antigravity-cli --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent agents-cli --scope project
@@ -32,5 +33,9 @@ native host tree into .agents; import currently supports Claude Code input.`,
 	root.AddCommand(newListCmd())
 	root.AddCommand(newReconcileCmd())
 	root.AddCommand(newPruneCmd())
+	root.AddCommand(newInventoryCmd())
+	root.AddCommand(newSyncBackCmd())
+	root.AddCommand(newResetMaterializedCmd())
+	root.AddCommand(newInstallAllCmd())
 	return root
 }

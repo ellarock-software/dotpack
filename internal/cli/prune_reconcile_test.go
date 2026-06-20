@@ -151,6 +151,61 @@ func TestPrune_RemovesFullyStaleMergedKeyRecord(t *testing.T) {
 	}
 }
 
+func TestReconcileAndPrune_ProjectScopeIgnoresOtherTargetRecords(t *testing.T) {
+	claudeHome := t.TempDir()
+	dotpackHome := t.TempDir()
+	targetA := t.TempDir()
+	targetB := t.TempDir()
+	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
+	for _, target := range []string{targetA, targetB} {
+		t.Setenv("DOTPACK_PROJECT_HOME", target)
+		install := NewRootCmd()
+		install.SetOut(io_DiscardWriter())
+		install.SetErr(io_DiscardWriter())
+		install.SetArgs([]string{"install", src, "--agent", "claude-code", "--scope", "project"})
+		if err := install.Execute(); err != nil {
+			t.Fatalf("install into %s: %v", target, err)
+		}
+	}
+
+	targetBFile := filepath.Join(targetB, ".claude", "skills", "dotpack-tracer-bullet", "SKILL.md")
+	if err := os.Remove(targetBFile); err != nil {
+		t.Fatalf("remove other target file: %v", err)
+	}
+
+	t.Setenv("DOTPACK_PROJECT_HOME", targetA)
+	var reconcileOut bytes.Buffer
+	reconcile := NewRootCmd()
+	reconcile.SetOut(&reconcileOut)
+	reconcile.SetErr(&reconcileOut)
+	reconcile.SetArgs([]string{"reconcile"})
+	if err := reconcile.Execute(); err != nil {
+		t.Fatalf("reconcile: %v\n%s", err, reconcileOut.String())
+	}
+	if got := reconcileOut.String(); strings.Contains(got, targetB) {
+		t.Fatalf("reconcile for target A must ignore target B drift; got:\n%s", got)
+	}
+
+	var pruneOut bytes.Buffer
+	prune := NewRootCmd()
+	prune.SetOut(&pruneOut)
+	prune.SetErr(&pruneOut)
+	prune.SetArgs([]string{"prune"})
+	if err := prune.Execute(); err != nil {
+		t.Fatalf("prune: %v\n%s", err, pruneOut.String())
+	}
+	if got := pruneOut.String(); strings.Contains(got, "Pruned") {
+		t.Fatalf("prune for target A must not prune target B records; got:\n%s", got)
+	}
+	records := readManifestRecords(t, dotpackHome)
+	if len(records) != 2 {
+		t.Fatalf("expected both target records to remain; got %+v", records)
+	}
+}
+
 func TestPrune_KeepsPartialRecord(t *testing.T) {
 	codexHome := t.TempDir()
 	dotpackHome := t.TempDir()

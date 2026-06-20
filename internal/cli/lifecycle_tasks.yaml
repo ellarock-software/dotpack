@@ -12,19 +12,12 @@ tasks:
       binaries:
         - name: sponsio
           env: DOTPACK_SPONSIO_BINARY
-          install:
-            candidates:
-              - command: pip
-                args: ["install", "sponsio"]
-              - command: pip3
-                args: ["install", "sponsio"]
     run:
       - command: sponsio
         args: ["host", "install", "claude-code", "--mode", "observe"]
-    # Explicit host status checks are intentional. Sponsio's current
-    # `host install all` expands only registered hosts, so an older binary that
-    # lacks codex/gemini-cli/antigravity-cli support must fail closed here
-    # instead of silently reporting a successful dotpack materialization.
+    # Lifecycle tasks are opt-in via --run-lifecycle. If users opt in, fail
+    # closed when Sponsio cannot verify its guard wiring; the default install
+    # path never runs this task.
     verify:
       - command: sponsio
         args: ["host", "status", "claude-code"]

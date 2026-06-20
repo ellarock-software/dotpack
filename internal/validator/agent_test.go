@@ -3,8 +3,8 @@ package validator_test
 import (
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/internal/validator"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/validator"
 )
 
 func TestValidateAgent_HappyPath(t *testing.T) {
@@ -49,4 +49,3 @@ func TestValidateAgent_BodyRequired(t *testing.T) {
 		t.Errorf("expected body error; got %v", errs)
 	}
 }
-

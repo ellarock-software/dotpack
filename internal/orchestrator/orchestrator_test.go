@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/claudecode"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/manifest"
-	"github.com/ellarock/dotpack/internal/orchestrator"
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/claudecode"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/orchestrator"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 func TestInstall_SkillToClaudeCode_WritesFileAndRecordsManifest(t *testing.T) {

@@ -3,7 +3,7 @@ package validator
 import (
 	"strings"
 
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 func ValidateMemory(m *resource.Memory) []ValidationError {

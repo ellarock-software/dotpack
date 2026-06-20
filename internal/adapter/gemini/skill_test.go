@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/gemini"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/gemini"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 func TestGemini_PlanSkill_UserScope_WritesToGeminiHome(t *testing.T) {

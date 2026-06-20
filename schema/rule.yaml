@@ -46,7 +46,7 @@ ecosystem_notes:
     preserve it in emitted Markdown rule files and do not require
     --allow-lossy for those fields."
 deliberately_excluded:
-  # Artifact introduction metadata from reia-config's contract. These
+  # Artifact introduction metadata from source packages. These
   # fields are not host runtime switches; they explain and register the
   # canonical artifact. Dropping them from a runtime that ignores
   # frontmatter is not semantically lossy, and dotpack's rule adapter

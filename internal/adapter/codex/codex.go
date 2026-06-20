@@ -49,11 +49,12 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/configfrag"
-	"github.com/ellarock/dotpack/internal/adapter/filedrop"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/configfrag"
+	"github.com/ellarock-software/dotpack/internal/adapter/filedrop"
+	"github.com/ellarock-software/dotpack/internal/adapter/hookcmd"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 // hostID is the dotpack adapter HostID for codex. MUST match the
@@ -306,7 +307,7 @@ func encodeHookBindingCodex(b resource.Binding) map[string]any {
 func encodeHookSpecCodex(s resource.HookSpec) map[string]any {
 	out := map[string]any{
 		"type":    s.Type,
-		"command": s.Command,
+		"command": hookcmd.ForHost(s.Command, hookcmd.ProjectRootExpr),
 	}
 	if s.HasTimeout {
 		out["timeout"] = s.Timeout

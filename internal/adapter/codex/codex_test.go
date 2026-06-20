@@ -3,8 +3,8 @@ package codex_test
 import (
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter/codex"
-	"github.com/ellarock/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/adapter/codex"
+	"github.com/ellarock-software/dotpack/internal/dirs"
 )
 
 func TestCodex_HostID(t *testing.T) {
@@ -19,5 +19,3 @@ func TestCodex_HostID(t *testing.T) {
 		t.Errorf("HostID: got %q, want %q", got, "codex")
 	}
 }
-
-

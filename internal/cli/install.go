@@ -10,25 +10,26 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/antigravity"
-	"github.com/ellarock/dotpack/internal/adapter/claudecode"
-	"github.com/ellarock/dotpack/internal/adapter/codex"
-	"github.com/ellarock/dotpack/internal/adapter/gemini"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/manifest"
-	"github.com/ellarock/dotpack/internal/orchestrator"
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/internal/validator"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/antigravity"
+	"github.com/ellarock-software/dotpack/internal/adapter/claudecode"
+	"github.com/ellarock-software/dotpack/internal/adapter/codex"
+	"github.com/ellarock-software/dotpack/internal/adapter/gemini"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/orchestrator"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/validator"
 )
 
 func newInstallCmd() *cobra.Command {
 	var (
-		agentName  string
-		kindName   string
-		scopeName  string
-		allowLossy bool
-		force      bool
+		agentName    string
+		kindName     string
+		scopeName    string
+		allowLossy   bool
+		force        bool
+		runLifecycle bool
 	)
 
 	cmd := &cobra.Command{
@@ -111,11 +112,11 @@ canonical_concept is unsupported by ANY sub-adapter requires --allow-lossy.
 Sub-adapter set and per-kind writer lists are declared in umbrellaFactories
 (this file).
 
-After materialization, install runs matching post-install lifecycle tasks from
-lifecycle_tasks.yaml. Those tasks are declarative command hooks with their own
-agent filters, binary-install steps, verification commands, and failure policy;
-the install command only owns the lifecycle extension point and failure
-reporting.`,
+By default, install only materializes host files. Pass --run-lifecycle to run
+matching post-install lifecycle tasks from lifecycle_tasks.yaml after
+materialization. Those tasks are declarative command hooks with their own agent
+filters, verification commands, and failure policy; the install command only
+owns the lifecycle extension point and failure reporting.`,
 		Example: `  dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent gemini-cli --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent codex --scope project
@@ -123,7 +124,7 @@ reporting.`,
   dotpack install .agents/hooks/bash-guard.hook.json --kind hook --agent agents-cli --scope project`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInstall(cmd, args[0], agentName, kindName, scopeName, allowLossy, force)
+			return runInstall(cmd, args[0], agentName, kindName, scopeName, allowLossy, force, runLifecycle)
 		},
 	}
 
@@ -132,10 +133,11 @@ reporting.`,
 	cmd.Flags().StringVar(&scopeName, "scope", "user", "Install scope (user|project)")
 	cmd.Flags().BoolVar(&allowLossy, "allow-lossy", false, "Proceed even if the adapter cannot honour all source fields")
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing untracked files at the install target (collisions otherwise refuse)")
+	cmd.Flags().BoolVar(&runLifecycle, "run-lifecycle", false, "Run optional post-install lifecycle tasks after materialization")
 	return cmd
 }
 
-func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName string, allowLossy, force bool) error {
+func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName string, allowLossy, force, runLifecycle bool) error {
 	d, err := dirs.FromEnv()
 	if err != nil {
 		return err
@@ -184,7 +186,7 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 	// for, kept narrow so per-host installs aren't paying for the
 	// umbrella machinery they don't use.
 	if _, ok := umbrellaFactories[agentName]; ok {
-		return runUmbrellaInstall(cmd, source, agentName, kind, res, scope, allowLossy, force, d, mf)
+		return runUmbrellaInstall(cmd, source, agentName, kind, res, scope, allowLossy, force, runLifecycle, d, mf)
 	}
 
 	a, err := buildAdapter(agentName, d)
@@ -196,9 +198,11 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 
 	absSrc, _ := filepath.Abs(source)
 	result, err := inst.Install(res, scope, orchestrator.InstallOptions{
-		Source:     "file://" + absSrc,
-		AllowLossy: allowLossy,
-		Force:      force,
+		Source:        "file://" + absSrc,
+		CanonicalRoot: inferCanonicalRoot(absSrc),
+		TargetRoot:    targetRootForScope(scope, d),
+		AllowLossy:    allowLossy,
+		Force:         force,
 	})
 	if err != nil {
 		// LossyError + CollisionError both render their own
@@ -216,8 +220,10 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 		return err
 	}
 
-	if err := runPostInstallLifecycle(agentName); err != nil {
-		return fmt.Errorf("installed %s, but post-install lifecycle failed: %w", result.Record.ID, err)
+	if runLifecycle {
+		if err := runPostInstallLifecycle(agentName); err != nil {
+			return fmt.Errorf("installed %s, but post-install lifecycle failed: %w", result.Record.ID, err)
+		}
 	}
 
 	cmd.Printf("Installed %s onto %s\n", result.Record.ID, agentName)
@@ -244,7 +250,7 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 // The split keeps runInstall's signature stable (a future umbrella
 // doesn't reshape the per-host path) and isolates umbrella concerns
 // behind one branch — easy to grep for "where do umbrellas execute?".
-func runUmbrellaInstall(cmd *cobra.Command, source, agentName string, kind resource.Kind, res resource.Resource, scope adapter.Scope, allowLossy, force bool, d dirs.Dirs, mf *manifest.Store) error {
+func runUmbrellaInstall(cmd *cobra.Command, source, agentName string, kind resource.Kind, res resource.Resource, scope adapter.Scope, allowLossy, force, runLifecycle bool, d dirs.Dirs, mf *manifest.Store) error {
 	subs, writers, err := buildUmbrella(agentName, d)
 	if err != nil {
 		return err
@@ -254,9 +260,11 @@ func runUmbrellaInstall(cmd *cobra.Command, source, agentName string, kind resou
 
 	absSrc, _ := filepath.Abs(source)
 	result, err := ui.Install(res, scope, orchestrator.InstallOptions{
-		Source:     "file://" + absSrc,
-		AllowLossy: allowLossy,
-		Force:      force,
+		Source:        "file://" + absSrc,
+		CanonicalRoot: inferCanonicalRoot(absSrc),
+		TargetRoot:    targetRootForScope(scope, d),
+		AllowLossy:    allowLossy,
+		Force:         force,
 	})
 	if err != nil {
 		var le *orchestrator.LossyError
@@ -270,8 +278,10 @@ func runUmbrellaInstall(cmd *cobra.Command, source, agentName string, kind resou
 		return err
 	}
 
-	if err := runPostInstallLifecycle(agentName); err != nil {
-		return fmt.Errorf("installed %s, but post-install lifecycle failed: %w", result.Record.ID, err)
+	if runLifecycle {
+		if err := runPostInstallLifecycle(agentName); err != nil {
+			return fmt.Errorf("installed %s, but post-install lifecycle failed: %w", result.Record.ID, err)
+		}
 	}
 
 	cmd.Printf("Installed %s onto %s\n", result.Record.ID, agentName)

@@ -245,6 +245,42 @@ func TestInstall_HookOnAgentsCli_UserScope_FansOutToGeminiAndCodex(t *testing.T)
 	}
 }
 
+func TestInstall_HookOnAgentsCli_RewritesMonitoredClaudeProjectDirForPortableHosts(t *testing.T) {
+	setupAgentsCliEnv(t)
+	geminiPath := filepath.Join(os.Getenv("DOTPACK_GEMINI_HOME"), "settings.json")
+	antigravityPath := filepath.Join(os.Getenv("DOTPACK_ANTIGRAVITY_HOME"), "settings.json")
+	codexPath := filepath.Join(os.Getenv("DOTPACK_CODEX_HOME"), "config.toml")
+
+	src := filepath.Join("..", "resource", "testdata", "hooks", "observed-bash-guard.hook.json")
+	cmd := NewRootCmd()
+	cmd.SetOut(io_DiscardWriter())
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{"install", src, "--agent", "agents-cli", "--kind", "hook", "--scope", "user"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install agents-cli observed hook: %v", err)
+	}
+
+	want := "bash \"$(git rev-parse --show-toplevel)/.agents/hooks/hook-monitor.sh\" \"$(git rev-parse --show-toplevel)/.agents/hooks/bash-guard.sh\""
+
+	geminiHooks := readGeminiHooks(t, geminiPath)
+	geminiCommand := geminiHooks["BeforeTool"][0]["hooks"].([]any)[0].(map[string]any)["command"]
+	if geminiCommand != want {
+		t.Fatalf("gemini monitored command = %q; want %q", geminiCommand, want)
+	}
+
+	antigravityHooks := readGeminiHooks(t, antigravityPath)
+	antigravityCommand := antigravityHooks["BeforeTool"][0]["hooks"].([]any)[0].(map[string]any)["command"]
+	if antigravityCommand != want {
+		t.Fatalf("antigravity monitored command = %q; want %q", antigravityCommand, want)
+	}
+
+	codexHooks := readCodexHooks(t, codexPath)
+	codexCommand := codexHooks["PreToolUse"][0]["hooks"].([]any)[0].(map[string]any)["command"]
+	if codexCommand != want {
+		t.Fatalf("codex monitored command = %q; want %q", codexCommand, want)
+	}
+}
+
 func TestInstall_MCPServerOnAgentsCli_CodexOnlyExtensionLossyRefused(t *testing.T) {
 	setupAgentsCliEnv(t)
 

@@ -24,10 +24,10 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/schema"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/schema"
 )
 
 // ToolsShape selects how the agent's `tools` field is emitted in

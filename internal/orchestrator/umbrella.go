@@ -40,11 +40,11 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/manifest"
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/schema"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/schema"
 )
 
 // UmbrellaInstaller installs one resource under a CLI-flag-driven
@@ -154,14 +154,14 @@ func (u *UmbrellaInstaller) Install(r resource.Resource, scope adapter.Scope, op
 	}
 
 	if !opts.Force {
-		collisions, err := preflightCollisions(u.manifest, rec.ID, plan.Files)
+		collisions, err := preflightCollisions(u.manifest, rec, plan.Files)
 		if err != nil {
 			return InstallResult{}, fmt.Errorf("collision check: %w", err)
 		}
 		if len(collisions) > 0 {
 			return InstallResult{}, &CollisionError{Paths: collisions}
 		}
-		mkCollisions, err := preflightMergedKeyCollisions(u.manifest, rec.ID, plan.MergedKeys)
+		mkCollisions, err := preflightMergedKeyCollisions(u.manifest, rec, plan.MergedKeys)
 		if err != nil {
 			return InstallResult{}, fmt.Errorf("merged-key collision check: %w", err)
 		}
@@ -170,7 +170,7 @@ func (u *UmbrellaInstaller) Install(r resource.Resource, scope adapter.Scope, op
 		}
 	}
 
-	if err := unmergeExistingAppendsForID(u.manifest, rec.ID); err != nil {
+	if err := unmergeExistingAppendsForRecord(u.manifest, rec); err != nil {
 		return InstallResult{}, fmt.Errorf("re-install cleanup: %w", err)
 	}
 	for _, fw := range plan.Files {

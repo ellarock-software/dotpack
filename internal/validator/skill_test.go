@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/internal/validator"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/validator"
 )
 
 func TestValidateSkill_TracerBulletFixturePasses(t *testing.T) {
@@ -56,10 +56,10 @@ func TestValidateSkill_NameSlugRegex(t *testing.T) {
 	}{
 		{"ok-name", false},
 		{"ok123", false},
-		{"Foo", true},           // uppercase
-		{"foo_bar", true},       // underscore
-		{"foo bar", true},       // space
-		{"foo/bar", true},       // slash (path-injection risk)
+		{"Foo", true},     // uppercase
+		{"foo_bar", true}, // underscore
+		{"foo bar", true}, // space
+		{"foo/bar", true}, // slash (path-injection risk)
 		{"-leading-hyphen", true},
 		{"", true}, // empty (covered by required check; should still flag)
 	}

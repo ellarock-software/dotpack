@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 func validHook(t *testing.T) *resource.Hook {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 func TestParseAgent_TracerBulletFixture(t *testing.T) {

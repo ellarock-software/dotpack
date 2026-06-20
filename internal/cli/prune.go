@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/manifest"
-	"github.com/ellarock/dotpack/internal/orchestrator"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/orchestrator"
 )
 
 func newReconcileCmd() *cobra.Command {
@@ -107,6 +107,9 @@ func printReconcileStatus(cmd *cobra.Command, st orchestrator.ReconcileStatus) {
 	cmd.Printf("%s\n", st.Record.ID)
 	for _, p := range st.MissingFiles {
 		cmd.Printf("  missing file %s\n", p)
+	}
+	for _, d := range st.DriftedFiles {
+		cmd.Printf("  drifted file %s expected=%s actual=%s\n", d.Path, d.ExpectedSHA256, d.ActualSHA256)
 	}
 	for _, mk := range st.MissingMergedKeys {
 		cmd.Printf("  missing merged key %s#%s\n", mk.File, mk.Path)

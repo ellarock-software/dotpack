@@ -39,11 +39,11 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/configfrag"
-	"github.com/ellarock/dotpack/internal/adapter/filedrop"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/configfrag"
+	"github.com/ellarock-software/dotpack/internal/adapter/filedrop"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 // hostID is the dotpack adapter HostID for claude-code. MUST match

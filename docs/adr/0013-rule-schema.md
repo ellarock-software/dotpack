@@ -2,10 +2,10 @@
 
 ## Context
 
-`reia-config` introduced shared host-agnostic guidance under `.agents/rules/`,
-starting with `.agents/rules/graphify.md`. The file is not a skill, agent,
-hook, MCP fragment, or memory file: it is a named instruction rule that should
-materialize into each host's native rule/instruction surface.
+Real `.agents` packages need shared host-agnostic guidance under
+`.agents/rules/`. A rule file is not a skill, agent, hook, MCP fragment, or
+memory file: it is a named instruction rule that should materialize into each
+host's native rule/instruction surface.
 
 The source also carries artifact introduction metadata (`artifact-type`,
 `owner/surface`, `purpose`, `triggers`, `inputs`, `outputs`, `state-read`,

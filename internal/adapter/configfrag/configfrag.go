@@ -38,9 +38,9 @@ package configfrag
 import (
 	"fmt"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 // Format identifies the host config file's on-disk encoding. Used by

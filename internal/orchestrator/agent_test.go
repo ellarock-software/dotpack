@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/claudecode"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/manifest"
-	"github.com/ellarock/dotpack/internal/orchestrator"
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/claudecode"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/orchestrator"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 func TestInstall_AgentToClaudeCode_WritesFileAndRecordsManifest(t *testing.T) {
@@ -140,7 +140,7 @@ func TestList_MixedSkillAndAgent_PreservesSlotOrder(t *testing.T) {
 // resourceName errors cleanly instead of panicking.
 type fakeUnnamedResource struct{}
 
-func (fakeUnnamedResource) Kind() resource.Kind     { return resource.Kind("fake-unnamed") }
+func (fakeUnnamedResource) Kind() resource.Kind        { return resource.Kind("fake-unnamed") }
 func (fakeUnnamedResource) Extensions() map[string]any { return nil }
 
 // fakeAdapter wraps a real adapter but plans an empty install for any

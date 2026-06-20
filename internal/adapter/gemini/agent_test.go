@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/gemini"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/schema"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/gemini"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/schema"
 )
 
 func TestGemini_PlanAgent_UserScope_FlatFileLayout(t *testing.T) {

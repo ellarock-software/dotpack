@@ -1,40 +1,34 @@
-# Sponsio Universal Installation Guide (via dotpack)
-**Target Audience**: AI Agents, Code Assistants, and Autonomous Agents
+# Optional Sponsio Lifecycle Hardening
 
-## 1. Core Architectural Mandate
+dotpack can run optional post-install lifecycle tasks after it materializes host
+configuration. The bundled task is for teams that use Sponsio to verify runtime
+guard wiring.
 
-You are tasked with installing **Sponsio**, a runtime safety and contract enforcement layer. You MUST NOT install or configure Sponsio manually for each individual host environment (e.g., Gemini, Codex, Antigravity). 
+Lifecycle tasks are **not enabled by default**. A normal install writes host
+files and exits without invoking Sponsio or any other external lifecycle tool.
 
-Instead, you MUST use **dotpack** as the universal translation middleware. 
+## Enable Lifecycle Verification
 
-**dotpack** handles 100% of the cross-host translation. Its primary function is to serialize and transform configurations across multiple AI agent runtimes. Your workflow is to establish the configuration once, and let dotpack fan it out.
+Install and configure Sponsio separately, then pass `--run-lifecycle`:
 
-## 2. The Installation Workflow
+```sh
+dotpack install .agents/hooks/bash-guard.hook.json --kind hook --agent agents-cli --scope project --run-lifecycle
+dotpack install-all --from .agents --target . --agent agents-cli --scope project --run-lifecycle
+```
 
-### Phase A: Ingestion (`dotpack import`)
-1. Generate or locate the canonical Sponsio configuration (typically derived from a base `claude-code` setup).
-2. Use `dotpack import` to transform the native agent-host configurations (including Sponsio hooks, skills, and agents) into dotpack's canonical `.agents` directory schema.
-3. Verify that Sponsio's hook is cleanly extracted into `.agents/hooks/sponsio.hook.json`.
+dotpack resolves the Sponsio binary from `PATH` or `DOTPACK_SPONSIO_BINARY`.
+When lifecycle verification is enabled, the bundled task:
 
-### Phase B: Ejection and Fan-out (`dotpack install`)
-1. Once the universal `.agents` scheme is established, use it to fan out the configuration to all other local environments.
-2. Run `dotpack install` (or target the umbrella `agents-cli`).
-3. `dotpack` will accurately translate the Sponsio configuration into the required formats (e.g., Codex's TOML, Gemini's JSON, Antigravity's schema) and wire up the stdio JSON protocol hooks for each host.
+1. Runs `sponsio host install claude-code --mode observe`.
+2. Runs `sponsio host status claude-code`.
+3. Fails the dotpack command if verification fails.
 
-## 3. CRITICAL BEHAVIORAL RULE: The Lifecycle Interplay
+The install output is still materialized before lifecycle verification runs. If
+verification fails, inspect the reported Sponsio command and fix the Sponsio
+installation or hook wiring before treating the install as complete.
 
-Sponsio operates via a pure stdio JSON protocol (e.g., `sponsio host guard claude-code --stdin`). It does not natively "know about" every CLI because the I/O protocol is identical across all of them. Sponsio acts as the security enforcer, while `dotpack` serves as the translation middleware.
+## Recommended Use
 
-**IF YOU ENCOUNTER AN ERROR DURING `dotpack install`:**
-If the installation throws a post-install lifecycle error where Sponsio complains about an unknown host (e.g., `"unknown host 'codex'"` or `"unknown host 'antigravity'"`), you MUST obey the following directives:
-
-- **DO NOT** hack or modify Sponsio's source code to add redundant host names just to bypass the verification error.
-- **DO NOT** declare that a host "cannot be supported."
-- **DO** recognize that this is a `dotpack` lifecycle substitution bug. The bug exists in `dotpack`'s `lifecycle_tasks.yaml` or `lifecycle.go` incorrectly substituting the target host name into the external command's arguments.
-- **FIX THE CALLER (`dotpack`), NEVER THE ENFORCER (`sponsio`).**
-
-## 4. Summary Checklist for Agents
-- [ ] Internalize that `dotpack` bridges the cross-host compatibility gap.
-- [ ] Ingest the baseline Sponsio configuration into `.agents` using `dotpack import`.
-- [ ] Fan-out the configuration to all target platforms using `dotpack install`.
-- [ ] If Sponsio rejects a host during the install hook, immediately pivot to debugging dotpack's lifecycle definitions.
+Use `--run-lifecycle` in team environments where Sponsio is part of your agent
+runtime safety model. Leave it unset for plain translation, local experiments,
+and public examples that should not require extra tooling.

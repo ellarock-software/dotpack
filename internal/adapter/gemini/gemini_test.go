@@ -3,8 +3,8 @@ package gemini_test
 import (
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter/gemini"
-	"github.com/ellarock/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/adapter/gemini"
+	"github.com/ellarock-software/dotpack/internal/dirs"
 )
 
 func TestGemini_HostID(t *testing.T) {
@@ -19,4 +19,3 @@ func TestGemini_HostID(t *testing.T) {
 		t.Errorf("HostID: got %q, want %q", got, "gemini-cli")
 	}
 }
-

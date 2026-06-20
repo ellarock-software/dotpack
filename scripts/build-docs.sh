@@ -9,8 +9,9 @@ go generate ./schema/...
 
 echo "Building static site..."
 if ! command -v mkdocs &> /dev/null; then
-    echo "mkdocs not found. Installing mkdocs and mkdocs-material..."
-    pip3 install mkdocs mkdocs-material
+    echo "mkdocs not found. Install documentation dependencies first:"
+    echo "  pip3 install -r docs/requirements.txt"
+    exit 1
 fi
 
 mkdocs build

@@ -33,8 +33,8 @@ repository-local .claude path references to .agents. Host compatibility output
 still belongs to dotpack install/reconcile, not to checked-in generated trees.
 
 To translate .agents resources back into .claude, .gemini, .codex/config.toml,
-or shared .agents/skills host files, use dotpack install on the specific
-resource. dotpack does not yet bulk-export an entire .agents tree.`,
+or shared .agents/skills host files, use dotpack install on a specific
+resource or dotpack install-all for a full canonical .agents tree.`,
 		Example: `  dotpack import claude-code . --out .
   dotpack install .agents/skills/demo/SKILL.md --agent claude-code --scope project
   dotpack install .agents/skills/demo/SKILL.md --agent gemini-cli --scope project

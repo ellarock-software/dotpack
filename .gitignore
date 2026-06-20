@@ -1,6 +1,7 @@
 # Build output
 /dotpack
 /bin/
+/site/
 
 # Editor / OS
 .DS_Store
@@ -10,6 +11,7 @@
 # Scratch / ephemeral
 .scratchpad/
 .dotpack-workdirs/
+.venv/
 evidence/
 .evidence/
 **/evidence/

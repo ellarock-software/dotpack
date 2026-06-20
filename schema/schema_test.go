@@ -3,8 +3,8 @@ package schema_test
 import (
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/schema"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/schema"
 )
 
 // HostKeepsExtension consolidates the three per-host <host>Keeps

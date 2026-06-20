@@ -26,6 +26,9 @@ nav:
     - Memory: schemas/memory.md
     - Rule: schemas/rule.md
     - Skill: schemas/skill.md
+  - Optional Hardening:
+    - Sponsio Lifecycle: SPONSIO_INSTALL_INSTRUCTIONS.md
+    - Testing Sponsio: SPONSIO_TEST_INSTRUCTIONS.md
   - Standards & Architecture (ADR):
     - ADR 0001: adr/0001-empirically-derived-schema-via-corpus-survey.md
     - ADR 0002: adr/0002-schema-template-as-anchor.md
@@ -40,3 +43,9 @@ nav:
     - ADR 0011: adr/0011-floor-rule-deviation-criterion.md
     - ADR 0012: adr/0012-agents-cli-adapter-fan-out-and-schema-driven-lossy-detection.md
     - ADR 0013: adr/0013-rule-schema.md
+  - Archive:
+    - Archived Context: archive/CONTEXT-archived-2026-05-26.md
+    - Archived ADR 0001: archive/adr/0001-llm-only-trust-gate-for-translated-resources.md
+    - Archived ADR 0002: archive/adr/0002-pluggable-dotpack-agent-cmd-not-anthropic-sdk.md
+    - Archived ADR 0004: archive/adr/0004-workdir-filesystem-handoff-agent-interface.md
+    - Archived ADR 0006: archive/adr/0006-local-cache-plus-opt-in-upstream-pr.md

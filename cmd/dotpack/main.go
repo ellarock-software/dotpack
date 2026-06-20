@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ellarock/dotpack/internal/cli"
+	"github.com/ellarock-software/dotpack/internal/cli"
 )
 
 func main() {

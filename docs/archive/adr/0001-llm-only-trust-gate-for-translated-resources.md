@@ -2,7 +2,7 @@
 
 ## Context
 
-dotpack's install pipeline runs a [validator](../../CONTEXT.md) on every source resource. If the source is non-conformant to dotpack's schema/template, a [translator](../../CONTEXT.md) LLM agent rewrites it into a conformant form. We need to gate the translated artifact before persisting and installing it, because installed resources are *executable* (skills can ship scripts, hooks are shell, agents drive tool use).
+dotpack's install pipeline runs a validator on every source resource. If the source is non-conformant to dotpack's schema/template, a translator LLM agent rewrites it into a conformant form. We need to gate the translated artifact before persisting and installing it, because installed resources are *executable* (skills can ship scripts, hooks are shell, agents drive tool use).
 
 ## Decision
 

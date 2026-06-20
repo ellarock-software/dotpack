@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/manifest"
 )
 
 // ReconcileStatus is one manifest record compared against the current
@@ -17,9 +17,18 @@ type ReconcileStatus struct {
 	Record            manifest.Record
 	PresentFiles      []string
 	MissingFiles      []string
+	DriftedFiles      []FileDrift
 	PresentMergedKeys []manifest.MergedKey
 	MissingMergedKeys []manifest.MergedKey
 	Errors            []string
+}
+
+// FileDrift is one manifest-owned file whose current bytes differ from the
+// hash recorded at install time.
+type FileDrift struct {
+	Path           string
+	ExpectedSHA256 string
+	ActualSHA256   string
 }
 
 // HasClaims reports whether any recorded install claim still exists on disk.
@@ -30,7 +39,7 @@ func (s ReconcileStatus) HasClaims() bool {
 // HasDrift reports whether any recorded install claim is missing or
 // unreadable relative to the manifest.
 func (s ReconcileStatus) HasDrift() bool {
-	return len(s.MissingFiles) > 0 || len(s.MissingMergedKeys) > 0 || len(s.Errors) > 0
+	return len(s.MissingFiles) > 0 || len(s.DriftedFiles) > 0 || len(s.MissingMergedKeys) > 0 || len(s.Errors) > 0
 }
 
 // PruneResult reports what stale records were removed and which drifting
@@ -50,10 +59,31 @@ func (r *Reader) Reconcile() ([]ReconcileStatus, error) {
 	}
 	out := make([]ReconcileStatus, 0, len(m.Installs))
 	for _, rec := range m.Installs {
+		if rec.Scope == string(adapter.ScopeProject) && !recordMatchesTarget(rec, r.dirs.ProjectHome) {
+			continue
+		}
 		st := ReconcileStatus{Record: rec}
+		fileClaims := map[string]string{}
+		for _, fc := range rec.FileClaims {
+			if fc.Path != "" && fc.SHA256 != "" {
+				fileClaims[fc.Path] = fc.SHA256
+			}
+		}
 		for _, p := range rec.Files {
 			if _, err := os.Lstat(p); err == nil {
 				st.PresentFiles = append(st.PresentFiles, p)
+				if expected := fileClaims[p]; expected != "" {
+					actual, err := fileSHA256(p)
+					if err != nil {
+						st.Errors = append(st.Errors, fmt.Sprintf("hash file %s: %v", p, err))
+					} else if actual != expected {
+						st.DriftedFiles = append(st.DriftedFiles, FileDrift{
+							Path:           p,
+							ExpectedSHA256: expected,
+							ActualSHA256:   actual,
+						})
+					}
+				}
 				continue
 			} else if os.IsNotExist(err) {
 				st.MissingFiles = append(st.MissingFiles, p)
@@ -99,7 +129,7 @@ func (r *Reader) PruneStaleRecords() (PruneResult, error) {
 			if st.Record.TargetDir != "" {
 				_ = os.Remove(st.Record.TargetDir)
 			}
-			if err := r.manifest.Remove(st.Record.ID); err != nil {
+			if err := r.manifest.RemoveRecord(st.Record); err != nil {
 				return PruneResult{}, fmt.Errorf("prune %s: %w", st.Record.ID, err)
 			}
 			result.Pruned = append(result.Pruned, st.Record)
@@ -155,4 +185,12 @@ func mergedKeyExists(mk manifest.MergedKey) (bool, error) {
 	default:
 		return false, fmt.Errorf("check merged key %s#%s: unknown op %q", mk.File, mk.Path, mk.Op)
 	}
+}
+
+func fileSHA256(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return hashBytes(raw), nil
 }

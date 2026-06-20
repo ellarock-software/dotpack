@@ -8,7 +8,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/ellarock/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter"
 )
 
 // TestApplyTOMLMergedKey_OpAppend_FreshFile pins the Op=Append wiring

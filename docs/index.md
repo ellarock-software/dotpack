@@ -1,6 +1,17 @@
-# Schema Reference
+# dotpack Documentation
 
-Welcome to the dotpack schema documentation.
+dotpack validates portable `.agents` resources and translates them into host-native agent configuration files.
+
+Use this documentation to inspect the schema contracts, architecture decisions, and optional lifecycle hardening behavior.
+
+## Start Here
+
+- [Project README](https://github.com/ellarock-software/dotpack#readme)
+- [Schema reference](schemas/skill.md)
+- [Optional Sponsio lifecycle hardening](SPONSIO_INSTALL_INSTRUCTIONS.md)
+- [Architecture decisions](adr/0001-empirically-derived-schema-via-corpus-survey.md)
+
+## Schemas
 
 - [Agent Schema](schemas/agent.md)
 - [Command Schema](schemas/command.md)

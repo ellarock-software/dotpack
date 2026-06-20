@@ -10,7 +10,7 @@ package adapter
 import (
 	"io/fs"
 
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 // Scope is install-time scope: user (~/.claude/skills/<name>/) or

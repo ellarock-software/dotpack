@@ -14,7 +14,7 @@ Deliberately excluded:
 
 ## Why
 
-The corpus was 10 sources across four authors (anthropics/skills × 4, openai/skills × 1, obra/superpowers × 3, daymade/claude-code-skills × 2). The diversity goal was variation in author conventions, length, and optional fields — not coverage of every documented field. Survey ran via `gemini -p` (Gemini CLI 0.40) through `scripts/runtime/gemini.sh`, which binds the workdir-handoff contract from [ADR-0004](./0004-workdir-filesystem-handoff-agent-interface.md).
+The corpus was 10 sources across four authors (anthropics/skills × 4, openai/skills × 1, obra/superpowers × 3, daymade/claude-code-skills × 2). The diversity goal was variation in author conventions, length, and optional fields — not coverage of every documented field. Survey ran via `gemini -p` (Gemini CLI 0.40) through `scripts/runtime/gemini.sh`, which binds the workdir-handoff contract from [archived ADR-0004](../archive/adr/0004-workdir-filesystem-handoff-agent-interface.md).
 
 **Universal-vs-adapter boundary.** Per [ADR-0003](./0003-universal-kinds-with-adapter-capability-matrix.md), the universal schema captures content metadata that crosses agent hosts; per-tool runtime fields belong in the adapter capability matrix. `name`, `description`, and the markdown body are universal — every host treats them the same way. `license` is corpus-supported and pass-through-only. The Claude-spec extended fields (`allowed-tools`, `model`, `context: fork`, etc.) are runtime concerns: which tools auto-approve, which model to invoke, whether to fork a subagent. None of these survive a port to Codex or Gemini without re-mapping, so they belong in adapter logic — translator strips or remaps; adapters that natively support them re-emit on install.
 

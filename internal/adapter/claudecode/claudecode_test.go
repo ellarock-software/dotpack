@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/claudecode"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/claudecode"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 func TestClaudeCode_HostID(t *testing.T) {
@@ -149,4 +149,3 @@ func TestClaudeCode_PlanSkill_BytePerfectPassThroughOfParsedSource(t *testing.T)
 			"--- source ---\n%s\n--- plan ---\n%s", string(src), string(plan.Files[0].Content))
 	}
 }
-

@@ -38,12 +38,13 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/configfrag"
-	"github.com/ellarock/dotpack/internal/adapter/filedrop"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/schema"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/configfrag"
+	"github.com/ellarock-software/dotpack/internal/adapter/filedrop"
+	"github.com/ellarock-software/dotpack/internal/adapter/hookcmd"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/schema"
 )
 
 // hostID is the dotpack adapter HostID for gemini-cli. MUST match the
@@ -262,7 +263,7 @@ func encodeHookBindingGemini(b resource.Binding, hookName string, totalSpecs int
 func encodeHookSpecGemini(s resource.HookSpec, bindingExt map[string]any, hookName string, totalSpecs, ordinal int, sc *schema.Schema) (map[string]any, error) {
 	out := map[string]any{
 		"type":    s.Type,
-		"command": s.Command,
+		"command": hookcmd.ForHost(s.Command, hookcmd.ProjectRootExpr),
 	}
 	if s.HasTimeout {
 		out["timeout"] = s.Timeout * 1000

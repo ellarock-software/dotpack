@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/manifest"
 )
 
 // Default-agent misroute hint (slice-3 #7-followon). Symmetric to the

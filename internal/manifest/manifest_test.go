@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ellarock/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/manifest"
 )
 
 func TestStore_LoadMissingFileReturnsEmpty(t *testing.T) {

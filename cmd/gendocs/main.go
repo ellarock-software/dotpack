@@ -11,12 +11,12 @@ import (
 )
 
 type FullSchema struct {
-	Kind                 string     `yaml:"kind"`
-	Version              int        `yaml:"dotpack_schema_version"`
-	Template             Template   `yaml:"template"`
-	Fields               []Field    `yaml:"fields"`
-	EcosystemNotes       []string   `yaml:"ecosystem_notes"`
-	DeliberatelyExcluded []Concept  `yaml:"deliberately_excluded"`
+	Kind                 string    `yaml:"kind"`
+	Version              int       `yaml:"dotpack_schema_version"`
+	Template             Template  `yaml:"template"`
+	Fields               []Field   `yaml:"fields"`
+	EcosystemNotes       []string  `yaml:"ecosystem_notes"`
+	DeliberatelyExcluded []Concept `yaml:"deliberately_excluded"`
 }
 
 type Template struct {
@@ -34,8 +34,8 @@ type Field struct {
 }
 
 type Concept struct {
-	CanonicalConcept         string `yaml:"canonical_concept"`
-	Aliases                  []struct {
+	CanonicalConcept string `yaml:"canonical_concept"`
+	Aliases          []struct {
 		Host      string `yaml:"host"`
 		FieldName string `yaml:"field_name"`
 	} `yaml:"aliases"`
@@ -53,7 +53,7 @@ func main() {
 	// go generate runs this from the schema/ directory
 	schemaDir := "."
 	docsDir := filepath.Join("..", "docs", "schemas")
-	
+
 	if err := os.MkdirAll(docsDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create docs dir: %v\n", err)
 		os.Exit(1)
@@ -69,7 +69,7 @@ func main() {
 		if !strings.HasSuffix(file.Name(), ".yaml") {
 			continue
 		}
-		
+
 		path := filepath.Join(schemaDir, file.Name())
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -84,7 +84,7 @@ func main() {
 		}
 
 		md := generateMarkdown(s)
-		
+
 		outPath := filepath.Join(docsDir, strings.TrimSuffix(file.Name(), ".yaml")+".md")
 		if err := os.WriteFile(outPath, []byte(md), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to write %s: %v\n", outPath, err)
@@ -92,9 +92,17 @@ func main() {
 		}
 		fmt.Printf("Generated %s\n", outPath)
 	}
-	
-	// Create an index file
-	indexContent := "# Schema Reference\n\nWelcome to the dotpack schema documentation.\n\n"
+
+	// Create an index file.
+	indexContent := "# dotpack Documentation\n\n"
+	indexContent += "dotpack validates portable `.agents` resources and translates them into host-native agent configuration files.\n\n"
+	indexContent += "Use this documentation to inspect the schema contracts, architecture decisions, and optional lifecycle hardening behavior.\n\n"
+	indexContent += "## Start Here\n\n"
+	indexContent += "- [Project README](https://github.com/ellarock-software/dotpack#readme)\n"
+	indexContent += "- [Schema reference](schemas/skill.md)\n"
+	indexContent += "- [Optional Sponsio lifecycle hardening](SPONSIO_INSTALL_INSTRUCTIONS.md)\n"
+	indexContent += "- [Architecture decisions](adr/0001-empirically-derived-schema-via-corpus-survey.md)\n\n"
+	indexContent += "## Schemas\n\n"
 	for _, file := range files {
 		if strings.HasSuffix(file.Name(), ".yaml") {
 			kind := strings.TrimSuffix(file.Name(), ".yaml")
@@ -115,7 +123,7 @@ func generateMkDocsYML(schemaFiles []os.DirEntry, adrDir string) {
 	sb.WriteString("use_directory_urls: false\n")
 	sb.WriteString("theme:\n  name: material\n  features:\n    - navigation.sections\n    - navigation.tabs\n    - search.suggest\n    - search.highlight\n\n")
 	sb.WriteString("markdown_extensions:\n  - tables\n  - admonition\n  - attr_list\n  - def_list\n  - md_in_html\n\n")
-	
+
 	sb.WriteString("nav:\n")
 	sb.WriteString("  - Home: index.md\n")
 	sb.WriteString("  - Schemas:\n")
@@ -125,7 +133,11 @@ func generateMkDocsYML(schemaFiles []os.DirEntry, adrDir string) {
 			sb.WriteString(fmt.Sprintf("    - %s: schemas/%s.md\n", strings.Title(kind), kind))
 		}
 	}
-	
+
+	sb.WriteString("  - Optional Hardening:\n")
+	sb.WriteString("    - Sponsio Lifecycle: SPONSIO_INSTALL_INSTRUCTIONS.md\n")
+	sb.WriteString("    - Testing Sponsio: SPONSIO_TEST_INSTRUCTIONS.md\n")
+
 	sb.WriteString("  - Standards & Architecture (ADR):\n")
 	adrFiles, err := os.ReadDir(adrDir)
 	if err == nil {
@@ -141,7 +153,14 @@ func generateMkDocsYML(schemaFiles []os.DirEntry, adrDir string) {
 			}
 		}
 	}
-	
+
+	sb.WriteString("  - Archive:\n")
+	sb.WriteString("    - Archived Context: archive/CONTEXT-archived-2026-05-26.md\n")
+	sb.WriteString("    - Archived ADR 0001: archive/adr/0001-llm-only-trust-gate-for-translated-resources.md\n")
+	sb.WriteString("    - Archived ADR 0002: archive/adr/0002-pluggable-dotpack-agent-cmd-not-anthropic-sdk.md\n")
+	sb.WriteString("    - Archived ADR 0004: archive/adr/0004-workdir-filesystem-handoff-agent-interface.md\n")
+	sb.WriteString("    - Archived ADR 0006: archive/adr/0006-local-cache-plus-opt-in-upstream-pr.md\n")
+
 	os.WriteFile(filepath.Join("..", "mkdocs.yml"), []byte(sb.String()), 0644)
 }
 
@@ -150,7 +169,7 @@ func generateMarkdown(s FullSchema) string {
 
 	title := strings.Title(s.Kind)
 	sb.WriteString(fmt.Sprintf("# %s Schema\n\n", title))
-	
+
 	sb.WriteString(fmt.Sprintf("**Version:** `%d`\n\n", s.Version))
 
 	sb.WriteString("## Template\n\n")
@@ -196,12 +215,12 @@ func generateMarkdown(s FullSchema) string {
 				sb.WriteString(fmt.Sprintf("%s\n\n", strings.TrimSpace(c.BodySectionNormalisation.Reason)))
 				continue
 			}
-			
+
 			sb.WriteString(fmt.Sprintf("### Concept: `%s`\n\n", c.CanonicalConcept))
 			if c.Reason != "" {
 				sb.WriteString(fmt.Sprintf("%s\n\n", strings.TrimSpace(c.Reason)))
 			}
-			
+
 			if len(c.Aliases) > 0 {
 				sb.WriteString("**Aliases:**\n\n")
 				sb.WriteString("| Host | Field Name |\n")
@@ -211,7 +230,7 @@ func generateMarkdown(s FullSchema) string {
 				}
 				sb.WriteString("\n")
 			}
-			
+
 			if len(c.FieldNames) > 0 {
 				sb.WriteString(fmt.Sprintf("**Field Names:** `%s`\n\n", strings.Join(c.FieldNames, "`, `")))
 			}
@@ -236,7 +255,7 @@ func generateMarkdown(s FullSchema) string {
 				}
 			}
 		}
-		
+
 		result = adrRegex.ReplaceAllStringFunc(result, func(match string) string {
 			num := match[4:] // extract 0012
 			if filename, exists := adrMap[num]; exists {

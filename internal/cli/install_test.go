@@ -420,4 +420,4 @@ func TestList_AfterInstall_ShowsRecord(t *testing.T) {
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
-func io_DiscardWriter() discardWriter              { return discardWriter{} }
+func io_DiscardWriter() discardWriter             { return discardWriter{} }

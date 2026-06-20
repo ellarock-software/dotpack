@@ -106,7 +106,7 @@ type Dirs struct {
 // the value.
 func FromEnv() (Dirs, error) {
 	d := Dirs{
-		HomeDir:     os.Getenv("DOTPACK_USER_HOME"),
+		HomeDir:         os.Getenv("DOTPACK_USER_HOME"),
 		ClaudeHome:      os.Getenv("DOTPACK_CLAUDE_HOME"),
 		GeminiHome:      os.Getenv("DOTPACK_GEMINI_HOME"),
 		AntigravityHome: os.Getenv("DOTPACK_ANTIGRAVITY_HOME"),

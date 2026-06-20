@@ -20,7 +20,7 @@ tools:
 
 agents:
   dotpack_developer:
-    workspace: "/Users/joehosemann/code/ellarock/dotpack"
+    workspace: "."
     tool_rename:
       exec: Bash
       shell: Bash

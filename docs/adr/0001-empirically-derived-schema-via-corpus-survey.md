@@ -2,7 +2,7 @@
 
 ## Context
 
-dotpack's [schema](../../CONTEXT.md) (per kind) is the contract that the validator gates on, the translator targets, the reviewer checks fidelity against, and adapters consume. It must be precise enough to be LLM-translatable and minimal enough that adapters and authors don't drown in fields.
+dotpack's schema (per kind) is the contract that the validator gates on, the translator targets, the reviewer checks fidelity against, and adapters consume. It must be precise enough to be LLM-translatable and minimal enough that adapters and authors don't drown in fields.
 
 ## Decision
 

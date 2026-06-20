@@ -1,0 +1,364 @@
+package cli
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+func TestInstall_ProjectScopeManifestRecordsTargetAndFileClaim(t *testing.T) {
+	configRoot, agentsRoot := writeCanonicalSkill(t, "daily-skill", "original\n")
+	targetRoot := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	src := filepath.Join(agentsRoot, "skills", "daily-skill", "SKILL.md")
+	cmd := NewRootCmd()
+	cmd.SetOut(io_DiscardWriter())
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{"install", src, "--agent", "claude-code", "--scope", "project"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dotpackHome, "installs.yaml"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var m struct {
+		Installs []struct {
+			ID            string `yaml:"id"`
+			CanonicalRoot string `yaml:"canonical_root"`
+			TargetRoot    string `yaml:"target_root"`
+			SourceRelPath string `yaml:"source_rel_path"`
+			FileClaims    []struct {
+				Path   string `yaml:"path"`
+				SHA256 string `yaml:"sha256"`
+			} `yaml:"file_claims"`
+		} `yaml:"installs"`
+	}
+	if err := yaml.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("parse manifest: %v\n%s", err, raw)
+	}
+	if len(m.Installs) != 1 {
+		t.Fatalf("manifest installs: got %d, want 1", len(m.Installs))
+	}
+	rec := m.Installs[0]
+	if rec.CanonicalRoot != agentsRoot {
+		t.Errorf("canonical_root = %q, want %q (config root %s)", rec.CanonicalRoot, agentsRoot, configRoot)
+	}
+	if rec.TargetRoot != targetRoot {
+		t.Errorf("target_root = %q, want %q", rec.TargetRoot, targetRoot)
+	}
+	if rec.SourceRelPath != "skills/daily-skill/SKILL.md" {
+		t.Errorf("source_rel_path = %q", rec.SourceRelPath)
+	}
+	if len(rec.FileClaims) != 1 || rec.FileClaims[0].SHA256 == "" {
+		t.Fatalf("file_claims missing hash: %+v", rec.FileClaims)
+	}
+	installedRaw, err := os.ReadFile(rec.FileClaims[0].Path)
+	if err != nil {
+		t.Fatalf("read installed file: %v", err)
+	}
+	if rec.FileClaims[0].SHA256 != sha256ForTest(installedRaw) {
+		t.Errorf("file claim hash does not match installed bytes")
+	}
+}
+
+func TestInventory_ReportsDriftedAndForeignUntrackedFileOutputs(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "daily-skill", "original\n")
+	targetRoot := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	install := NewRootCmd()
+	install.SetOut(io_DiscardWriter())
+	install.SetErr(io_DiscardWriter())
+	install.SetArgs([]string{"install", filepath.Join(agentsRoot, "skills", "daily-skill", "SKILL.md"), "--agent", "claude-code", "--scope", "project"})
+	if err := install.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	installedSkill := filepath.Join(targetRoot, ".claude", "skills", "daily-skill", "SKILL.md")
+	if err := os.WriteFile(installedSkill, []byte("user edit\n"), 0o644); err != nil {
+		t.Fatalf("edit installed skill: %v", err)
+	}
+	rogueAgent := filepath.Join(targetRoot, ".claude", "agents", "rogue.md")
+	if err := os.MkdirAll(filepath.Dir(rogueAgent), 0o755); err != nil {
+		t.Fatalf("mkdir rogue: %v", err)
+	}
+	if err := os.WriteFile(rogueAgent, []byte("---\nname: rogue\ndescription: rogue\n---\nbody\n"), 0o644); err != nil {
+		t.Fatalf("write rogue: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"inventory", "--from", agentsRoot, "--target", targetRoot, "--agent", "claude-code"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("inventory: %v\n%s", err, stdout.String())
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "drifted\t"+installedSkill) {
+		t.Errorf("inventory should report drifted installed skill; got:\n%s", got)
+	}
+	if !strings.Contains(got, "foreign-untracked\t"+rogueAgent) {
+		t.Errorf("inventory should report untracked rogue agent; got:\n%s", got)
+	}
+}
+
+func TestResetMaterialized_RemovesTrackedAndIncludedUntrackedOutputs(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "daily-skill", "original\n")
+	targetRoot := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	install := NewRootCmd()
+	install.SetOut(io_DiscardWriter())
+	install.SetErr(io_DiscardWriter())
+	install.SetArgs([]string{"install", filepath.Join(agentsRoot, "skills", "daily-skill", "SKILL.md"), "--agent", "claude-code", "--scope", "project"})
+	if err := install.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	tracked := filepath.Join(targetRoot, ".claude", "skills", "daily-skill", "SKILL.md")
+	untracked := filepath.Join(targetRoot, ".claude", "rules", "manual.md")
+	if err := os.MkdirAll(filepath.Dir(untracked), 0o755); err != nil {
+		t.Fatalf("mkdir untracked: %v", err)
+	}
+	if err := os.WriteFile(untracked, []byte("---\nname: manual\n---\nmanual\n"), 0o644); err != nil {
+		t.Fatalf("write untracked: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	reset := NewRootCmd()
+	reset.SetOut(&stdout)
+	reset.SetErr(&stdout)
+	reset.SetArgs([]string{"reset-materialized", "--from", agentsRoot, "--target", targetRoot, "--include-untracked"})
+	if err := reset.Execute(); err != nil {
+		t.Fatalf("reset-materialized: %v\n%s", err, stdout.String())
+	}
+	if _, err := os.Stat(tracked); !os.IsNotExist(err) {
+		t.Errorf("tracked output should be removed; stat=%v", err)
+	}
+	if _, err := os.Stat(untracked); !os.IsNotExist(err) {
+		t.Errorf("included untracked output should be removed; stat=%v", err)
+	}
+	records := readManifestRecords(t, dotpackHome)
+	if len(records) != 0 {
+		t.Fatalf("reset should remove manifest records; got %+v", records)
+	}
+}
+
+func TestInstallAll_InstallsSupportedCanonicalResources(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "daily-skill", "original\n")
+	rulesDir := filepath.Join(agentsRoot, "rules")
+	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
+		t.Fatalf("mkdir rules: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(rulesDir, "daily-rule.md"), []byte("---\nname: daily-rule\n---\nrule body\n"), 0o644); err != nil {
+		t.Fatalf("write rule: %v", err)
+	}
+
+	targetRoot := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"install-all", "--from", agentsRoot, "--target", targetRoot, "--agent", "claude-code", "--scope", "project"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install-all: %v\n%s", err, stdout.String())
+	}
+	for _, path := range []string{
+		filepath.Join(targetRoot, ".claude", "skills", "daily-skill", "SKILL.md"),
+		filepath.Join(targetRoot, ".claude", "rules", "daily-rule.md"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("expected install-all output %s: %v", path, err)
+		}
+	}
+	records := readManifestRecords(t, dotpackHome)
+	if len(records) != 2 {
+		t.Fatalf("install-all should record two installs; got %+v", records)
+	}
+}
+
+func TestInstallAll_KindPathOverridesDiscoverEverySupportedKind(t *testing.T) {
+	sourceRoot := t.TempDir()
+	writeCustomLayoutResources(t, sourceRoot)
+
+	targetRoot := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{
+		"install-all",
+		"--from", sourceRoot,
+		"--target", targetRoot,
+		"--agent", "claude-code",
+		"--scope", "project",
+		"--kind-path", "skill=public-skills",
+		"--kind-path", "agent=public-agents",
+		"--kind-path", "rule=public-rules",
+		"--kind-path", "command=public-commands",
+		"--kind-path", "mcp-server=public-mcp",
+		"--kind-path", "hook=public-hooks",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install-all: %v\n%s", err, stdout.String())
+	}
+
+	assertCustomLayoutOutputs(t, targetRoot)
+	records := readManifestRecords(t, dotpackHome)
+	if len(records) != 6 {
+		t.Fatalf("install-all should record six installs; got %+v", records)
+	}
+}
+
+func TestInstallAll_PerKindPathAliasesDiscoverEverySupportedKind(t *testing.T) {
+	sourceRoot := t.TempDir()
+	writeCustomLayoutResources(t, sourceRoot)
+
+	targetRoot := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{
+		"install-all",
+		"--from", sourceRoot,
+		"--target", targetRoot,
+		"--agent", "claude-code",
+		"--scope", "project",
+		"--skills-path", "public-skills",
+		"--agents-path", "public-agents",
+		"--rules-path", "public-rules",
+		"--commands-path", "public-commands",
+		"--mcp-servers-path", "public-mcp",
+		"--hooks-path", "public-hooks",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install-all: %v\n%s", err, stdout.String())
+	}
+
+	assertCustomLayoutOutputs(t, targetRoot)
+	records := readManifestRecords(t, dotpackHome)
+	if len(records) != 6 {
+		t.Fatalf("install-all should record six installs; got %+v", records)
+	}
+}
+
+func TestSyncBack_CopiesUntrackedMaterializedFileIntoCanonical(t *testing.T) {
+	configRoot := t.TempDir()
+	agentsRoot := filepath.Join(configRoot, ".agents")
+	if err := os.MkdirAll(agentsRoot, 0o755); err != nil {
+		t.Fatalf("mkdir agents root: %v", err)
+	}
+	targetRoot := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	materialized := filepath.Join(targetRoot, ".claude", "skills", "manual-skill", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(materialized), 0o755); err != nil {
+		t.Fatalf("mkdir materialized: %v", err)
+	}
+	raw := []byte("---\nname: manual-skill\ndescription: manual\n---\nmanual body\n")
+	if err := os.WriteFile(materialized, raw, 0o644); err != nil {
+		t.Fatalf("write materialized: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"sync-back", "--from", agentsRoot, "--target", targetRoot})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("sync-back: %v\n%s", err, stdout.String())
+	}
+	canonical := filepath.Join(agentsRoot, "skills", "manual-skill", "SKILL.md")
+	got, err := os.ReadFile(canonical)
+	if err != nil {
+		t.Fatalf("read canonical: %v", err)
+	}
+	if string(got) != string(raw) {
+		t.Errorf("canonical bytes mismatch:\n%s", got)
+	}
+}
+
+func writeCanonicalSkill(t *testing.T, name, body string) (string, string) {
+	t.Helper()
+	configRoot := t.TempDir()
+	agentsRoot := filepath.Join(configRoot, ".agents")
+	skillDir := filepath.Join(agentsRoot, "skills", name)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill: %v", err)
+	}
+	raw := []byte("---\nname: " + name + "\ndescription: daily test\n---\n" + body)
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), raw, 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+	return configRoot, agentsRoot
+}
+
+func writeCustomLayoutResources(t *testing.T, root string) {
+	t.Helper()
+	mustWriteTestFile(t, filepath.Join(root, "public-skills", "custom-skill", "SKILL.md"), "---\nname: custom-skill\ndescription: custom skill\n---\nskill body\n")
+	mustWriteTestFile(t, filepath.Join(root, "public-agents", "custom-agent.md"), "---\nname: custom-agent\ndescription: custom agent\n---\nagent body\n")
+	mustWriteTestFile(t, filepath.Join(root, "public-rules", "custom-rule.md"), "---\nname: custom-rule\n---\nrule body\n")
+	mustWriteTestFile(t, filepath.Join(root, "public-commands", "custom-command.md"), "---\nname: custom-command\ndescription: custom command\n---\ncommand body\n")
+	mustWriteTestFile(t, filepath.Join(root, "public-mcp", "custom.mcp.json"), `{"mcpServers":{"layoutgithub":{"command":"npx","args":[]}}}`+"\n")
+	mustWriteTestFile(t, filepath.Join(root, "public-hooks", "custom-hook.hook.json"), `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/true"}]}]}}`+"\n")
+}
+
+func mustWriteTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func assertCustomLayoutOutputs(t *testing.T, targetRoot string) {
+	t.Helper()
+	for _, path := range []string{
+		filepath.Join(targetRoot, ".claude", "skills", "custom-skill", "SKILL.md"),
+		filepath.Join(targetRoot, ".claude", "agents", "custom-agent.md"),
+		filepath.Join(targetRoot, ".claude", "rules", "custom-rule.md"),
+		filepath.Join(targetRoot, ".claude", "commands", "custom-command.md"),
+		filepath.Join(targetRoot, ".mcp.json"),
+		filepath.Join(targetRoot, ".claude", "settings.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("expected install-all output %s: %v", path, err)
+		}
+	}
+}
+
+func sha256ForTest(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}

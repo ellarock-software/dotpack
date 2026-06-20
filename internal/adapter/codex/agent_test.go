@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/adapter/codex"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/codex"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/resource"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -108,8 +108,8 @@ func TestCodex_PlanAgent_PreservesExtensions(t *testing.T) {
 		t.Fatalf("Plan: %v", err)
 	}
 
-	if !bytes.Contains(plan.Files[0].Content, []byte("sandbox_mode = 'full'")) && 
-	   !bytes.Contains(plan.Files[0].Content, []byte("sandbox_mode = \"full\"")) {
+	if !bytes.Contains(plan.Files[0].Content, []byte("sandbox_mode = 'full'")) &&
+		!bytes.Contains(plan.Files[0].Content, []byte("sandbox_mode = \"full\"")) {
 		t.Errorf("codex must preserve extensions in TOML; got:\n%s", string(plan.Files[0].Content))
 	}
 }

@@ -74,6 +74,9 @@ func TestLifecycleMetadataDeclaresSponsioAsData(t *testing.T) {
 	if fmt.Sprint(task.AppliesTo.Agents) != fmt.Sprint([]string{"codex", "gemini-cli", "antigravity-cli", "agents-cli"}) {
 		t.Fatalf("agents = %v", task.AppliesTo.Agents)
 	}
+	if len(task.Ensure.Binaries) != 1 || len(task.Ensure.Binaries[0].Install.Candidates) != 0 {
+		t.Fatalf("Sponsio lifecycle must not auto-install binaries in public default config: %+v", task.Ensure.Binaries)
+	}
 }
 
 func TestLifecycleNoopsForUnrelatedHosts(t *testing.T) {
@@ -109,50 +112,23 @@ func TestLifecycleExistingBinaryRunsInstallAndVerifiesRequiredHosts(t *testing.T
 	}
 }
 
-func TestLifecycleInstallsWhenMissingThenRunsEnforcement(t *testing.T) {
-	runner := &fakeCommandRunner{
-		lookPathResults: map[string][]lookPathResult{
-			"sponsio": {
-				{err: exec.ErrNotFound},
-				{path: "/opt/homebrew/bin/sponsio"},
-			},
-			"pip": {{path: "/opt/homebrew/bin/pip"}},
-		},
-	}
-	withFakeLifecycleRunner(t, runner)
-
-	if err := runLifecyclePhase(lifecyclePhasePostInstall, "agents-cli"); err != nil {
-		t.Fatalf("lifecycle: %v", err)
-	}
-
-	wantPrefix := []string{
-		"/opt/homebrew/bin/pip install sponsio",
-		"/opt/homebrew/bin/sponsio host install claude-code --mode observe",
-		"/opt/homebrew/bin/sponsio host status claude-code",
-	}
-	for i, want := range wantPrefix {
-		if runner.runs[i] != want {
-			t.Fatalf("runs[%d] = %q; want %q (all runs: %v)", i, runner.runs[i], want, runner.runs)
-		}
-	}
-}
-
-func TestLifecycleFailsClosedWhenInstallersMissing(t *testing.T) {
+func TestLifecycleFailsWhenSponsioIsMissing(t *testing.T) {
 	runner := &fakeCommandRunner{
 		lookPathResults: map[string][]lookPathResult{
 			"sponsio": {{err: exec.ErrNotFound}},
-			"pip":     {{err: exec.ErrNotFound}},
-			"pip3":    {{err: exec.ErrNotFound}},
 		},
 	}
 	withFakeLifecycleRunner(t, runner)
 
-	err := runLifecyclePhase(lifecyclePhasePostInstall, "gemini-cli")
+	err := runLifecyclePhase(lifecyclePhasePostInstall, "agents-cli")
 	if err == nil {
-		t.Fatal("expected lifecycle failure when Sponsio and installers are missing")
+		t.Fatal("expected lifecycle failure when Sponsio is missing")
 	}
-	if !strings.Contains(err.Error(), "no installer candidate succeeded") {
-		t.Fatalf("error should explain installer failure; got %v", err)
+	if !strings.Contains(err.Error(), "no install candidates are declared") {
+		t.Fatalf("error should explain that Sponsio must be installed separately; got %v", err)
+	}
+	if len(runner.runs) != 0 {
+		t.Fatalf("missing Sponsio must not trigger installer commands; got %v", runner.runs)
 	}
 }
 
@@ -215,7 +191,7 @@ func TestInstallFailsClosedWithUnsupportedRealSponsioHosts(t *testing.T) {
 	cmd := NewRootCmd()
 	cmd.SetOut(io_DiscardWriter())
 	cmd.SetErr(io_DiscardWriter())
-	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--scope", "user"})
+	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--scope", "user", "--run-lifecycle"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected install to fail closed when the real Sponsio binary lacks required host support")
@@ -257,7 +233,7 @@ func realSponsioBinaryForTest(t *testing.T) string {
 	return ""
 }
 
-func TestInstallCodexTriggersPostInstallLifecycle(t *testing.T) {
+func TestInstallCodexTriggersPostInstallLifecycleWhenFlagIsSet(t *testing.T) {
 	agentsHome, _ := setupCodexEnv(t)
 	var called []string
 	withPostInstallLifecycle(t, func(agent string) error {
@@ -270,7 +246,7 @@ func TestInstallCodexTriggersPostInstallLifecycle(t *testing.T) {
 	cmd := NewRootCmd()
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stdout)
-	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--scope", "user"})
+	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--scope", "user", "--run-lifecycle"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("install codex: %v\n%s", err, stdout.String())
 	}
@@ -297,7 +273,7 @@ func TestInstallReportsMaterializedButLifecycleFailed(t *testing.T) {
 	cmd := NewRootCmd()
 	cmd.SetOut(io_DiscardWriter())
 	cmd.SetErr(io_DiscardWriter())
-	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--scope", "user"})
+	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--scope", "user", "--run-lifecycle"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected install error when mandatory lifecycle fails")
@@ -312,7 +288,7 @@ func TestInstallReportsMaterializedButLifecycleFailed(t *testing.T) {
 	}
 }
 
-func TestInstallClaudeCodeStillRunsLifecycleExtensionPoint(t *testing.T) {
+func TestInstallDoesNotRunLifecycleByDefault(t *testing.T) {
 	claudeHome := t.TempDir()
 	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
 	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
@@ -331,7 +307,7 @@ func TestInstallClaudeCodeStillRunsLifecycleExtensionPoint(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("install claude-code: %v", err)
 	}
-	if fmt.Sprint(called) != fmt.Sprint([]string{"claude-code"}) {
-		t.Fatalf("post-install lifecycle should be invoked for every install; got %v", called)
+	if len(called) != 0 {
+		t.Fatalf("post-install lifecycle should be opt-in; got calls %v", called)
 	}
 }

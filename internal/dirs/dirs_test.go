@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/dirs"
 )
 
 func TestFromEnv_ProjectHome_FromEnvOverride(t *testing.T) {

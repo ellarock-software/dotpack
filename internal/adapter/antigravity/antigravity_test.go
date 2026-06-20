@@ -3,8 +3,8 @@ package antigravity_test
 import (
 	"testing"
 
-	"github.com/ellarock/dotpack/internal/adapter/antigravity"
-	"github.com/ellarock/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/adapter/antigravity"
+	"github.com/ellarock-software/dotpack/internal/dirs"
 )
 
 func TestAntigravity_HostID(t *testing.T) {

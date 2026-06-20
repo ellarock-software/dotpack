@@ -31,11 +31,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/dirs"
-	"github.com/ellarock/dotpack/internal/manifest"
-	"github.com/ellarock/dotpack/internal/resource"
-	"github.com/ellarock/dotpack/schema"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/manifest"
+	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/schema"
 )
 
 // Reader handles operations that DO NOT traverse an adapter: List and
@@ -90,8 +90,10 @@ func NewInstaller(d dirs.Dirs, a adapter.Adapter, m *manifest.Store) *Installer 
 // is the URI the resource came from (file:// for local paths, git URL
 // for upstream).
 type InstallOptions struct {
-	Source     string
-	AllowLossy bool
+	Source        string
+	CanonicalRoot string
+	TargetRoot    string
+	AllowLossy    bool
 	// Force bypasses the pre-flight collision check (ADR-0004 hygiene:
 	// the orchestrator refuses to overwrite untracked files at an
 	// install target). Use only when the user has audited the
@@ -201,14 +203,14 @@ func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts Insta
 	}
 
 	if !opts.Force {
-		collisions, err := preflightCollisions(i.manifest, rec.ID, plan.Files)
+		collisions, err := preflightCollisions(i.manifest, rec, plan.Files)
 		if err != nil {
 			return InstallResult{}, fmt.Errorf("collision check: %w", err)
 		}
 		if len(collisions) > 0 {
 			return InstallResult{}, &CollisionError{Paths: collisions}
 		}
-		mkCollisions, err := preflightMergedKeyCollisions(i.manifest, rec.ID, plan.MergedKeys)
+		mkCollisions, err := preflightMergedKeyCollisions(i.manifest, rec, plan.MergedKeys)
 		if err != nil {
 			return InstallResult{}, fmt.Errorf("merged-key collision check: %w", err)
 		}
@@ -239,7 +241,7 @@ func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts Insta
 	// scope the un-merge to Op=Append entries only. The manifest
 	// upsert at the end of Install carries the new selectors so a
 	// subsequent uninstall finds the new content.
-	if err := unmergeExistingAppendsForID(i.manifest, rec.ID); err != nil {
+	if err := unmergeExistingAppendsForRecord(i.manifest, rec); err != nil {
 		return InstallResult{}, fmt.Errorf("re-install cleanup: %w", err)
 	}
 	for _, fw := range plan.Files {
@@ -318,15 +320,17 @@ func (r *Reader) Uninstall(id string) (UninstallResult, error) {
 		return UninstallResult{}, fmt.Errorf("load manifest: %w", err)
 	}
 	var rec manifest.Record
-	found := false
+	matches := 0
 	for _, r := range m.Installs {
 		if r.ID == id {
 			rec = r
-			found = true
-			break
+			matches++
 		}
 	}
-	if !found {
+	if matches > 1 {
+		return UninstallResult{}, fmt.Errorf("install ID %q is ambiguous across target roots; use reset-materialized with --target or prune the manifest", id)
+	}
+	if matches == 0 {
 		// Helpful when the user composed the ID from short-name + flag
 		// defaults: list any records sharing the trailing short-name so
 		// "did you mean --kind agent?" is one glance away. Pre-agent
@@ -356,63 +360,15 @@ func (r *Reader) Uninstall(id string) (UninstallResult, error) {
 		return UninstallResult{}, fmt.Errorf("no install with ID %q", id)
 	}
 
-	var removed, missing []string
-	for _, p := range rec.Files {
-		err := os.Remove(p)
-		switch {
-		case err == nil:
-			removed = append(removed, p)
-		case os.IsNotExist(err):
-			missing = append(missing, p)
-		default:
-			return UninstallResult{}, fmt.Errorf("remove %s: %w", p, err)
-		}
+	res, err := r.uninstallRecord(rec)
+	if err != nil {
+		return UninstallResult{}, err
 	}
-
-	// Config-fragment un-merge per ADR-0012 §9. Each manifest MergedKey
-	// names the file the install merged into and the format-native path
-	// it merged at; unmergeKey dispatches by file extension (JSON today;
-	// TOML when codex lands) and atomic-writes the result. Per advisor
-	// (refining ADR §9's "requires the host adapter" future-note), the
-	// un-merge is format-specific, not host-specific — the manifest
-	// record's (File, Path) tuple is self-sufficient, so Reader stays
-	// adapter-free.
-	//
-	// Absent / empty target files and absent leaves are no-ops
-	// (uninstall is idempotent across already-cleaned state); other
-	// I/O or parse errors short-circuit with a wrapped error.
-	for _, mk := range rec.MergedKeys {
-		if err := unmergeKey(MergedKeySelector{
-			File:     mk.File,
-			Path:     mk.Path,
-			Op:       adapter.MergedKeyOp(mk.Op),
-			Selector: mk.Selector,
-		}); err != nil {
-			return UninstallResult{}, fmt.Errorf("un-merge key %s in %s: %w", mk.Path, mk.File, err)
-		}
-	}
-
-	// Best-effort empty-dir cleanup. ENOTEMPTY → silently preserved
-	// (user has sibling files we don't own). Any other error (perm,
-	// etc.) is also tolerated — but we report dirRemoved=false so the
-	// CLI doesn't lie about whether dotpack cleaned the dir up.
-	dirRemoved := false
-	if rec.TargetDir != "" {
-		if err := os.Remove(rec.TargetDir); err == nil {
-			dirRemoved = true
-		}
-	}
-
-	if err := r.manifest.Remove(id); err != nil {
+	if err := r.manifest.RemoveRecord(rec); err != nil {
 		return UninstallResult{}, fmt.Errorf("remove manifest record: %w", err)
 	}
 
-	return UninstallResult{
-		Record:           rec,
-		RemovedPaths:     removed,
-		MissingPaths:     missing,
-		TargetDirRemoved: dirRemoved,
-	}, nil
+	return res, nil
 }
 
 // List returns the manifest records in slot order. Thin wrapper around
@@ -445,13 +401,13 @@ func (r *Reader) List() ([]manifest.Record, error) {
 // A path created between this stat and writeAtomic's rename will
 // be overwritten. The slice-2 hardening targets passive state
 // (untracked files / orphans), not concurrent races.
-func preflightCollisions(store *manifest.Store, id string, files []adapter.FileWrite) ([]string, error) {
+func preflightCollisions(store *manifest.Store, rec manifest.Record, files []adapter.FileWrite) ([]string, error) {
 	m, err := store.Load()
 	if err != nil {
 		return nil, err
 	}
-	for _, rec := range m.Installs {
-		if rec.ID == id {
+	for _, existing := range m.Installs {
+		if manifest.SameIdentity(existing, rec) {
 			// Known install: re-install is allowed. Skip the stat
 			// loop entirely — overwriting our own files is the
 			// expected update path.
@@ -542,10 +498,16 @@ func buildRecord(host string, r resource.Resource, scope adapter.Scope, plan ada
 		return manifest.Record{}, err
 	}
 	files := make([]string, 0, len(plan.Files))
+	fileClaims := make([]manifest.FileClaim, 0, len(plan.Files))
 	for _, f := range plan.Files {
 		files = append(files, f.Path)
+		fileClaims = append(fileClaims, manifest.FileClaim{
+			Path:   f.Path,
+			SHA256: hashBytes(f.Content),
+		})
 	}
 	sort.Strings(files)
+	sort.Slice(fileClaims, func(i, j int) bool { return fileClaims[i].Path < fileClaims[j].Path })
 
 	mks := make([]manifest.MergedKey, 0, len(plan.MergedKeys))
 	for _, mk := range plan.MergedKeys {
@@ -553,6 +515,9 @@ func buildRecord(host string, r resource.Resource, scope adapter.Scope, plan ada
 			File: mk.File,
 			Path: mk.Path,
 			Op:   string(mk.Op),
+		}
+		if hash, err := hashMergedValue(mk.Value); err == nil {
+			entry.SHA256 = hash
 		}
 		// For Op=Append the manifest needs a content-hash Selector so
 		// uninstall can identify the install's array element by hash
@@ -582,17 +547,39 @@ func buildRecord(host string, r resource.Resource, scope adapter.Scope, plan ada
 		return mks[i].Selector < mks[j].Selector
 	})
 
+	sourcePath := fileURIPath(opts.Source)
+	sourceRelPath := ""
+	canonicalRoot := cleanAbs(opts.CanonicalRoot)
+	targetRoot := cleanAbs(opts.TargetRoot)
+	if canonicalRoot != "" && sourcePath != "" {
+		if rel, err := filepath.Rel(canonicalRoot, sourcePath); err == nil && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+			sourceRelPath = filepath.ToSlash(rel)
+		}
+	}
+	sourceHash := ""
+	if sourcePath != "" {
+		if raw, err := os.ReadFile(sourcePath); err == nil {
+			sourceHash = hashBytes(raw)
+		}
+	}
+
 	return manifest.Record{
-		ID:          fmt.Sprintf("%s:%s:%s", host, r.Kind(), name),
-		Source:      opts.Source,
-		Kind:        string(r.Kind()),
-		Agent:       host,
-		Scope:       string(scope),
-		TargetDir:   plan.TargetDir,
-		Files:       files,
-		MergedKeys:  mks,
-		CacheKey:    cacheKey(plan),
-		InstalledAt: when.Format(time.RFC3339),
+		ID:            fmt.Sprintf("%s:%s:%s", host, r.Kind(), name),
+		Source:        opts.Source,
+		Kind:          string(r.Kind()),
+		Agent:         host,
+		Scope:         string(scope),
+		CanonicalRoot: canonicalRoot,
+		TargetRoot:    targetRoot,
+		SourcePath:    sourcePath,
+		SourceRelPath: sourceRelPath,
+		SourceSHA256:  sourceHash,
+		TargetDir:     plan.TargetDir,
+		Files:         files,
+		FileClaims:    fileClaims,
+		MergedKeys:    mks,
+		CacheKey:      cacheKey(plan),
+		InstalledAt:   when.Format(time.RFC3339),
 	}, nil
 }
 
@@ -652,4 +639,39 @@ func cacheKey(plan adapter.InstallPlan) string {
 		h.Write([]byte{0})
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
+}
+
+func hashBytes(raw []byte) string {
+	h := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(h[:])
+}
+
+func hashMergedValue(v any) (string, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return hashBytes(raw), nil
+}
+
+func fileURIPath(uri string) string {
+	const prefix = "file://"
+	if !strings.HasPrefix(uri, prefix) {
+		return ""
+	}
+	path := strings.TrimPrefix(uri, prefix)
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return path
+}
+
+func cleanAbs(path string) string {
+	if path == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		return filepath.Clean(abs)
+	}
+	return filepath.Clean(path)
 }

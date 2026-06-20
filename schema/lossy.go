@@ -3,8 +3,8 @@ package schema
 import (
 	"sort"
 
-	"github.com/ellarock/dotpack/internal/adapter"
-	"github.com/ellarock/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/resource"
 )
 
 // LossyExtensions implements ADR-0012 §8 per-instance lossy detection.

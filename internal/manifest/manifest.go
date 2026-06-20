@@ -53,22 +53,38 @@ type MergedKey struct {
 	Path     string `yaml:"path"`
 	Op       string `yaml:"op,omitempty"`
 	Selector string `yaml:"selector,omitempty"`
+	SHA256   string `yaml:"sha256,omitempty"`
+}
+
+// FileClaim records the content hash dotpack wrote for one file output.
+// Record.Files is retained for backwards-compatible uninstall/list code;
+// FileClaims is the richer drift-detection shape used by inventory and
+// daily reset/reinstall workflows.
+type FileClaim struct {
+	Path   string `yaml:"path"`
+	SHA256 string `yaml:"sha256,omitempty"`
 }
 
 // Record is one install. Field set per ADR-0004's "{ id, source, kind,
 // agent, scope, target_dir, files: [...], merged_keys: [...], cache_key,
 // installed_at }" schema.
 type Record struct {
-	ID          string      `yaml:"id"`
-	Source      string      `yaml:"source"`
-	Kind        string      `yaml:"kind"`
-	Agent       string      `yaml:"agent"`
-	Scope       string      `yaml:"scope"`
-	TargetDir   string      `yaml:"target_dir,omitempty"`
-	Files       []string    `yaml:"files,omitempty"`
-	MergedKeys  []MergedKey `yaml:"merged_keys,omitempty"`
-	CacheKey    string      `yaml:"cache_key,omitempty"`
-	InstalledAt string      `yaml:"installed_at"`
+	ID            string      `yaml:"id"`
+	Source        string      `yaml:"source"`
+	Kind          string      `yaml:"kind"`
+	Agent         string      `yaml:"agent"`
+	Scope         string      `yaml:"scope"`
+	CanonicalRoot string      `yaml:"canonical_root,omitempty"`
+	TargetRoot    string      `yaml:"target_root,omitempty"`
+	SourcePath    string      `yaml:"source_path,omitempty"`
+	SourceRelPath string      `yaml:"source_rel_path,omitempty"`
+	SourceSHA256  string      `yaml:"source_sha256,omitempty"`
+	TargetDir     string      `yaml:"target_dir,omitempty"`
+	Files         []string    `yaml:"files,omitempty"`
+	FileClaims    []FileClaim `yaml:"file_claims,omitempty"`
+	MergedKeys    []MergedKey `yaml:"merged_keys,omitempty"`
+	CacheKey      string      `yaml:"cache_key,omitempty"`
+	InstalledAt   string      `yaml:"installed_at"`
 }
 
 // Manifest is the top-level YAML structure of installs.yaml.
@@ -105,8 +121,24 @@ func (s *Store) Load() (*Manifest, error) {
 	return m, nil
 }
 
-// Upsert loads the current manifest, replaces any record whose ID
-// matches rec.ID (preserving its slot in the slice), or appends rec
+// IdentityKey returns the manifest install slot key. Legacy records only
+// have ID, so they keep the historic one-record-per-ID behavior. Records
+// with target metadata include scope + target root so the same host/kind/name
+// can be installed into multiple projects without overwriting provenance.
+func IdentityKey(rec Record) string {
+	if rec.TargetRoot == "" {
+		return rec.ID
+	}
+	return rec.Scope + "|" + rec.TargetRoot + "|" + rec.ID
+}
+
+// SameIdentity reports whether two records address the same install slot.
+func SameIdentity(a, b Record) bool {
+	return IdentityKey(a) == IdentityKey(b)
+}
+
+// Upsert loads the current manifest, replaces any record whose install slot
+// matches rec (preserving its slot in the slice), or appends rec
 // if no match is found. The result is written back atomically (write
 // to tmp, rename). Parent dirs are created if missing.
 //
@@ -135,7 +167,7 @@ func (s *Store) Upsert(rec Record) error {
 		return err
 	}
 	for i := range m.Installs {
-		if m.Installs[i].ID == rec.ID {
+		if SameIdentity(m.Installs[i], rec) {
 			m.Installs[i] = rec
 			return s.save(m)
 		}
@@ -167,13 +199,41 @@ func (s *Store) Remove(id string) error {
 	if err != nil {
 		return err
 	}
+	match := -1
 	for i := range m.Installs {
-		if m.Installs[i].ID == id {
+		if m.Installs[i].ID != id {
+			continue
+		}
+		if match >= 0 {
+			return fmt.Errorf("manifest: install ID %q is ambiguous across target roots; use a target-scoped operation", id)
+		}
+		match = i
+	}
+	if match >= 0 {
+		m.Installs = append(m.Installs[:match], m.Installs[match+1:]...)
+		return s.save(m)
+	}
+	return fmt.Errorf("manifest: no install with ID %q", id)
+}
+
+// RemoveRecord deletes exactly the install slot represented by rec. This is
+// used by target-scoped reset/prune flows where duplicate user-facing IDs can
+// exist across different projects.
+func (s *Store) RemoveRecord(rec Record) error {
+	if rec.ID == "" {
+		return fmt.Errorf("manifest: RemoveRecord with empty ID is rejected")
+	}
+	m, err := s.Load()
+	if err != nil {
+		return err
+	}
+	for i := range m.Installs {
+		if SameIdentity(m.Installs[i], rec) {
 			m.Installs = append(m.Installs[:i], m.Installs[i+1:]...)
 			return s.save(m)
 		}
 	}
-	return fmt.Errorf("manifest: no install with ID %q", id)
+	return fmt.Errorf("manifest: no install with identity %q", IdentityKey(rec))
 }
 
 // save serialises m and writes it atomically over s.path.

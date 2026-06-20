@@ -14,4 +14,4 @@ Both Claude Code headless mode and Claude Agent SDK are metered separately from 
 
 ## Consequences
 
-The configured CLI must support tool-use (file-write) because the translator's output is a directory tree of files, not a single text response — see [ADR-0004 workdir handoff](./0004-workdir-filesystem-handoff.md) (forthcoming). Simple wrappers like `curl | jq` won't work as `$DOTPACK_AGENT_CMD`. dotpack ships prompts that must work across the configured CLI's quirks; integration tests use a mocked fake CLI, with real-CLI tests gated behind an env flag.
+The configured CLI must support tool-use (file-write) because the translator's output is a directory tree of files, not a single text response — see [ADR-0004 workdir handoff](./0004-workdir-filesystem-handoff-agent-interface.md). Simple wrappers like `curl | jq` won't work as `$DOTPACK_AGENT_CMD`. dotpack ships prompts that must work across the configured CLI's quirks; integration tests use a mocked fake CLI, with real-CLI tests gated behind an env flag.
