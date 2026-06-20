@@ -79,3 +79,20 @@ func TestParseSkill_CollectsUnknownFieldsAsExtensions(t *testing.T) {
 		t.Errorf("len(allowed-tools): got %d, want 2", len(tools))
 	}
 }
+
+func TestParseSkill_ToleratesPlainDescriptionWithColonSpace(t *testing.T) {
+	raw := []byte("---\nname: efficient-frontier\ndescription: Apply orchestration to any high-cost frontier model: delegate research and testing to cheaper subagents.\n---\nbody\n")
+	skill, err := resource.ParseSkill(raw)
+	if err != nil {
+		t.Fatalf("ParseSkill: %v", err)
+	}
+	if skill.Name != "efficient-frontier" {
+		t.Errorf("Name: got %q", skill.Name)
+	}
+	if !strings.Contains(skill.Description, "model: delegate") {
+		t.Errorf("Description did not preserve colon text: %q", skill.Description)
+	}
+	if string(skill.Raw) != string(raw) {
+		t.Errorf("Raw bytes should be preserved")
+	}
+}

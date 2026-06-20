@@ -68,6 +68,7 @@ Install from a repository with a non-canonical source layout:
 ```sh
 dotpack install-all --from /path/to/catalog --skills-path skills --agent agents-cli --scope user
 dotpack install-all --from /path/to/catalog --kind-path skill=skills --kind-path agent=agents --agent claude-code
+dotpack install-all --from github:BuilderIO/skills --skills-path skills --agent agents-cli --scope user
 ```
 
 Import a Claude Code tree into `.agents`:
@@ -135,11 +136,13 @@ at a project root, dotpack discovers `.agents/skills`, `.agents/agents`,
 same kind directories inside that root.
 
 Catalog repositories can override those discovery paths without changing the
-resource schema:
+resource schema, including repositories fetched directly from GitHub:
 
 ```sh
 dotpack install-all --from /path/to/catalog --kind-path skill=skills
 dotpack install-all --from /path/to/catalog --skills-path skills --agents-path agents
+dotpack install-all --from github:BuilderIO/skills --skills-path skills --agent agents-cli --scope user
+dotpack install-all --from github:OWNER/REPO@REF --kind-path skill=skills
 ```
 
 Supported custom layout flags are `--kind-path kind=path` for `skill`,
@@ -147,7 +150,9 @@ Supported custom layout flags are `--kind-path kind=path` for `skill`,
 `--skills-path`, `--agents-path`, `--rules-path`, `--commands-path`,
 `--mcp-servers-path`, and `--hooks-path`. Custom paths are relative to `--from`
 unless absolute. Unspecified kinds keep the `.agents/<kind-dir>` default under
-the source root.
+the source root. GitHub sources support `github:OWNER/REPO`,
+`github:OWNER/REPO@REF`, and `https://github.com/OWNER/REPO`; cached checkouts
+live under `DOTPACK_DOTPACK_HOME/cache/github`.
 
 ## Manifest Provenance
 

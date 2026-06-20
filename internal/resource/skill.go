@@ -6,6 +6,7 @@ package resource
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -66,9 +67,9 @@ func ParseSkill(raw []byte) (*Skill, error) {
 		return nil, fmt.Errorf("skill: %w", err)
 	}
 
-	fields := map[string]any{}
-	if err := yaml.Unmarshal(front, &fields); err != nil {
-		return nil, fmt.Errorf("skill: parse frontmatter: %w", err)
+	fields, err := parseSkillFrontmatter(front)
+	if err != nil {
+		return nil, err
 	}
 
 	skill := &Skill{Body: string(body), Raw: append([]byte(nil), raw...)}
@@ -88,6 +89,43 @@ func ParseSkill(raw []byte) (*Skill, error) {
 		}
 	}
 	return skill, nil
+}
+
+func parseSkillFrontmatter(front []byte) (map[string]any, error) {
+	fields := map[string]any{}
+	if err := yaml.Unmarshal(front, &fields); err == nil {
+		return fields, nil
+	} else if fallback, fallbackErr := parseSimpleSkillFrontmatter(front); fallbackErr == nil {
+		return fallback, nil
+	} else {
+		return nil, fmt.Errorf("skill: parse frontmatter: %w", err)
+	}
+}
+
+func parseSimpleSkillFrontmatter(front []byte) (map[string]any, error) {
+	fields := map[string]any{}
+	for _, rawLine := range strings.Split(string(front), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, val, ok := strings.Cut(line, ":")
+		if !ok {
+			return nil, fmt.Errorf("line %q is not key: value", line)
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return nil, fmt.Errorf("empty key in line %q", line)
+		}
+		fields[key] = strings.TrimSpace(val)
+	}
+	if _, ok := fields["name"]; !ok {
+		return nil, fmt.Errorf("missing name")
+	}
+	if _, ok := fields["description"]; !ok {
+		return nil, fmt.Errorf("missing description")
+	}
+	return fields, nil
 }
 
 // splitFrontmatter separates YAML frontmatter (the bytes between the

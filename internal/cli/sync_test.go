@@ -270,6 +270,105 @@ func TestInstallAll_PerKindPathAliasesDiscoverEverySupportedKind(t *testing.T) {
 	}
 }
 
+func TestInstallAll_GitHubSourceCachesAndInstallsCustomSkillPath(t *testing.T) {
+	sourceRepo := t.TempDir()
+	mustWriteTestFile(t, filepath.Join(sourceRepo, "skills", "remote-skill", "SKILL.md"), "---\nname: remote-skill\ndescription: remote skill\n---\nremote body\n")
+	restore := fakeGitCloneFrom(t, sourceRepo)
+	defer restore()
+
+	targetRoot := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{
+		"install-all",
+		"--from", "github:BuilderIO/skills@main",
+		"--target", targetRoot,
+		"--agent", "claude-code",
+		"--scope", "project",
+		"--skills-path", "skills",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install-all: %v\n%s", err, stdout.String())
+	}
+
+	installed := filepath.Join(targetRoot, ".claude", "skills", "remote-skill", "SKILL.md")
+	if _, err := os.Stat(installed); err != nil {
+		t.Fatalf("expected remote skill installed at %s: %v", installed, err)
+	}
+	cached, err := filepath.Glob(filepath.Join(dotpackHome, "cache", "github", "BuilderIO", "skills", "*", "skills", "remote-skill", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("glob cache: %v", err)
+	}
+	if len(cached) != 1 {
+		t.Fatalf("expected one cached remote skill, got %v", cached)
+	}
+}
+
+func TestInstallAll_GitHubSourceReusesCacheAndUpdatesExistingCheckout(t *testing.T) {
+	sourceRepo := t.TempDir()
+	mustWriteTestFile(t, filepath.Join(sourceRepo, "skills", "remote-skill", "SKILL.md"), "---\nname: remote-skill\ndescription: remote skill\n---\nremote body\n")
+	stats, restore := fakeCountingGitCloneFrom(t, sourceRepo)
+	defer restore()
+
+	targetRoot := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	for i := 0; i < 2; i++ {
+		var stdout bytes.Buffer
+		cmd := NewRootCmd()
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stdout)
+		cmd.SetArgs([]string{
+			"install-all",
+			"--from", "github:BuilderIO/skills",
+			"--target", targetRoot,
+			"--agent", "claude-code",
+			"--scope", "project",
+			"--skills-path", "skills",
+		})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("install-all run %d: %v\n%s", i+1, err, stdout.String())
+		}
+	}
+
+	if stats.cloneCalls != 1 {
+		t.Fatalf("expected one clone, got %d", stats.cloneCalls)
+	}
+	if stats.updateCalls == 0 {
+		t.Fatalf("expected existing cache to be updated on second install")
+	}
+}
+
+func TestInstallAll_GitHubSourceRejectsMalformedSource(t *testing.T) {
+	t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{
+		"install-all",
+		"--from", "github:BuilderIO",
+		"--skills-path", "skills",
+	})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected malformed github source to fail")
+	}
+	if !strings.Contains(err.Error(), "github source") {
+		t.Fatalf("error should mention github source, got %v", err)
+	}
+}
+
 func TestSyncBack_CopiesUntrackedMaterializedFileIntoCanonical(t *testing.T) {
 	configRoot := t.TempDir()
 	agentsRoot := filepath.Join(configRoot, ".agents")
@@ -340,6 +439,78 @@ func mustWriteTestFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
+}
+
+type fakeGitStats struct {
+	cloneCalls  int
+	updateCalls int
+}
+
+func fakeGitCloneFrom(t *testing.T, sourceRepo string) func() {
+	t.Helper()
+	_, restore := fakeCountingGitCloneFrom(t, sourceRepo)
+	return restore
+}
+
+func fakeCountingGitCloneFrom(t *testing.T, sourceRepo string) (*fakeGitStats, func()) {
+	t.Helper()
+	stats := &fakeGitStats{}
+	previous := runGitCommand
+	runGitCommand = func(workDir string, args ...string) ([]byte, error) {
+		if len(args) == 0 {
+			return nil, nil
+		}
+		if args[0] == "clone" {
+			stats.cloneCalls++
+			dest := args[len(args)-1]
+			if err := copyTestTree(sourceRepo, dest); err != nil {
+				return nil, err
+			}
+			if err := os.MkdirAll(filepath.Join(dest, ".git"), 0o755); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		}
+		if args[0] == "-C" {
+			stats.updateCalls++
+			return nil, nil
+		}
+		return nil, nil
+	}
+	return stats, func() {
+		runGitCommand = previous
+	}
+}
+
+func copyTestTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return os.MkdirAll(dst, 0o755)
+		}
+		target := filepath.Join(dst, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(target, raw, info.Mode().Perm())
+	})
 }
 
 func assertCustomLayoutOutputs(t *testing.T, targetRoot string) {

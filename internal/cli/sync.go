@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -40,6 +43,25 @@ type sourceLayout struct {
 	root  string
 	paths map[resource.Kind]string
 }
+
+type githubSource struct {
+	owner string
+	repo  string
+	ref   string
+}
+
+var (
+	githubIdentRE = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	runGitCommand = func(workDir string, args ...string) ([]byte, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = workDir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return out, fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		}
+		return out, nil
+	}
+)
 
 func newInventoryCmd() *cobra.Command {
 	var fromRoot, targetRoot, agentName, scopeName string
@@ -128,6 +150,8 @@ With no layout flags, --from keeps the canonical behavior: it resolves to a
 mcp-servers/, and hooks/ inside it. Pass --kind-path kind=path, or the
 per-kind aliases, to discover resources from non-canonical layouts such as
 root-level skills/. Custom paths are relative to --from unless absolute.
+GitHub repositories can be used directly as github:OWNER/REPO or
+github:OWNER/REPO@REF; dotpack caches them under DOTPACK_DOTPACK_HOME.
 
 By default, install-all only materializes host files. Pass --run-lifecycle to
 run optional post-install lifecycle tasks after a non-empty batch.`,
@@ -294,11 +318,11 @@ func runResetMaterialized(cmd *cobra.Command, fromRoot, targetRoot string, inclu
 }
 
 func runInstallAll(cmd *cobra.Command, fromRoot, targetRoot, agentName, scopeName string, layoutOpts sourceLayoutOptions, allowLossy, force, runLifecycle bool) error {
-	layout, err := resolveSourceLayout(fromRoot, layoutOpts)
+	d, target, err := dirsForTarget(targetRoot)
 	if err != nil {
 		return err
 	}
-	d, target, err := dirsForTarget(targetRoot)
+	layout, err := resolveSourceLayout(fromRoot, layoutOpts, d)
 	if err != nil {
 		return err
 	}
@@ -336,10 +360,15 @@ func runInstallAll(cmd *cobra.Command, fromRoot, targetRoot, agentName, scopeNam
 	return nil
 }
 
-func resolveSourceLayout(input string, opts sourceLayoutOptions) (sourceLayout, error) {
+func resolveSourceLayout(input string, opts sourceLayoutOptions, d dirs.Dirs) (sourceLayout, error) {
 	overrides, hasOverrides, err := parseSourceLayoutOverrides(opts)
 	if err != nil {
 		return sourceLayout{}, err
+	}
+	if cached, ok, err := resolveMaybeRemoteSource(input, d); err != nil {
+		return sourceLayout{}, err
+	} else if ok {
+		input = cached
 	}
 	if !hasOverrides {
 		agentsRoot, err := resolveAgentsRoot(input)
@@ -358,6 +387,184 @@ func resolveSourceLayout(input string, opts sourceLayoutOptions) (sourceLayout, 
 		paths[kind] = path
 	}
 	return sourceLayout{root: root, paths: paths}, nil
+}
+
+func resolveMaybeRemoteSource(input string, d dirs.Dirs) (string, bool, error) {
+	src, ok, err := parseGitHubSource(input)
+	if err != nil || !ok {
+		return "", ok, err
+	}
+	root, err := fetchGitHubSource(src, d)
+	if err != nil {
+		return "", true, err
+	}
+	return root, true, nil
+}
+
+func parseGitHubSource(input string) (githubSource, bool, error) {
+	input = strings.TrimSpace(input)
+	if strings.HasPrefix(input, "github:") {
+		spec := strings.TrimPrefix(input, "github:")
+		src, err := parseGitHubOwnerRepoRef(spec)
+		return src, true, err
+	}
+	if strings.HasPrefix(input, "https://github.com/") || strings.HasPrefix(input, "http://github.com/") {
+		parsed, err := url.Parse(input)
+		if err != nil {
+			return githubSource{}, true, fmt.Errorf("github source: parse URL: %w", err)
+		}
+		if parsed.Host != "github.com" {
+			return githubSource{}, false, nil
+		}
+		spec := strings.Trim(parsed.Path, "/")
+		if parsed.Fragment != "" {
+			if strings.Contains(spec, "@") {
+				return githubSource{}, true, fmt.Errorf("github source: ref specified twice in %q", input)
+			}
+			spec += "@" + parsed.Fragment
+		}
+		src, err := parseGitHubOwnerRepoRef(spec)
+		return src, true, err
+	}
+	return githubSource{}, false, nil
+}
+
+func parseGitHubOwnerRepoRef(spec string) (githubSource, error) {
+	spec = strings.Trim(spec, "/")
+	main, ref, hasRef := strings.Cut(spec, "@")
+	if hasRef && strings.TrimSpace(ref) == "" {
+		return githubSource{}, fmt.Errorf("github source: empty ref in %q", spec)
+	}
+	parts := strings.Split(main, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return githubSource{}, fmt.Errorf("github source: expected OWNER/REPO or OWNER/REPO@REF, got %q", spec)
+	}
+	repo := strings.TrimSuffix(parts[1], ".git")
+	src := githubSource{owner: parts[0], repo: repo, ref: ref}
+	if err := validateGitHubSource(src); err != nil {
+		return githubSource{}, err
+	}
+	return src, nil
+}
+
+func validateGitHubSource(src githubSource) error {
+	if !githubIdentRE.MatchString(src.owner) {
+		return fmt.Errorf("github source: invalid owner %q", src.owner)
+	}
+	if !githubIdentRE.MatchString(src.repo) {
+		return fmt.Errorf("github source: invalid repo %q", src.repo)
+	}
+	if src.ref != "" {
+		if strings.HasPrefix(src.ref, "-") || strings.Contains(src.ref, "..") || strings.ContainsAny(src.ref, "\x00\n\r") {
+			return fmt.Errorf("github source: invalid ref %q", src.ref)
+		}
+	}
+	return nil
+}
+
+func fetchGitHubSource(src githubSource, d dirs.Dirs) (string, error) {
+	if d.DotpackHome == "" {
+		return "", fmt.Errorf("github source: DOTPACK_DOTPACK_HOME is unavailable")
+	}
+	cacheDir := githubSourceCacheDir(src, d)
+	if isGitCheckout(cacheDir) {
+		if err := updateGitHubCache(cacheDir, src); err != nil {
+			return "", err
+		}
+		return cacheDir, nil
+	}
+	if err := os.RemoveAll(cacheDir); err != nil {
+		return "", fmt.Errorf("github source: clear stale cache %s: %w", cacheDir, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cacheDir), 0o755); err != nil {
+		return "", fmt.Errorf("github source: mkdir cache parent: %w", err)
+	}
+	tmp, err := os.MkdirTemp(filepath.Dir(cacheDir), ".clone-*")
+	if err != nil {
+		return "", fmt.Errorf("github source: create temp cache: %w", err)
+	}
+	defer os.RemoveAll(tmp)
+
+	cloneArgs := []string{"clone", "--depth", "1", src.cloneURL(), tmp}
+	if _, err := runGitCommand("", cloneArgs...); err != nil {
+		return "", fmt.Errorf("github source: clone %s/%s: %w", src.owner, src.repo, err)
+	}
+	if src.ref != "" {
+		if err := checkoutGitHubRef(tmp, src); err != nil {
+			return "", err
+		}
+	}
+	if err := os.Rename(tmp, cacheDir); err != nil {
+		return "", fmt.Errorf("github source: move cache into place: %w", err)
+	}
+	return cacheDir, nil
+}
+
+func updateGitHubCache(cacheDir string, src githubSource) error {
+	if src.ref == "" {
+		if _, err := runGitCommand("", "-C", cacheDir, "fetch", "--depth", "1", "origin"); err != nil {
+			return fmt.Errorf("github source: fetch cached %s/%s: %w", src.owner, src.repo, err)
+		}
+		if _, err := runGitCommand("", "-C", cacheDir, "pull", "--ff-only"); err != nil {
+			return fmt.Errorf("github source: update cached %s/%s: %w", src.owner, src.repo, err)
+		}
+		return nil
+	}
+	return checkoutGitHubRef(cacheDir, src)
+}
+
+func checkoutGitHubRef(cacheDir string, src githubSource) error {
+	if _, err := runGitCommand("", "-C", cacheDir, "fetch", "--depth", "1", "origin", src.ref); err != nil {
+		return fmt.Errorf("github source: fetch ref %q for %s/%s: %w", src.ref, src.owner, src.repo, err)
+	}
+	if _, err := runGitCommand("", "-C", cacheDir, "checkout", "--detach", "FETCH_HEAD"); err != nil {
+		return fmt.Errorf("github source: checkout ref %q for %s/%s: %w", src.ref, src.owner, src.repo, err)
+	}
+	return nil
+}
+
+func isGitCheckout(path string) bool {
+	info, err := os.Stat(filepath.Join(path, ".git"))
+	return err == nil && info.IsDir()
+}
+
+func (src githubSource) cloneURL() string {
+	return fmt.Sprintf("https://github.com/%s/%s.git", src.owner, src.repo)
+}
+
+func githubSourceCacheDir(src githubSource, d dirs.Dirs) string {
+	ref := src.ref
+	if ref == "" {
+		ref = "default"
+	}
+	sum := sha256.Sum256([]byte(src.owner + "/" + src.repo + "@" + ref))
+	return filepath.Join(d.DotpackHome, "cache", "github", src.owner, src.repo, sanitizeCacheSegment(ref)+"-"+hex.EncodeToString(sum[:])[:12])
+}
+
+func sanitizeCacheSegment(segment string) string {
+	var b strings.Builder
+	for _, r := range segment {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '.' || r == '_' || r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "ref"
+	}
+	if len(out) > 48 {
+		return out[:48]
+	}
+	return out
 }
 
 func resolveAgentsRoot(input string) (string, error) {
