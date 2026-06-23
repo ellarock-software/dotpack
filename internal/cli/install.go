@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -88,6 +89,10 @@ Host translation map:
     antigravity-cli -> .antigravity/settings.json
     codex           -> .codex/config.toml
     agents-cli      -> fans out to sub-adapter config files
+
+Skill installs also copy regular sibling files under the source SKILL.md
+directory, such as references/*.md, scripts/*, and assets/*, to the same
+relative paths under the host skill directory. Symlinks are rejected.
 
 User scope writes under $DOTPACK_CLAUDE_HOME / ~/.claude,
 $DOTPACK_GEMINI_HOME / ~/.gemini, $DOTPACK_ANTIGRAVITY_HOME / ~/.antigravity,
@@ -378,6 +383,11 @@ func loadResource(kind resource.Kind, source string) (resource.Resource, error) 
 		if err != nil {
 			return nil, err
 		}
+		supportFiles, err := loadSkillSupportFiles(source)
+		if err != nil {
+			return nil, err
+		}
+		skill.SupportFiles = supportFiles
 		if errs := validator.ValidateSkill(skill); len(errs) > 0 {
 			return nil, validationError(errs)
 		}
@@ -449,6 +459,63 @@ func loadResource(kind resource.Kind, source string) (resource.Resource, error) 
 	default:
 		return nil, fmt.Errorf("kind %q not supported", kind)
 	}
+}
+
+func loadSkillSupportFiles(source string) ([]resource.SupportFile, error) {
+	sourceAbs, err := filepath.Abs(source)
+	if err != nil {
+		return nil, fmt.Errorf("resolve skill source %s: %w", source, err)
+	}
+	rootAbs, err := filepath.Abs(filepath.Dir(source))
+	if err != nil {
+		return nil, fmt.Errorf("resolve skill directory for %s: %w", source, err)
+	}
+
+	var out []resource.SupportFile
+	if err := filepath.WalkDir(rootAbs, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == rootAbs {
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(rootAbs, path)
+		if err != nil {
+			return err
+		}
+		relSlash := filepath.ToSlash(rel)
+		if path == sourceAbs || relSlash == "SKILL.md" {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("skill support file %s is a symlink; symlinks are not supported", path)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("stat skill support file %s: %w", path, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("skill support file %s is not a regular file", path)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read skill support file %s: %w", path, err)
+		}
+		out = append(out, resource.SupportFile{
+			RelPath: relSlash,
+			Content: raw,
+			Mode:    info.Mode().Perm(),
+		})
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].RelPath < out[j].RelPath })
+	return out, nil
 }
 
 // hookNameFromPath derives the install name for a hook resource from

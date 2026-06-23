@@ -127,6 +127,13 @@ The schemas live in `schema/*.yaml`; parsers live under `internal/resource`.
 | `mcp-server` | A JSON fragment shaped as `{"mcpServers": {"<name>": {...}}}`. Direct install requires `--kind mcp-server`. |
 | `hook` | A JSON fragment shaped around a top-level `hooks` map. The source filename supplies the install name. `.agents/hooks/registry.json` is import output, not an `install-all` resource. |
 
+For skills, dotpack installs the full regular-file package rooted at the
+source `SKILL.md` directory. Sibling files such as `references/*.md`,
+`scripts/*`, and `assets/*` are copied to the same relative paths under the
+host skill directory, recorded as manifest file claims, and removed on
+uninstall when still owned by that install. Symlinks are rejected for skill
+support files.
+
 ## Source Layouts
 
 `install-all` defaults to the canonical `.agents` layout. When `--from` points

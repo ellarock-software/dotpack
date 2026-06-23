@@ -905,17 +905,31 @@ func scanMaterializedFiles(targetRoot string) ([]orchestrator.FileObservation, e
 			if !entry.IsDir() {
 				return nil
 			}
-			file := filepath.Join(path, fileName)
-			if st, err := os.Stat(file); err == nil && !st.IsDir() {
+			primary := filepath.Join(path, fileName)
+			if st, err := os.Stat(primary); err != nil || st.IsDir() {
+				return nil
+			}
+			return filepath.WalkDir(path, func(nestedPath string, nestedEntry fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if nestedPath == path || nestedEntry.IsDir() {
+					return nil
+				}
+				rel, err := filepath.Rel(path, nestedPath)
+				if err != nil {
+					return err
+				}
 				out = append(out, orchestrator.FileObservation{
-					Path:      file,
+					Path:      nestedPath,
+					RelPath:   filepath.ToSlash(rel),
 					TargetDir: path,
 					Agent:     agent,
 					Kind:      kind,
 					Name:      filepath.Base(path),
 				})
-			}
-			return nil
+				return nil
+			})
 		})
 	}
 	addFlat := func(agent, kind, root string, exts ...string) error {
@@ -985,7 +999,11 @@ func canonicalDestination(agentsRoot string, obs orchestrator.FileObservation) (
 	ext := filepath.Ext(obs.Path)
 	switch obs.Kind {
 	case "skill":
-		return filepath.Join(agentsRoot, "skills", obs.Name, "SKILL.md"), true
+		rel := obs.RelPath
+		if rel == "" {
+			rel = "SKILL.md"
+		}
+		return filepath.Join(agentsRoot, "skills", obs.Name, filepath.FromSlash(rel)), true
 	case "agent":
 		if ext != ".md" {
 			return "", false
@@ -1009,6 +1027,7 @@ func canonicalDestination(agentsRoot string, obs orchestrator.FileObservation) (
 func itemToObservation(item orchestrator.InventoryItem) orchestrator.FileObservation {
 	return orchestrator.FileObservation{
 		Path:      item.Path,
+		RelPath:   item.RelPath,
 		TargetDir: item.TargetDir,
 		Agent:     item.Agent,
 		Kind:      item.Kind,

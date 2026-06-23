@@ -36,6 +36,10 @@ ecosystem_notes:
     Claude Code uses `.claude/skills/`. The on-disk layout (folder with
     SKILL.md + optional scripts/, references/, assets/) is identical across
     all three.
+  - dotpack copies regular support files under the source skill directory
+    (for example `scripts/*`, `references/*`, and `assets/*`) to the same
+    relative paths under the target skill directory and records them in the
+    manifest. Symlinks are rejected.
   - Description-as-trigger is universal. The skill's body (everything after
     the closing `---`) is the instruction content the agent loads on trigger.
   - Some skills mention `compatibility` as an optional frontmatter field in

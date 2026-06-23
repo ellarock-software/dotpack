@@ -24,6 +24,9 @@ func TestStore_LoadMissingFileReturnsEmpty(t *testing.T) {
 func TestStore_UpsertThenLoadRoundtrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "installs.yaml")
 	store := manifest.NewStore(path)
+	if store.Path() != path {
+		t.Fatalf("Path() = %q; want %q", store.Path(), path)
+	}
 
 	rec := manifest.Record{
 		ID:          "claude-code:skill:hello",
@@ -53,6 +56,55 @@ func TestStore_UpsertThenLoadRoundtrip(t *testing.T) {
 	}
 	if len(got.Files) != 1 || got.Files[0] != rec.Files[0] {
 		t.Errorf("Files round-trip: got %v, want %v", got.Files, rec.Files)
+	}
+}
+
+func TestStore_LoadInvalidYAMLErrors(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "installs.yaml")
+	if err := os.WriteFile(path, []byte("installs: ["), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	_, err := manifest.NewStore(path).Load()
+	if err == nil || !strings.Contains(err.Error(), "parse") {
+		t.Fatalf("Load invalid YAML error = %v; want parse", err)
+	}
+}
+
+func TestStore_LoadAndSaveIOErrors(t *testing.T) {
+	dirPath := t.TempDir()
+	if _, err := manifest.NewStore(dirPath).Load(); err == nil || !strings.Contains(err.Error(), "read") {
+		t.Fatalf("Load directory err=%v; want read", err)
+	}
+	if err := manifest.NewStore(dirPath).Remove("x"); err == nil || !strings.Contains(err.Error(), "read") {
+		t.Fatalf("Remove directory err=%v; want read", err)
+	}
+	if err := manifest.NewStore(dirPath).RemoveRecord(manifest.Record{ID: "x"}); err == nil || !strings.Contains(err.Error(), "read") {
+		t.Fatalf("RemoveRecord directory err=%v; want read", err)
+	}
+
+	tmp := t.TempDir()
+	parentFile := filepath.Join(tmp, "parent-file")
+	if err := os.WriteFile(parentFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile parent: %v", err)
+	}
+	store := manifest.NewStore(filepath.Join(parentFile, "installs.yaml"))
+	err := store.Upsert(manifest.Record{ID: "x", InstalledAt: "now"})
+	if err == nil || !strings.Contains(err.Error(), "read") {
+		t.Fatalf("Upsert parent-file err=%v; want read", err)
+	}
+
+	locked := filepath.Join(tmp, "locked")
+	if err := os.MkdirAll(locked, 0o500); err != nil {
+		t.Fatalf("MkdirAll locked: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	store = manifest.NewStore(filepath.Join(locked, "installs.yaml"))
+	err = store.Upsert(manifest.Record{ID: "locked", InstalledAt: "now"})
+	if err == nil {
+		t.Skip("filesystem allowed writes to a non-writable test directory")
+	}
+	if !strings.Contains(err.Error(), "create tmp") && !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("Upsert locked-dir err=%v; want create tmp/permission denied", err)
 	}
 }
 
@@ -143,6 +195,29 @@ func TestStore_UpsertReplacesRecordWithSameID(t *testing.T) {
 	}
 	if got.CacheKey != second.CacheKey {
 		t.Errorf("CacheKey: got %q, want %q (replacement record's value)", got.CacheKey, second.CacheKey)
+	}
+}
+
+func TestStore_UpsertUsesTargetScopedIdentity(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "installs.yaml")
+	store := manifest.NewStore(path)
+	a := manifest.Record{ID: "claude-code:skill:foo", Scope: "project", TargetRoot: "/tmp/a", InstalledAt: "a"}
+	b := manifest.Record{ID: "claude-code:skill:foo", Scope: "project", TargetRoot: "/tmp/b", InstalledAt: "b"}
+	if manifest.IdentityKey(a) == manifest.IdentityKey(b) || manifest.SameIdentity(a, b) {
+		t.Fatal("target-scoped records should have distinct identities")
+	}
+	if err := store.Upsert(a); err != nil {
+		t.Fatalf("Upsert a: %v", err)
+	}
+	if err := store.Upsert(b); err != nil {
+		t.Fatalf("Upsert b: %v", err)
+	}
+	m, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(m.Installs) != 2 {
+		t.Fatalf("target-scoped records should coexist; got %+v", m.Installs)
 	}
 }
 
@@ -257,6 +332,38 @@ func TestStore_RemoveRejectsEmptyID(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "ID") {
 		t.Errorf("error should name the missing field; got %v", err)
+	}
+}
+
+func TestStore_RemoveAmbiguousIDAndRemoveRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "installs.yaml")
+	store := manifest.NewStore(path)
+	a := manifest.Record{ID: "claude-code:skill:foo", Scope: "project", TargetRoot: "/tmp/a", InstalledAt: "a"}
+	b := manifest.Record{ID: "claude-code:skill:foo", Scope: "project", TargetRoot: "/tmp/b", InstalledAt: "b"}
+	if err := store.Upsert(a); err != nil {
+		t.Fatalf("Upsert a: %v", err)
+	}
+	if err := store.Upsert(b); err != nil {
+		t.Fatalf("Upsert b: %v", err)
+	}
+	if err := store.Remove("claude-code:skill:foo"); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("Remove ambiguous error = %v; want ambiguous", err)
+	}
+	if err := store.RemoveRecord(a); err != nil {
+		t.Fatalf("RemoveRecord: %v", err)
+	}
+	m, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(m.Installs) != 1 || !manifest.SameIdentity(m.Installs[0], b) {
+		t.Fatalf("after RemoveRecord = %+v; want b only", m.Installs)
+	}
+	if err := store.RemoveRecord(a); err == nil || !strings.Contains(err.Error(), "no install") {
+		t.Fatalf("RemoveRecord missing error = %v; want no install", err)
+	}
+	if err := store.RemoveRecord(manifest.Record{}); err == nil || !strings.Contains(err.Error(), "empty ID") {
+		t.Fatalf("RemoveRecord empty error = %v; want empty ID", err)
 	}
 }
 

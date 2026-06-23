@@ -1,8 +1,8 @@
 // Package claudecode is the claude-code per-host shell. It dispatches
 // per-kind to the deep adapter modules:
 //
-//   - skill + agent → internal/adapter/filedrop (one file written per
-//     resource; no config merging).
+//   - skill + agent → internal/adapter/filedrop (standalone files; no
+//     config merging; skills can include packaged support files).
 //   - mcp-server + hook → internal/adapter/configfrag (one or more
 //     (path, value) merges into a host config file; ADR-0012 §5–§7).
 //

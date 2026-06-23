@@ -6,10 +6,21 @@ package resource
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// SupportFile is one regular file packaged beside SKILL.md, such as
+// references/*.md, scripts/*, or assets/*.png. RelPath is slash-separated
+// relative to the skill directory; adapters place it under the target
+// skill directory without rewriting the path.
+type SupportFile struct {
+	RelPath string
+	Content []byte
+	Mode    fs.FileMode
+}
 
 // Skill mirrors schema/skill.yaml's universal core (name, description,
 // license) plus a Body (the markdown body of SKILL.md that the host
@@ -29,12 +40,13 @@ import (
 // would emit Raw bytes that no longer match the in-memory extension
 // set). Mutators (WithExtensions etc.) drop Raw to preserve this.
 type Skill struct {
-	Name        string
-	Description string
-	License     string
-	Body        string
-	Raw         []byte
-	extensions  map[string]any
+	Name         string
+	Description  string
+	License      string
+	Body         string
+	Raw          []byte
+	SupportFiles []SupportFile
+	extensions   map[string]any
 }
 
 // Extensions returns the skill's host-extension frontmatter fields.

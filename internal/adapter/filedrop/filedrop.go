@@ -1,6 +1,7 @@
 // Package filedrop is the deep Adapter implementation for hosts whose
-// kinds install as file drops (one file written per resource, no config
-// merging). claudecode, gemini, and codex are all file-drop hosts; each
+// kinds install as file drops (standalone files, no config merging).
+// Skill resources can emit SKILL.md plus packaged support files.
+// claudecode, gemini, and codex are all file-drop hosts; each
 // becomes a thin shell exporting a host-specific Policy + a New(d)
 // constructor that returns a filedrop.Adapter wired with that policy.
 // The per-host triplication of canPassThrough / reencode / planSkill /
@@ -50,9 +51,9 @@ const (
 // Layout is per-(host, kind) on-disk shape. The two layout patterns the
 // corpus exhibits today:
 //
-//   - Nested (skill): <root>/<KindDir>/<name>/<NestedFile> — host
-//     owns the per-name subdir; TargetDir is set so uninstall can
-//     reclaim it.
+//   - Nested (skill): <root>/<KindDir>/<name>/<NestedFile> plus optional
+//     support files under the same per-name subdir. The host owns that
+//     subdir; TargetDir is set so uninstall can reclaim it when empty.
 //   - Flat (agent/rule/command/memory): <root>/<KindDir>/<name><ext>
 //     — sibling resources share the dir; TargetDir is empty so uninstall
 //     does NOT reclaim.
@@ -161,12 +162,20 @@ func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.Instal
 	if err != nil {
 		return adapter.InstallPlan{}, err
 	}
+	files := []adapter.FileWrite{{
+		Path:    target,
+		Content: content,
+		Mode:    fs.FileMode(0o644),
+	}}
+	if skill, ok := r.(*resource.Skill); ok && layout.Nested {
+		supportFiles, err := a.planSkillSupportFiles(skill, filepath.Dir(target))
+		if err != nil {
+			return adapter.InstallPlan{}, err
+		}
+		files = append(files, supportFiles...)
+	}
 	plan := adapter.InstallPlan{
-		Files: []adapter.FileWrite{{
-			Path:    target,
-			Content: content,
-			Mode:    fs.FileMode(0o644),
-		}},
+		Files: files,
 	}
 	if rule, ok := r.(*resource.Rule); ok {
 		plan.RemoveFiles = a.staleRuleFiles(rule, target, scope)
@@ -175,6 +184,52 @@ func (a *Adapter) Plan(r resource.Resource, scope adapter.Scope) (adapter.Instal
 		plan.TargetDir = filepath.Dir(target)
 	}
 	return plan, nil
+}
+
+func (a *Adapter) planSkillSupportFiles(s *resource.Skill, targetDir string) ([]adapter.FileWrite, error) {
+	if len(s.SupportFiles) == 0 {
+		return nil, nil
+	}
+	supportFiles := append([]resource.SupportFile(nil), s.SupportFiles...)
+	sort.Slice(supportFiles, func(i, j int) bool { return supportFiles[i].RelPath < supportFiles[j].RelPath })
+
+	seen := map[string]struct{}{"SKILL.md": {}}
+	out := make([]adapter.FileWrite, 0, len(supportFiles))
+	for _, sf := range supportFiles {
+		rel, err := cleanSupportRelPath(sf.RelPath)
+		if err != nil {
+			return nil, fmt.Errorf("%s: skill support file %q: %w", a.policy.HostID, sf.RelPath, err)
+		}
+		relSlash := filepath.ToSlash(rel)
+		if _, ok := seen[relSlash]; ok {
+			return nil, fmt.Errorf("%s: duplicate skill support file target %q", a.policy.HostID, relSlash)
+		}
+		seen[relSlash] = struct{}{}
+		mode := sf.Mode
+		if mode == 0 {
+			mode = 0o644
+		}
+		out = append(out, adapter.FileWrite{
+			Path:    filepath.Join(targetDir, rel),
+			Content: sf.Content,
+			Mode:    mode,
+		})
+	}
+	return out, nil
+}
+
+func cleanSupportRelPath(rel string) (string, error) {
+	if rel == "" {
+		return "", fmt.Errorf("relative path is empty")
+	}
+	if filepath.IsAbs(rel) {
+		return "", fmt.Errorf("relative path must not be absolute")
+	}
+	clean := filepath.Clean(filepath.FromSlash(rel))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("relative path escapes the skill directory")
+	}
+	return clean, nil
 }
 
 // targetPath computes the on-disk target for a resource. Scope picks

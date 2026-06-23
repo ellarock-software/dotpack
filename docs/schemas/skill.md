@@ -19,6 +19,7 @@
 ## Ecosystem Notes
 
 - SKILL.md is the canonical filename across Claude Code, Gemini CLI, Antigravity CLI, and Codex CLI. The `~/.agents/skills/` alias is honoured by Gemini and Codex; Claude Code uses `.claude/skills/`. The on-disk layout (folder with SKILL.md + optional scripts/, references/, assets/) is identical across all three.
+- dotpack copies regular support files under the source skill directory (for example `scripts/*`, `references/*`, and `assets/*`) to the same relative paths under the target skill directory and records them in the manifest. Symlinks are rejected.
 - Description-as-trigger is universal. The skill's body (everything after the closing `---`) is the instruction content the agent loads on trigger.
 - Some skills mention `compatibility` as an optional frontmatter field in their body text, but none of the corpus examples actually used it in frontmatter. Treated as authorial intent, not schema.
 
@@ -76,4 +77,3 @@ Adapter behaviour:
 | `claude-code` | `argument-hint` |
 | `claude-code` | `disable-model-invocation` |
 | `claude-code` | `user-invocable` |
-

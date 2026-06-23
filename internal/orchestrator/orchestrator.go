@@ -298,10 +298,11 @@ type UninstallResult struct {
 // "already done"). The reverse order would orphan files with no
 // manifest handle, which `dotpack uninstall` could not address.
 //
-// Empty-dir cleanup boundary (advisor #2): we call os.Remove on
-// rec.TargetDir exactly once. Non-empty → ENOTEMPTY → silently
-// preserved. Never walk up past TargetDir; never RemoveAll. The user's
-// sibling files (README.md beside SKILL.md, etc.) survive.
+// Empty-dir cleanup boundary (advisor #2): we remove empty directories
+// under rec.TargetDir from the bottom up, then rec.TargetDir itself.
+// Non-empty directories are silently preserved. Never walk up past
+// TargetDir; never RemoveAll. User-added files beside or below SKILL.md
+// survive because only empty directories are removed after claimed files.
 //
 // Drift on uninstall is intentional (advisor #6): if the user edited
 // the on-disk bytes, uninstall still removes the file. Intent is clear

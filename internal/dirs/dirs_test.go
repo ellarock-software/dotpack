@@ -53,6 +53,80 @@ func TestFromEnv_ProjectHome_FallsBackToCWD(t *testing.T) {
 	}
 }
 
+func TestFromEnv_DefaultsAllHomesFromUserHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("DOTPACK_USER_HOME", "")
+	t.Setenv("DOTPACK_CLAUDE_HOME", "")
+	t.Setenv("DOTPACK_GEMINI_HOME", "")
+	t.Setenv("DOTPACK_ANTIGRAVITY_HOME", "")
+	t.Setenv("DOTPACK_AGENTS_HOME", "")
+	t.Setenv("DOTPACK_CODEX_HOME", "")
+	t.Setenv("DOTPACK_DOTPACK_HOME", "")
+	t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
+
+	d, err := dirs.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv defaults: %v", err)
+	}
+	want := map[string]string{
+		"HomeDir":         home,
+		"ClaudeHome":      filepath.Join(home, ".claude"),
+		"GeminiHome":      filepath.Join(home, ".gemini"),
+		"AntigravityHome": filepath.Join(home, ".antigravity"),
+		"AgentsHome":      filepath.Join(home, ".agents"),
+		"CodexHome":       filepath.Join(home, ".codex"),
+		"DotpackHome":     filepath.Join(home, ".dotpack"),
+	}
+	got := map[string]string{
+		"HomeDir":         d.HomeDir,
+		"ClaudeHome":      d.ClaudeHome,
+		"GeminiHome":      d.GeminiHome,
+		"AntigravityHome": d.AntigravityHome,
+		"AgentsHome":      d.AgentsHome,
+		"CodexHome":       d.CodexHome,
+		"DotpackHome":     d.DotpackHome,
+	}
+	for key, wantPath := range want {
+		if filepath.Clean(got[key]) != filepath.Clean(wantPath) {
+			t.Fatalf("%s = %q; want %q", key, got[key], wantPath)
+		}
+	}
+}
+
+func TestFromEnv_RelativeHomeFromDeletedCWDReturnsAbsError(t *testing.T) {
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	doomed := t.TempDir()
+	if err := os.Chdir(doomed); err != nil {
+		t.Fatalf("Chdir doomed: %v", err)
+	}
+	if err := os.RemoveAll(doomed); err != nil {
+		_ = os.Chdir(oldwd)
+		t.Fatalf("RemoveAll doomed: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	t.Setenv("DOTPACK_USER_HOME", "relative-user-home")
+	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+	t.Setenv("DOTPACK_GEMINI_HOME", t.TempDir())
+	t.Setenv("DOTPACK_ANTIGRAVITY_HOME", t.TempDir())
+	t.Setenv("DOTPACK_AGENTS_HOME", t.TempDir())
+	t.Setenv("DOTPACK_CODEX_HOME", t.TempDir())
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+	t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
+
+	_, err = dirs.FromEnv()
+	if err == nil {
+		t.Skip("platform resolved a relative path even after the cwd was deleted")
+	}
+	if !strings.Contains(err.Error(), "DOTPACK_USER_HOME") {
+		t.Fatalf("FromEnv deleted-cwd err=%v; want DOTPACK_USER_HOME", err)
+	}
+}
+
 func TestFromEnv_ProjectHome_RelativeEnvIsResolvedToAbsolute(t *testing.T) {
 	// Hostile-review #1: DOTPACK_PROJECT_HOME accepting a relative path
 	// silently defeats slice 2 task #2's "manifest paths are absolute"

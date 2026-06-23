@@ -127,7 +127,7 @@ func (r *Reader) PruneStaleRecords() (PruneResult, error) {
 			}
 		case !st.HasClaims():
 			if st.Record.TargetDir != "" {
-				_ = os.Remove(st.Record.TargetDir)
+				_ = removeEmptyDirsUnder(st.Record.TargetDir)
 			}
 			if err := r.manifest.RemoveRecord(st.Record); err != nil {
 				return PruneResult{}, fmt.Errorf("prune %s: %w", st.Record.ID, err)

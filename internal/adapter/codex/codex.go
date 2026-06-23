@@ -1,7 +1,8 @@
 // Package codex is the codex CLI per-host shell. It dispatches per-kind
 // to the deep adapter modules:
 //
-//   - skill → internal/adapter/filedrop (one file written per resource).
+//   - skill → internal/adapter/filedrop (SKILL.md plus packaged support
+//     files).
 //   - mcp-server + hook → internal/adapter/configfrag (one or more
 //     (path, value) merges into ~/.codex/config.toml; ADR-0012 §5–§7+§9).
 //

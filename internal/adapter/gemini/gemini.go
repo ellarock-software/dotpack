@@ -1,8 +1,8 @@
 // Package gemini is the gemini-cli per-host shell. It dispatches
 // per-kind to the deep adapter modules:
 //
-//   - skill + agent → internal/adapter/filedrop (one file written per
-//     resource; no config merging).
+//   - skill + agent → internal/adapter/filedrop (standalone files; no
+//     config merging; skills can include packaged support files).
 //   - mcp-server → internal/adapter/configfrag (one (path, value) merge
 //     into Gemini's settings.json; ADR-0012 §5-§7).
 //

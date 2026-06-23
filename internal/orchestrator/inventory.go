@@ -22,6 +22,7 @@ const (
 // FileObservation is one materialized host file found by a CLI scanner.
 type FileObservation struct {
 	Path      string
+	RelPath   string
 	TargetDir string
 	Agent     string
 	Kind      string
@@ -39,6 +40,7 @@ type ExpectedFile struct {
 type InventoryItem struct {
 	Status         string
 	Path           string
+	RelPath        string
 	TargetDir      string
 	Agent          string
 	Kind           string
@@ -110,6 +112,7 @@ func (r *Reader) InventoryFiles(observed []FileObservation, expected []ExpectedF
 				ExpectedSHA256: claims[p],
 			}
 			if obs, ok := observedByPath[p]; ok {
+				item.RelPath = obs.RelPath
 				item.TargetDir = obs.TargetDir
 				item.ActualSHA256, err = fileSHA256(p)
 				if err != nil {
@@ -136,6 +139,7 @@ func (r *Reader) InventoryFiles(observed []FileObservation, expected []ExpectedF
 		item := InventoryItem{
 			Status:       InventoryForeignUntracked,
 			Path:         obs.Path,
+			RelPath:      obs.RelPath,
 			TargetDir:    obs.TargetDir,
 			Agent:        obs.Agent,
 			Kind:         obs.Kind,
@@ -199,7 +203,7 @@ func (r *Reader) ResetMaterialized(opts ResetOptions) (ResetResult, error) {
 			case err == nil:
 				result.RemovedUntracked = append(result.RemovedUntracked, p)
 				if obs.TargetDir != "" {
-					_ = os.Remove(obs.TargetDir)
+					_ = removeEmptyDirsUnder(obs.TargetDir)
 				}
 			case os.IsNotExist(err):
 				result.MissingUntracked = append(result.MissingUntracked, p)
@@ -241,7 +245,7 @@ func (r *Reader) uninstallRecord(rec manifest.Record) (UninstallResult, error) {
 
 	dirRemoved := false
 	if rec.TargetDir != "" {
-		if err := os.Remove(rec.TargetDir); err == nil {
+		if err := removeEmptyDirsUnder(rec.TargetDir); err == nil {
 			dirRemoved = true
 		}
 	}
@@ -252,6 +256,38 @@ func (r *Reader) uninstallRecord(rec manifest.Record) (UninstallResult, error) {
 		MissingPaths:     missing,
 		TargetDirRemoved: dirRemoved,
 	}, nil
+}
+
+func removeEmptyDirsUnder(root string) error {
+	if _, err := os.Stat(root); err != nil {
+		return err
+	}
+	var dirs []string
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			dirs = append(dirs, path)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if err := os.Remove(dirs[i]); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			if i == 0 {
+				return err
+			}
+		}
+	}
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return nil
+	}
+	return os.ErrExist
 }
 
 func recordFileClaims(rec manifest.Record) map[string]string {

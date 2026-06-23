@@ -530,12 +530,11 @@ func TestUninstall_TargetDirKept_WhenSiblingFileSurvives(t *testing.T) {
 }
 
 func TestUninstall_DoesNotRemoveTargetDirWithUnrelatedFile(t *testing.T) {
-	// Advisor #2: empty-dir cleanup is os.Remove(TargetDir) once, NOT
+	// Advisor #2: empty-dir cleanup is bounded to TargetDir and never
 	// RemoveAll. If the user dropped a sibling file in the same target
 	// dir (a README.md beside SKILL.md, or a custom file added under
-	// the install path), uninstall must NOT touch it. os.Remove fails
-	// on non-empty (ENOTEMPTY) — we swallow that. The directory must
-	// remain.
+	// the install path), uninstall must NOT touch it. Non-empty cleanup
+	// is reported as "kept"; the directory must remain.
 	d := dirs.Dirs{ClaudeHome: t.TempDir(), DotpackHome: t.TempDir()}
 	a := claudecode.New(d)
 	mf := manifest.NewStore(filepath.Join(d.DotpackHome, "installs.yaml"))

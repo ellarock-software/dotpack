@@ -72,6 +72,94 @@ func TestInstall_ProjectScopeManifestRecordsTargetAndFileClaim(t *testing.T) {
 	}
 }
 
+func TestInstall_SkillCopiesSupportingFilesAndRecordsClaims(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "daily-skill", "See references/guide.md and scripts/run.sh.\n")
+	skillDir := filepath.Join(agentsRoot, "skills", "daily-skill")
+	mustWriteTestFile(t, filepath.Join(skillDir, "references", "guide.md"), "# Guide\n\nSupport content.\n")
+	scriptPath := filepath.Join(skillDir, "scripts", "run.sh")
+	mustWriteTestFile(t, scriptPath, "#!/bin/sh\nprintf support\\n\n")
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod support script: %v", err)
+	}
+
+	targetRoot := t.TempDir()
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+
+	src := filepath.Join(skillDir, "SKILL.md")
+	cmd := NewRootCmd()
+	cmd.SetOut(io_DiscardWriter())
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{"install", src, "--agent", "claude-code", "--scope", "project"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	wantFiles := []string{
+		filepath.Join(targetRoot, ".claude", "skills", "daily-skill", "SKILL.md"),
+		filepath.Join(targetRoot, ".claude", "skills", "daily-skill", "references", "guide.md"),
+		filepath.Join(targetRoot, ".claude", "skills", "daily-skill", "scripts", "run.sh"),
+	}
+	for _, path := range wantFiles {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("expected installed skill file %s: %v", path, err)
+		}
+	}
+	if st, err := os.Stat(filepath.Join(targetRoot, ".claude", "skills", "daily-skill", "scripts", "run.sh")); err != nil {
+		t.Fatalf("stat installed script: %v", err)
+	} else if got := st.Mode().Perm(); got != 0o755 {
+		t.Errorf("installed script mode = %#o, want 0755", got)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dotpackHome, "installs.yaml"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var m struct {
+		Installs []struct {
+			Files      []string `yaml:"files"`
+			FileClaims []struct {
+				Path   string `yaml:"path"`
+				SHA256 string `yaml:"sha256"`
+			} `yaml:"file_claims"`
+		} `yaml:"installs"`
+	}
+	if err := yaml.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("parse manifest: %v\n%s", err, raw)
+	}
+	if len(m.Installs) != 1 {
+		t.Fatalf("manifest installs: got %d, want 1", len(m.Installs))
+	}
+	if got := len(m.Installs[0].Files); got != len(wantFiles) {
+		t.Fatalf("manifest files: got %d, want %d; files=%v", got, len(wantFiles), m.Installs[0].Files)
+	}
+	claimed := map[string]string{}
+	for _, claim := range m.Installs[0].FileClaims {
+		claimed[claim.Path] = claim.SHA256
+	}
+	for _, path := range wantFiles {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read installed file %s: %v", path, err)
+		}
+		if got := claimed[path]; got != sha256ForTest(raw) {
+			t.Errorf("manifest claim for %s = %q, want hash of installed bytes", path, got)
+		}
+	}
+
+	uninstall := NewRootCmd()
+	uninstall.SetOut(io_DiscardWriter())
+	uninstall.SetErr(io_DiscardWriter())
+	uninstall.SetArgs([]string{"uninstall", "daily-skill", "--agent", "claude-code", "--kind", "skill"})
+	if err := uninstall.Execute(); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(targetRoot, ".claude", "skills", "daily-skill")); !os.IsNotExist(err) {
+		t.Errorf("skill target directory should be removed after uninstall; stat=%v", err)
+	}
+}
+
 func TestInventory_ReportsDriftedAndForeignUntrackedFileOutputs(t *testing.T) {
 	_, agentsRoot := writeCanonicalSkill(t, "daily-skill", "original\n")
 	targetRoot := t.TempDir()
@@ -403,6 +491,47 @@ func TestSyncBack_CopiesUntrackedMaterializedFileIntoCanonical(t *testing.T) {
 	}
 	if string(got) != string(raw) {
 		t.Errorf("canonical bytes mismatch:\n%s", got)
+	}
+}
+
+func TestSyncBack_CopiesSkillSupportFileIntoCanonicalRelativePath(t *testing.T) {
+	configRoot := t.TempDir()
+	agentsRoot := filepath.Join(configRoot, ".agents")
+	if err := os.MkdirAll(agentsRoot, 0o755); err != nil {
+		t.Fatalf("mkdir agents root: %v", err)
+	}
+	targetRoot := t.TempDir()
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	materializedDir := filepath.Join(targetRoot, ".claude", "skills", "manual-skill")
+	mustWriteTestFile(t, filepath.Join(materializedDir, "SKILL.md"), "---\nname: manual-skill\ndescription: manual\n---\nmanual body\n")
+	refRaw := "# Guide\n\nSupport content.\n"
+	mustWriteTestFile(t, filepath.Join(materializedDir, "references", "guide.md"), refRaw)
+
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"sync-back", "--from", agentsRoot, "--target", targetRoot})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("sync-back: %v\n%s", err, stdout.String())
+	}
+
+	canonicalRef := filepath.Join(agentsRoot, "skills", "manual-skill", "references", "guide.md")
+	got, err := os.ReadFile(canonicalRef)
+	if err != nil {
+		t.Fatalf("read canonical reference: %v", err)
+	}
+	if string(got) != refRaw {
+		t.Errorf("canonical reference bytes mismatch:\n%s", got)
+	}
+	skillRaw, err := os.ReadFile(filepath.Join(agentsRoot, "skills", "manual-skill", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read canonical SKILL.md: %v", err)
+	}
+	if string(skillRaw) == refRaw {
+		t.Errorf("support file was synced onto SKILL.md")
 	}
 }
 
