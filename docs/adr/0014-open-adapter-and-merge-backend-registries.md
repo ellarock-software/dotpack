@@ -108,3 +108,8 @@ automatically.
   universal-core fields install fine. Adding the aliases is the follow-up.
 - **Pi and Hermes adapters** are named backlog; the onboarding path is the one in
   §1, only per-host paths need confirming.
+- **YAML non-string keys**: the YAML backend preserves a non-string-keyed map
+  (`1: x`) sibling byte-stable, but a (pathological) dotpack-merged path that
+  descends *into* such a node surfaces a walker error rather than being coerced —
+  coercion would rewrite bytes dotpack does not own. No shipped adapter targets
+  YAML, so this is latent.

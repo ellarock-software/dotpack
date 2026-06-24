@@ -16,12 +16,12 @@
 //
 // Paths (per opencode.ai/docs/config):
 //   - skill:      <OpenCodeHome>/skills/<name>/SKILL.md (user) ·
-//                 <ProjectHome>/.opencode/skills/<name>/SKILL.md (project)
+//     <ProjectHome>/.opencode/skills/<name>/SKILL.md (project)
 //   - agent:      <OpenCodeHome>/agents/<name>.md · <ProjectHome>/.opencode/agents/<name>.md
 //   - command:    <OpenCodeHome>/commands/<name>.md · <ProjectHome>/.opencode/commands/<name>.md
 //   - memory:     <OpenCodeHome>/AGENTS.md · <ProjectHome>/AGENTS.md
 //   - mcp-server: <OpenCodeHome>/opencode.json (user) ·
-//                 <ProjectHome>/opencode.json (project), merged under $.mcp.<name> (JSON).
+//     <ProjectHome>/opencode.json (project), merged under $.mcp.<name> (JSON).
 package opencode
 
 import (

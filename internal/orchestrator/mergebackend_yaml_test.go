@@ -42,7 +42,10 @@ func (s *spyBackend) readRootForPreflight(path string) (map[string]any, bool, er
 	s.preflight = true
 	return nil, false, nil
 }
-func (s *spyBackend) parsePath(p string) ([]string, error) { s.parsed = true; return strings.Split(p, "."), nil }
+func (s *spyBackend) parsePath(p string) ([]string, error) {
+	s.parsed = true
+	return strings.Split(p, "."), nil
+}
 
 // TestFakeMergeBackendDispatch proves a brand-new config format onboards
 // by registering one backend — applyMergedKey/unmergeKey route to it
@@ -110,23 +113,50 @@ func TestYAMLBackendRoundTrip(t *testing.T) {
 	}
 }
 
-// TestYAMLDecodesIntoStringKeyedMaps is the probe that gopkg.in/yaml.v3
-// decodes nested mappings as map[string]any (string keys), so the shared
-// format-agnostic map walkers (setJSONPath etc.) operate on YAML roots
-// without a key-stringify pass. If a future yaml.v3 changed this, the
-// YAML backend's apply path would fail the type assertions — this test
-// fails first, pinpointing the cause.
-func TestYAMLDecodesIntoStringKeyedMaps(t *testing.T) {
-	var root map[string]any
-	if err := yaml.Unmarshal([]byte("a:\n  b:\n    c: 1\n"), &root); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+// TestYAMLNestedStringKeysWalk pins that yaml.v3 decodes a normal
+// all-string-key mapping into map[string]any throughout, so the shared
+// format-agnostic walkers descend a nested string path. If a future
+// yaml.v3 changed this, the YAML merge path would fail the type
+// assertions — this test fails first, pinpointing the cause.
+func TestYAMLNestedStringKeysWalk(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	set := adapter.MergedKeyWrite{File: file, Path: "a.b.c", Value: "deep"}
+	if err := applyMergedKey(set); err != nil {
+		t.Fatalf("apply nested: %v", err)
 	}
-	a, ok := root["a"].(map[string]any)
-	if !ok {
-		t.Fatalf("level a = %T; want map[string]any", root["a"])
+	root := readYAMLFile(t, file)
+	a, _ := root["a"].(map[string]any)
+	b, _ := a["b"].(map[string]any)
+	if b["c"] != "deep" {
+		t.Fatalf("nested string-keyed walk failed: %#v", root)
 	}
-	if _, ok := a["b"].(map[string]any); !ok {
-		t.Fatalf("level b = %T; want map[string]any", a["b"])
+}
+
+// TestYAMLNonStringKeyedSiblingPreserved documents the backend's actual
+// (and safest) behavior with the pathological non-string-keyed case: a
+// merge whose path does NOT descend into a non-string-keyed map leaves
+// that sibling untouched and byte-stable — coercing it to string keys
+// would mutate bytes dotpack does not own (`1: x` -> `"1": x`). The
+// pathological case (a dotpack-merged path that DOES descend into such a
+// node) is recorded in the ADR-0014 gap register, not silently coerced.
+func TestYAMLNonStringKeyedSiblingPreserved(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(file, []byte("ports:\n  1: alpha\n  2: beta\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	set := adapter.MergedKeyWrite{File: file, Path: "mcp.github", Value: map[string]any{"command": "gh"}}
+	if err := applyMergedKey(set); err != nil {
+		t.Fatalf("apply alongside non-string-keyed sibling: %v", err)
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if !strings.Contains(string(raw), "1: alpha") || !strings.Contains(string(raw), "2: beta") {
+		t.Fatalf("non-string-keyed sibling not preserved byte-stable:\n%s", raw)
+	}
+	if !strings.Contains(string(raw), "github") {
+		t.Fatalf("merge leaf missing:\n%s", raw)
 	}
 }
 

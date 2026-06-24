@@ -29,10 +29,10 @@
 // redundant writes". Config-fragment kinds are different: each
 // sub-adapter writes its own host config file, and this type aggregates
 // those MergedKeys into one umbrella manifest record. The per-kind
-// writer list lives in the CLI layer's umbrellaFactories (see
-// internal/cli/install.go) so this type is umbrella-agnostic — a future
-// "all" or "cursor-ish" umbrella plugs in by declaring its own
-// (subAdapters, writers, label) triple.
+// writer list is declared as data via registry.Umbrella (the agents-cli
+// declaration self-registers in internal/adapter/all; ADR-0014) so this
+// type is umbrella-agnostic — a future "all" or "cursor-ish" umbrella
+// plugs in by registering its own (subs, writers) declaration.
 package orchestrator
 
 import (
@@ -271,10 +271,10 @@ func (u *UmbrellaInstaller) aggregateLossy(r resource.Resource) ([]adapter.Lossy
 }
 
 // resolveAgentsHomeWriter and related per-umbrella helpers are NOT in
-// this file — they live in internal/cli/install.go's umbrellaFactories
-// alongside the per-host adapterFactories. Keeping them at the CLI layer
-// matches Card #4's registry pattern and ADR-0012 §10's "alias table" at
-// the orchestrator/CLI boundary. This file is concerned with the install
+// this file — the umbrella's (subs, writers) declaration self-registers
+// as data via registry.Umbrella in internal/adapter/all (ADR-0014),
+// resolved through registry.BuildUmbrella at the CLI boundary per
+// ADR-0012 §10's "alias table". This file is concerned with the install
 // algorithm only.
 //
 // Forward-declared helpers used here but defined in orchestrator.go:

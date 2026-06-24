@@ -145,11 +145,21 @@ func (tomlBackend) parsePath(p string) ([]string, error) { return parseTOMLPath(
 // yamlBackend is the real third format proving the set is open (ADR-0014).
 // No adapter targets YAML today; it exists so a future host whose config
 // is YAML (and the openness tests) have a working backend with zero
-// changes to dispatch. YAML decodes via gopkg.in/yaml.v3 into
-// map[string]any with string keys (including nested maps — pinned by the
-// probe test), so the shared map-walk primitives apply unchanged. Like
-// JSON, YAML does no value normalization (the TOML int-vs-float coercion
-// is TOML-specific).
+// changes to dispatch.
+//
+// yaml.v3 decodes a normal (all-string-key) mapping into map[string]any
+// throughout, so the shared format-agnostic map-walk primitives apply
+// unchanged. A non-string key at a NESTED level (e.g. `1: x`) decodes to
+// map[any]any at that level only; such a sibling is left untouched and
+// round-trips byte-stable (the walkers only descend the path being
+// merged, never siblings). A dotpack-merged path is always a string
+// identifier, so it never descends into such a node; the pathological
+// case where it would (a host config whose dotpack-merged subtree uses
+// non-string keys) surfaces a clear walker error and is recorded in the
+// ADR-0014 gap register rather than silently coerced — coercion would
+// rewrite `1: x` to `"1": x` and mutate bytes dotpack does not own. Like
+// JSON, YAML does no value normalization (TOML's int-vs-float coercion is
+// TOML-specific).
 type yamlBackend struct{}
 
 func (yamlBackend) apply(mk adapter.MergedKeyWrite) error { return applyYAMLMergedKey(mk) }
