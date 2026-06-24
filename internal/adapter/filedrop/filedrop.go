@@ -136,6 +136,41 @@ func New(d dirs.Dirs, p Policy) *Adapter {
 // are keyed by.
 func (a *Adapter) HostID() string { return a.policy.HostID }
 
+// DescribeLayouts projects this host's file-drop Layouts into the
+// host-neutral adapter.KindLayout shape (ADR-0014), so reconcile's scan
+// and the CLI help can walk a materialized tree without a hard-coded
+// per-host table. Kinds are emitted in a stable (sorted) order. Memory's
+// host-native filename is not encoded here — its layout has no KindDir
+// and PreserveName semantics — so scan callers special-case memory off
+// the registry's memory filename, not off the layout's Ext.
+func (a *Adapter) DescribeLayouts() []adapter.KindLayout {
+	kinds := make([]resource.Kind, 0, len(a.policy.Layouts))
+	for k := range a.policy.Layouts {
+		kinds = append(kinds, k)
+	}
+	sort.Slice(kinds, func(i, j int) bool { return kinds[i] < kinds[j] })
+	out := make([]adapter.KindLayout, 0, len(kinds))
+	for _, k := range kinds {
+		l := a.policy.Layouts[k]
+		ext := ""
+		if !l.Nested {
+			ext = ".md"
+			if l.FlatExt != "" {
+				ext = l.FlatExt
+			}
+		}
+		out = append(out, adapter.KindLayout{
+			Kind:          k,
+			ProjectSubdir: l.ProjectSubdir,
+			KindDir:       l.KindDir,
+			Ext:           ext,
+			Nested:        l.Nested,
+			NestedFile:    l.NestedFile,
+		})
+	}
+	return out
+}
+
 // Plan returns the install plan for a resource. Dispatch is data-driven
 // — Layouts membership decides which kinds this host supports; absent
 // kinds return a structured error. The path is computed from the
@@ -544,6 +579,8 @@ func (a *Adapter) memoryFilename(m *resource.Memory) string {
 	case "antigravity-cli":
 		return "ANTIGRAVITY.md"
 	case "codex":
+		return "AGENTS.md"
+	case "opencode":
 		return "AGENTS.md"
 	default:
 		if m.Name != "" {

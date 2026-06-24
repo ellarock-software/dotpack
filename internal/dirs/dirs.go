@@ -50,6 +50,16 @@ type Dirs struct {
 	// convergence; until then, `--agent codex` is the only writer.
 	AgentsHome string
 
+	// OpenCodeHome is the root of OpenCode's user config, e.g.
+	// ~/.config/opencode (NOT ~/.opencode — OpenCode follows the XDG
+	// config convention). The opencode adapter writes user-scope skills to
+	// OpenCodeHome/skills/<name>/SKILL.md, agents/commands under
+	// OpenCodeHome/{agents,commands}/, memory to OpenCodeHome/AGENTS.md, and
+	// merges mcp-server installs into OpenCodeHome/opencode.json (per
+	// opencode.ai/docs/config). Project scope uses <ProjectHome>/.opencode
+	// and <ProjectHome>/opencode.json.
+	OpenCodeHome string
+
 	// CodexHome is the root of Codex CLI's user config, e.g. ~/.codex.
 	// The codex adapter writes user-scope mcp-server installs to
 	// CodexHome/config.toml (per schema/mcp-server.yaml's
@@ -111,12 +121,13 @@ func FromEnv() (Dirs, error) {
 		GeminiHome:      os.Getenv("DOTPACK_GEMINI_HOME"),
 		AntigravityHome: os.Getenv("DOTPACK_ANTIGRAVITY_HOME"),
 		AgentsHome:      os.Getenv("DOTPACK_AGENTS_HOME"),
+		OpenCodeHome:    os.Getenv("DOTPACK_OPENCODE_HOME"),
 		CodexHome:       os.Getenv("DOTPACK_CODEX_HOME"),
 		DotpackHome:     os.Getenv("DOTPACK_DOTPACK_HOME"),
 		ProjectHome:     os.Getenv("DOTPACK_PROJECT_HOME"),
 	}
 
-	if d.HomeDir == "" || d.ClaudeHome == "" || d.GeminiHome == "" || d.AntigravityHome == "" || d.AgentsHome == "" || d.CodexHome == "" || d.DotpackHome == "" {
+	if d.HomeDir == "" || d.ClaudeHome == "" || d.GeminiHome == "" || d.AntigravityHome == "" || d.AgentsHome == "" || d.OpenCodeHome == "" || d.CodexHome == "" || d.DotpackHome == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return Dirs{}, fmt.Errorf("resolve $HOME: %w", err)
@@ -135,6 +146,9 @@ func FromEnv() (Dirs, error) {
 		}
 		if d.AgentsHome == "" {
 			d.AgentsHome = filepath.Join(home, ".agents")
+		}
+		if d.OpenCodeHome == "" {
+			d.OpenCodeHome = filepath.Join(home, ".config", "opencode")
 		}
 		if d.CodexHome == "" {
 			d.CodexHome = filepath.Join(home, ".codex")
@@ -170,6 +184,11 @@ func FromEnv() (Dirs, error) {
 		d.AgentsHome = abs
 	} else {
 		return Dirs{}, fmt.Errorf("DOTPACK_AGENTS_HOME=%q: resolve abs: %w", d.AgentsHome, err)
+	}
+	if abs, err := filepath.Abs(d.OpenCodeHome); err == nil {
+		d.OpenCodeHome = abs
+	} else {
+		return Dirs{}, fmt.Errorf("DOTPACK_OPENCODE_HOME=%q: resolve abs: %w", d.OpenCodeHome, err)
 	}
 	if abs, err := filepath.Abs(d.CodexHome); err == nil {
 		d.CodexHome = abs

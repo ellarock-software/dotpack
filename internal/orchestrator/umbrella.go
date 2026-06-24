@@ -132,7 +132,7 @@ func NewUmbrellaInstaller(d dirs.Dirs, label string, subAdapters []adapter.Adapt
 func (u *UmbrellaInstaller) Install(r resource.Resource, scope adapter.Scope, opts InstallOptions) (InstallResult, error) {
 	writers, ok := u.writers[r.Kind()]
 	if !ok || len(writers) == 0 {
-		return InstallResult{}, fmt.Errorf("%s: kind %q not supported under umbrella (no documented cross-host convergence path; add a writer to umbrellaFactories when one is documented)", u.label, r.Kind())
+		return InstallResult{}, fmt.Errorf("%s: kind %q not supported under umbrella (no documented cross-host convergence path; add a writer to the umbrella's registry.Umbrella declaration when one is documented)", u.label, r.Kind())
 	}
 
 	plan, err := u.aggregatePlans(r, scope, writers)

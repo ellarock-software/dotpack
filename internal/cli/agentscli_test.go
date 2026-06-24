@@ -453,3 +453,78 @@ func TestInstall_AgentKindOnAgentsCli_Supported(t *testing.T) {
 		t.Errorf("expected TOML agent file at codex path %s: %v", codexPath, err)
 	}
 }
+
+// TestInstall_CommandAndMemory_OnAgentsCli_FanOut pins the ADR-0014
+// extension: command and memory — previously unsupported under the
+// umbrella — now fan out to each sub-adapter's own distinct file, and
+// uninstall removes all of them. This is the regression guard for the
+// previously-closed agents-cli matrix being opened.
+func TestInstall_CommandAndMemory_OnAgentsCli_FanOut(t *testing.T) {
+	setupAgentsCliEnv(t)
+	geminiHome := os.Getenv("DOTPACK_GEMINI_HOME")
+	antigravityHome := os.Getenv("DOTPACK_ANTIGRAVITY_HOME")
+	codexHome := os.Getenv("DOTPACK_CODEX_HOME")
+	tmp := t.TempDir()
+
+	cmdSrc := filepath.Join(tmp, ".agents", "commands", "deploy.md")
+	if err := os.MkdirAll(filepath.Dir(cmdSrc), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(cmdSrc, []byte("---\ndescription: d\n---\nrun the deploy\n"), 0o644); err != nil {
+		t.Fatalf("write command: %v", err)
+	}
+	runDotpack(t, "install", cmdSrc, "--agent", "agents-cli", "--kind", "command", "--scope", "user")
+	commandTargets := []string{
+		filepath.Join(geminiHome, "commands", "deploy.toml"),
+		filepath.Join(antigravityHome, "commands", "deploy.md"),
+		filepath.Join(codexHome, "commands", "deploy.md"),
+	}
+	for _, p := range commandTargets {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("expected command fan-out file %s: %v", p, err)
+		}
+	}
+
+	memSrc := filepath.Join(tmp, "AGENTS.md")
+	if err := os.WriteFile(memSrc, []byte("remember this\n"), 0o644); err != nil {
+		t.Fatalf("write memory: %v", err)
+	}
+	runDotpack(t, "install", memSrc, "--agent", "agents-cli", "--kind", "memory", "--scope", "user")
+	memoryTargets := []string{
+		filepath.Join(geminiHome, "GEMINI.md"),
+		filepath.Join(antigravityHome, "ANTIGRAVITY.md"),
+		filepath.Join(codexHome, "AGENTS.md"),
+	}
+	for _, p := range memoryTargets {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("expected memory fan-out file %s: %v", p, err)
+		}
+	}
+
+	runDotpack(t, "uninstall", "agents-cli:command:deploy")
+	for _, p := range commandTargets {
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("command fan-out file survived uninstall: %s", p)
+		}
+	}
+	runDotpack(t, "uninstall", "agents-cli:memory:AGENTS.md")
+	for _, p := range memoryTargets {
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("memory fan-out file survived uninstall: %s", p)
+		}
+	}
+}
+
+// runDotpack executes one dotpack command through the cobra root, failing
+// the test on error.
+func runDotpack(t *testing.T, args ...string) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("dotpack %v: %v\n%s", args, err, out.String())
+	}
+}

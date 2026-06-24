@@ -135,16 +135,24 @@ func TestMergedKeyAdditionalWalkerNoOps(t *testing.T) {
 func TestReadMergeRootAdditionalBranches(t *testing.T) {
 	tmp := t.TempDir()
 
-	if _, _, err := readMergeRootForPreflight(tmp, mergedFormatJSON); err == nil || !strings.Contains(err.Error(), "read") {
-		t.Fatalf("readMergeRootForPreflight directory err=%v; want read", err)
+	jsonB, err := backendFor("x.json")
+	if err != nil {
+		t.Fatalf("backendFor json: %v", err)
+	}
+	dirJSON := filepath.Join(tmp, "adir.json")
+	if err := os.Mkdir(dirJSON, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if _, _, err := jsonB.readRootForPreflight(dirJSON); err == nil || !strings.Contains(err.Error(), "read") {
+		t.Fatalf("readRootForPreflight directory err=%v; want read", err)
 	}
 
 	nullJSON := filepath.Join(tmp, "null.json")
 	if err := os.WriteFile(nullJSON, []byte("null"), 0o644); err != nil {
 		t.Fatalf("write null json: %v", err)
 	}
-	root, exists, err := readMergeRootForPreflight(nullJSON, mergedFormatJSON)
+	root, exists, err := jsonB.readRootForPreflight(nullJSON)
 	if err != nil || exists || root != nil {
-		t.Fatalf("readMergeRootForPreflight null root=%v exists=%v err=%v; want nil,false,nil", root, exists, err)
+		t.Fatalf("readRootForPreflight null root=%v exists=%v err=%v; want nil,false,nil", root, exists, err)
 	}
 }

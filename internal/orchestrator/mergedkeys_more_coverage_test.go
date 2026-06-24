@@ -54,8 +54,8 @@ func TestMoreJSONAndTOMLWalkerBranches(t *testing.T) {
 	if changed, err := deleteJSONPath(root, []string{"a", "missing"}); err != nil || changed {
 		t.Fatalf("deleteJSONPath missing changed=%v err=%v", changed, err)
 	}
-	if _, err := parseMergedKeyPath(mergedFormatTOML, "$.bad"); err == nil || !strings.Contains(err.Error(), "must NOT") {
-		t.Fatalf("parseMergedKeyPath TOML json-style err=%v", err)
+	if _, err := parseTOMLPath("$.bad"); err == nil || !strings.Contains(err.Error(), "must NOT") {
+		t.Fatalf("parseTOMLPath json-style err=%v", err)
 	}
 
 	tmp := t.TempDir()

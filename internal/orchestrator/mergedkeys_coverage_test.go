@@ -57,10 +57,12 @@ func TestApplyAndUnmergeJSONSetAndAppend(t *testing.T) {
 
 func TestMergedKeyApplyAndUnmergeErrors(t *testing.T) {
 	tmp := t.TempDir()
-	if err := applyMergedKey(adapter.MergedKeyWrite{File: filepath.Join(tmp, "x.yaml"), Path: "$.x", Value: "y"}); err == nil || !strings.Contains(err.Error(), "unsupported file extension") {
+	// .ini has no registered merge backend (.yaml/.yml ARE supported now,
+	// per ADR-0014's YAML backend) — exercise the unknown-extension path.
+	if err := applyMergedKey(adapter.MergedKeyWrite{File: filepath.Join(tmp, "x.ini"), Path: "$.x", Value: "y"}); err == nil || !strings.Contains(err.Error(), "unsupported file extension") {
 		t.Fatalf("unsupported apply error = %v", err)
 	}
-	if err := unmergeKey(MergedKeySelector{File: filepath.Join(tmp, "x.yaml"), Path: "$.x"}); err == nil || !strings.Contains(err.Error(), "unsupported file extension") {
+	if err := unmergeKey(MergedKeySelector{File: filepath.Join(tmp, "x.ini"), Path: "$.x"}); err == nil || !strings.Contains(err.Error(), "unsupported file extension") {
 		t.Fatalf("unsupported unmerge error = %v", err)
 	}
 
@@ -196,32 +198,43 @@ func TestNormalizeForTOMLNestedErrors(t *testing.T) {
 	}
 }
 
+// TestReadMergeRootForPreflight exercises the backend-dispatched
+// readRootForPreflight (ADR-0014): format is selected by extension via
+// backendFor, not a mergedFormat enum.
 func TestReadMergeRootForPreflight(t *testing.T) {
 	tmp := t.TempDir()
+	readRoot := func(path string) (map[string]any, bool, error) {
+		b, err := backendFor(path)
+		if err != nil {
+			return nil, false, err
+		}
+		return b.readRootForPreflight(path)
+	}
+
 	missing := filepath.Join(tmp, "missing.json")
-	if root, exists, err := readMergeRootForPreflight(missing, mergedFormatJSON); err != nil || exists || root != nil {
+	if root, exists, err := readRoot(missing); err != nil || exists || root != nil {
 		t.Fatalf("missing root=%v exists=%v err=%v", root, exists, err)
 	}
 	empty := filepath.Join(tmp, "empty.toml")
 	if err := os.WriteFile(empty, []byte("  \n"), 0o644); err != nil {
 		t.Fatalf("write empty: %v", err)
 	}
-	if root, exists, err := readMergeRootForPreflight(empty, mergedFormatTOML); err != nil || exists || root != nil {
+	if root, exists, err := readRoot(empty); err != nil || exists || root != nil {
 		t.Fatalf("empty root=%v exists=%v err=%v", root, exists, err)
 	}
 	bad := filepath.Join(tmp, "bad.toml")
 	if err := os.WriteFile(bad, []byte("[bad"), 0o644); err != nil {
 		t.Fatalf("write bad: %v", err)
 	}
-	if _, _, err := readMergeRootForPreflight(bad, mergedFormatTOML); err == nil {
+	if _, _, err := readRoot(bad); err == nil {
 		t.Fatal("expected TOML parse error")
 	}
-	unknown := filepath.Join(tmp, "unknown.any")
+	unknown := filepath.Join(tmp, "unknown.ini")
 	if err := os.WriteFile(unknown, []byte("x = 1\n"), 0o644); err != nil {
 		t.Fatalf("write unknown: %v", err)
 	}
-	if _, _, err := readMergeRootForPreflight(unknown, mergedFormat(99)); err == nil || !strings.Contains(err.Error(), "unknown format") {
-		t.Fatalf("unknown format error = %v", err)
+	if _, _, err := readRoot(unknown); err == nil || !strings.Contains(err.Error(), "unsupported file extension") {
+		t.Fatalf("unknown extension error = %v", err)
 	}
 }
 

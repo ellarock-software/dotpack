@@ -153,7 +153,7 @@ func TestBuildAdaptersUmbrellaAndBuildableHelpers(t *testing.T) {
 	if len(subs) != 3 || len(writers[resource.KindSkill]) != 1 {
 		t.Fatalf("umbrella subs/writers = %d/%+v", len(subs), writers)
 	}
-	if _, _, err := buildUmbrella("missing", d); err == nil || !strings.Contains(err.Error(), "not found") {
+	if _, _, err := buildUmbrella("missing", d); err == nil || !strings.Contains(err.Error(), "not registered") {
 		t.Fatalf("buildUmbrella missing err=%v", err)
 	}
 	if !isBuildableAgent("agents-cli") || !isBuildableAgent("codex") || isBuildableAgent("missing") {
@@ -169,8 +169,23 @@ func TestInstallCanonicalEntryUnsupportedAndPlanErrors(t *testing.T) {
 	if _, unsupported, err := installCanonicalEntry(entry, "gemini-cli", adapter.ScopeUser, false, false, "", "", d, store); err == nil || unsupported {
 		t.Fatalf("installCanonicalEntry missing GeminiHome err=%v unsupported=%v; want error", err, unsupported)
 	}
+	// memory is now a first-class fan-out kind under agents-cli (ADR-0014):
+	// plansForEntry yields one plan per sub-adapter (GEMINI.md /
+	// ANTIGRAVITY.md / AGENTS.md), none unsupported, given the host homes.
+	full := dirs.Dirs{
+		AgentsHome:      agentsHome,
+		CodexHome:       d.CodexHome,
+		GeminiHome:      t.TempDir(),
+		AntigravityHome: t.TempDir(),
+		DotpackHome:     dotpackHome,
+		ProjectHome:     d.ProjectHome,
+	}
 	entry = canonicalEntry{Kind: resource.KindMemory, Path: "/tmp/AGENTS.md", Resource: &resource.Memory{Name: "AGENTS.md", Body: "b"}}
-	if _, unsupported, err := plansForEntry(entry, "agents-cli", adapter.ScopeUser, d); err != nil || !unsupported {
-		t.Fatalf("plansForEntry unsupported memory = unsupported %v err %v; want unsupported", unsupported, err)
+	plans, unsupported, err := plansForEntry(entry, "agents-cli", adapter.ScopeUser, full)
+	if err != nil || unsupported {
+		t.Fatalf("plansForEntry memory = unsupported %v err %v; want supported fan-out", unsupported, err)
+	}
+	if len(plans) != 3 {
+		t.Fatalf("plansForEntry memory plans = %d; want 3 (fan-out across sub-adapters)", len(plans))
 	}
 }

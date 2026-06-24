@@ -42,6 +42,7 @@ import (
 	"github.com/ellarock-software/dotpack/internal/adapter"
 	"github.com/ellarock-software/dotpack/internal/adapter/configfrag"
 	"github.com/ellarock-software/dotpack/internal/adapter/filedrop"
+	"github.com/ellarock-software/dotpack/internal/adapter/registry"
 	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/resource"
 )
@@ -51,6 +52,11 @@ import (
 // compares on string equality, so a mismatch silently flips claude-code's
 // native concepts to lossy on its own adapter.
 const hostID = "claude-code"
+
+// init self-registers the claude-code adapter (ADR-0014).
+func init() {
+	registry.RegisterAdapter(hostID, func(d dirs.Dirs) adapter.Adapter { return New(d) })
+}
 
 // userRoot returns ClaudeHome with the host-specific missing-dir error.
 // Shared by the skill + agent Layouts so the message format is one
@@ -331,6 +337,10 @@ func New(d dirs.Dirs) *Adapter {
 
 // HostID returns the schema-side host alias.
 func (a *Adapter) HostID() string { return hostID }
+
+// DescribeLayouts exposes claude-code's file-drop layouts for the
+// registry-driven scan / help (ADR-0014).
+func (a *Adapter) DescribeLayouts() []adapter.KindLayout { return a.filedrop.DescribeLayouts() }
 
 // Plan dispatches by Kind. File-drop kinds (skill, agent, rule) go to the
 // filedrop adapter; config-fragment kinds (mcp-server today, hook

@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ellarock-software/dotpack/internal/adapter"
+	"github.com/ellarock-software/dotpack/internal/adapter/registry"
 	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/manifest"
 	"github.com/ellarock-software/dotpack/internal/orchestrator"
@@ -838,7 +839,7 @@ func installCanonicalEntry(entry canonicalEntry, agentName string, scope adapter
 		AllowLossy:    allowLossy,
 		Force:         force,
 	}
-	if _, ok := umbrellaFactories[agentName]; ok {
+	if registry.IsUmbrella(agentName) {
 		subs, writers, err := buildUmbrella(agentName, d)
 		if err != nil {
 			return orchestrator.InstallResult{}, false, err
@@ -858,7 +859,7 @@ func installCanonicalEntry(entry canonicalEntry, agentName string, scope adapter
 }
 
 func plansForEntry(entry canonicalEntry, agentName string, scope adapter.Scope, d dirs.Dirs) ([]adapter.InstallPlan, bool, error) {
-	if _, ok := umbrellaFactories[agentName]; ok {
+	if registry.IsUmbrella(agentName) {
 		_, writers, err := buildUmbrella(agentName, d)
 		if err != nil {
 			return nil, false, err
@@ -955,40 +956,36 @@ func scanMaterializedFiles(targetRoot string) ([]orchestrator.FileObservation, e
 		})
 	}
 
-	if err := addNested("claude-code", "skill", filepath.Join(targetRoot, ".claude", "skills"), "SKILL.md"); err != nil {
-		return nil, err
-	}
-	if err := addNested("gemini-cli", "skill", filepath.Join(targetRoot, ".gemini", "skills"), "SKILL.md"); err != nil {
-		return nil, err
-	}
-	if err := addNested("antigravity-cli", "skill", filepath.Join(targetRoot, ".antigravity", "skills"), "SKILL.md"); err != nil {
-		return nil, err
-	}
-	if err := addNested("codex", "skill", filepath.Join(targetRoot, ".agents", "skills"), "SKILL.md"); err != nil {
-		return nil, err
-	}
-
-	for _, spec := range []struct {
-		agent  string
-		subdir string
-		kind   string
-		exts   []string
-	}{
-		{"claude-code", ".claude/agents", "agent", []string{".md"}},
-		{"gemini-cli", ".gemini/agents", "agent", []string{".md"}},
-		{"antigravity-cli", ".antigravity/agents", "agent", []string{".md"}},
-		{"codex", ".codex/agents", "agent", []string{".toml"}},
-		{"claude-code", ".claude/rules", "rule", []string{".md"}},
-		{"gemini-cli", ".gemini/rules", "rule", []string{".md"}},
-		{"antigravity-cli", ".antigravity/rules", "rule", []string{".md"}},
-		{"codex", ".codex/rules", "rule", []string{".md"}},
-		{"claude-code", ".claude/commands", "command", []string{".md"}},
-		{"gemini-cli", ".gemini/commands", "command", []string{".toml"}},
-		{"antigravity-cli", ".antigravity/commands", "command", []string{".md"}},
-		{"codex", ".codex/commands", "command", []string{".md"}},
-	} {
-		if err := addFlat(spec.agent, spec.kind, filepath.Join(targetRoot, filepath.FromSlash(spec.subdir)), spec.exts...); err != nil {
+	// Registry-driven scan (ADR-0014): every registered adapter that
+	// describes its file-drop layouts contributes its project-scope
+	// materialized tree, so a new host is scanned without editing this
+	// table. Memory (and any root-level file-drop kind) has an empty
+	// KindDir and is intentionally skipped — its host-native filename is
+	// not directory-discoverable. Config-fragment kinds (mcp-server, hook)
+	// are not file drops and are not scanned here.
+	for _, hostID := range registry.AdapterHostIDs() {
+		a, err := registry.Build(hostID, dirs.Dirs{})
+		if err != nil {
 			return nil, err
+		}
+		ld, ok := a.(adapter.LayoutDescriber)
+		if !ok {
+			continue
+		}
+		for _, l := range ld.DescribeLayouts() {
+			if l.KindDir == "" {
+				continue
+			}
+			root := filepath.Join(targetRoot, filepath.FromSlash(l.ProjectSubdir), l.KindDir)
+			if l.Nested {
+				if err := addNested(hostID, string(l.Kind), root, l.NestedFile); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			if err := addFlat(hostID, string(l.Kind), root, l.Ext); err != nil {
+				return nil, err
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })

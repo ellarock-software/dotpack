@@ -141,18 +141,18 @@ func (r *Reader) PruneStaleRecords() (PruneResult, error) {
 }
 
 func mergedKeyExists(mk manifest.MergedKey) (bool, error) {
-	format, err := formatFromFile(mk.File)
+	b, err := backendFor(mk.File)
 	if err != nil {
 		return false, fmt.Errorf("check merged key %s#%s: %w", mk.File, mk.Path, err)
 	}
-	root, exists, err := readMergeRootForPreflight(mk.File, format)
+	root, exists, err := b.readRootForPreflight(mk.File)
 	if err != nil {
 		return false, fmt.Errorf("check merged key %s#%s: %w", mk.File, mk.Path, err)
 	}
 	if !exists {
 		return false, nil
 	}
-	path, err := parseMergedKeyPath(format, mk.Path)
+	path, err := b.parsePath(mk.Path)
 	if err != nil {
 		return false, fmt.Errorf("check merged key %s#%s: parse path: %w", mk.File, mk.Path, err)
 	}

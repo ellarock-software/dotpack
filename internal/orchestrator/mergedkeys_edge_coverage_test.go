@@ -42,8 +42,10 @@ func TestMergedKeyReadWriteParseAndSelectorErrorBranches(t *testing.T) {
 			t.Fatalf("parseTOMLPath(%q) expected error", path)
 		}
 	}
-	if _, err := parseMergedKeyPath(mergedFormat(99), "x"); err == nil || !strings.Contains(err.Error(), "unknown format") {
-		t.Fatalf("parseMergedKeyPath unknown err=%v; want unknown format", err)
+	// Path parsing is now per-backend (ADR-0014); an unknown extension is
+	// rejected by backendFor before any parse happens.
+	if _, err := backendFor("config.ini"); err == nil || !strings.Contains(err.Error(), "unsupported file extension") {
+		t.Fatalf("backendFor unknown ext err=%v; want unsupported file extension", err)
 	}
 
 	root := map[string]any{"hooks": map[string]any{"PreToolUse": []any{make(chan int)}}}

@@ -124,3 +124,43 @@ type Adapter interface {
 	HostID() string
 	Plan(r resource.Resource, scope Scope) (InstallPlan, error)
 }
+
+// KindLayout is the host-visible on-disk shape for one file-drop kind,
+// projected from an adapter's internal policy. It is the metadata
+// reconcile/scan and CLI help need to walk a host's materialized tree
+// WITHOUT hard-coding per-host directory tables (ADR-0014). The fields
+// mirror filedrop.Layout's externally-observable subset.
+//
+//   - Kind is the resource kind this layout describes.
+//   - ProjectSubdir is the per-host subdirectory under the project root
+//     for project-scope installs (".claude", ".gemini", ...). Empty for
+//     kinds that live at the project root (memory).
+//   - KindDir is the per-kind directory under the scope root ("skills",
+//     "agents", ...). Empty for kinds written directly at the root.
+//   - Ext is the flat-file extension (".md", ".toml"). Empty for nested
+//     kinds (the file name is NestedFile instead).
+//   - Nested switches <dir>/<name>/<NestedFile> (true) vs <dir>/<name><Ext>
+//     (false).
+//   - NestedFile is the in-subdir filename when Nested is true ("SKILL.md").
+type KindLayout struct {
+	Kind          resource.Kind
+	ProjectSubdir string
+	KindDir       string
+	Ext           string
+	Nested        bool
+	NestedFile    string
+}
+
+// LayoutDescriber is the OPTIONAL capability an adapter implements to
+// expose its file-drop layouts as data (ADR-0014). Reconcile's
+// materialized-file scan and the CLI help text iterate the adapter
+// registry and query this instead of carrying a hard-coded host→layout
+// table. Adapters that do not implement it (or whose kinds are all
+// config-fragment) are simply skipped by layout-driven callers. Keeping
+// it a separate interface — not a method on Adapter — means a new host
+// can ship Plan-only and opt into scan coverage later.
+type LayoutDescriber interface {
+	// DescribeLayouts returns one KindLayout per file-drop kind this host
+	// supports, in a stable order.
+	DescribeLayouts() []KindLayout
+}

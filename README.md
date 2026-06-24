@@ -93,25 +93,63 @@ dotpack import claude-code /path/to/project --out /path/to/project
 | `dotpack prune` | Remove manifest records whose recorded claims are all absent from disk. |
 | `dotpack version` | Print the dotpack version. |
 
-## Supported Targets
+## Coverage: Product Intent vs Shipped Adapters
+
+**Product intent.** dotpack aims for *universal coverage of LLM coding tools*
+across every operation (`skill`, `agent`, `rule`, `command`, `memory`,
+`mcp-server`, `hook`). The architecture is deliberately **open**: a host is a
+self-contained adapter that self-registers, and a config format is a
+self-contained merge backend that self-registers, so onboarding either does not
+touch core switchboards. See [ADR-0014](docs/adr/0014-open-adapter-and-merge-backend-registries.md)
+and [CONTRIBUTING.md](CONTRIBUTING.md).
+
+**Currently shipped adapters.** The matrix below is the set implemented *today*,
+not a closed boundary — "current adapters include…". Per-operation support is
+genuine per-adapter data: a cell may read *unsupported* where a host has no
+concept for that operation (e.g. OpenCode has no rule or hook surface), and
+that is expressed by the adapter, not special-cased in core.
 
 Project-scope paths are shown below. User-scope paths resolve under host home
 directories such as `~/.claude`, `~/.gemini`, `~/.antigravity`, `~/.agents`,
-and `~/.codex`.
+`~/.codex`, and `~/.config/opencode`.
 
-| Kind | `claude-code` | `gemini-cli` | `antigravity-cli` | `codex` | `agents-cli` |
-| --- | --- | --- | --- | --- | --- |
-| `skill` | `.claude/skills/<name>/SKILL.md` | `.gemini/skills/<name>/SKILL.md` | `.antigravity/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` | writes `.agents/skills/<name>/SKILL.md` once |
-| `agent` | `.claude/agents/<name>.md` | `.gemini/agents/<name>.md` | `.antigravity/agents/<name>.md` | `.codex/agents/<name>.toml` | fans out to Gemini, Antigravity, and Codex |
-| `rule` | `.claude/rules/<name>.md` | `.gemini/rules/<name>.md` | `.antigravity/rules/<name>.md` | `.codex/rules/<name>.md` | fans out to Gemini, Antigravity, and Codex |
-| `command` | `.claude/commands/<name>.md` | `.gemini/commands/<name>.toml` | `.antigravity/commands/<name>.md` | `.codex/commands/<name>.md` | unsupported |
-| `memory` | `CLAUDE.md` | `GEMINI.md` | `ANTIGRAVITY.md` | `AGENTS.md` | unsupported |
-| `mcp-server` | `.mcp.json` or `~/.claude.json` | `.gemini/settings.json` | `.antigravity/settings.json` | `.codex/config.toml` | fans out to Gemini, Antigravity, and Codex |
-| `hook` | `.claude/settings.json` | `.gemini/settings.json` | `.antigravity/settings.json` | `.codex/config.toml` | fans out to Gemini, Antigravity, and Codex |
+| Kind | `claude-code` | `gemini-cli` | `antigravity-cli` | `codex` | `opencode` | `agents-cli` |
+| --- | --- | --- | --- | --- | --- | --- |
+| `skill` | `.claude/skills/<name>/SKILL.md` | `.gemini/skills/<name>/SKILL.md` | `.antigravity/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` | `.opencode/skills/<name>/SKILL.md` | writes `.agents/skills/<name>/SKILL.md` once |
+| `agent` | `.claude/agents/<name>.md` | `.gemini/agents/<name>.md` | `.antigravity/agents/<name>.md` | `.codex/agents/<name>.toml` | `.opencode/agents/<name>.md` | fans out to Gemini, Antigravity, and Codex |
+| `rule` | `.claude/rules/<name>.md` | `.gemini/rules/<name>.md` | `.antigravity/rules/<name>.md` | `.codex/rules/<name>.md` | unsupported | fans out to Gemini, Antigravity, and Codex |
+| `command` | `.claude/commands/<name>.md` | `.gemini/commands/<name>.toml` | `.antigravity/commands/<name>.md` | `.codex/commands/<name>.md` | `.opencode/commands/<name>.md` | fans out to each sub-adapter's command file |
+| `memory` | `CLAUDE.md` | `GEMINI.md` | `ANTIGRAVITY.md` | `AGENTS.md` | `AGENTS.md` | fans out to each sub-adapter's memory file |
+| `mcp-server` | `.mcp.json` or `~/.claude.json` | `.gemini/settings.json` | `.antigravity/settings.json` | `.codex/config.toml` | `opencode.json` (`$.mcp`) | fans out to Gemini, Antigravity, and Codex |
+| `hook` | `.claude/settings.json` | `.gemini/settings.json` | `.antigravity/settings.json` | `.codex/config.toml` | unsupported | fans out to Gemini, Antigravity, and Codex |
 
 `agents-cli` is an umbrella target, not a separate runtime. It fans out to the
 compatible host adapters while preserving the user-typed `agents-cli` identity
-in the dotpack manifest.
+in the dotpack manifest. As of [ADR-0014](docs/adr/0014-open-adapter-and-merge-backend-registries.md)
+it covers all seven operations (`command` and `memory` now fan out to each
+sub-adapter's own file).
+
+**Config-merge formats.** Merged config writes (mcp-server, hook) go through a
+pluggable backend keyed by file extension: `.json`, `.toml`, and `.yaml`/`.yml`
+ship today. A new format is one `mergeBackend` implementation plus one
+`registerBackend` call.
+
+### Gap register (named, not hidden)
+
+The architecture is open, but some work remains irreducibly host-specific or is
+deferred backlog. Tracked explicitly so it is not mistaken for "done":
+
+- **codex `.agents/skills` write-once convergence** stays a documented special
+  case in the `agents-cli` umbrella (the shared path both codex and gemini read).
+- **Per-host hook event-name remaps** (`PreToolUse`/`PostToolUse` ↔
+  `BeforeTool`/`AfterTool`) live in each adapter's emit functions — host-specific
+  by nature.
+- **OpenCode extension fidelity**: OpenCode is not yet listed in `schema/*.yaml`
+  host aliases, so resource *extensions* are dropped (treated lossy) on opencode
+  installs; universal-core fields install fine. Adding opencode aliases to the
+  schemas is the follow-up.
+- **Pi and Hermes adapters** are named backlog — the onboarding path is
+  mechanical (see CONTRIBUTING.md); only the per-host paths need confirming.
 
 ## Resource Shapes
 
@@ -216,6 +254,7 @@ Sponsio host wiring in observe mode and fails closed if verification fails.
 | `DOTPACK_ANTIGRAVITY_HOME` | Overrides the Antigravity CLI user home, default `~/.antigravity`. |
 | `DOTPACK_AGENTS_HOME` | Overrides the shared `.agents` user home, default `~/.agents`. |
 | `DOTPACK_CODEX_HOME` | Overrides the Codex user home, default `~/.codex`. |
+| `DOTPACK_OPENCODE_HOME` | Overrides the OpenCode user home, default `~/.config/opencode`. |
 | `DOTPACK_DOTPACK_HOME` | Overrides dotpack state, default `~/.dotpack`. |
 | `DOTPACK_SPONSIO_BINARY` | Overrides the Sponsio binary used by optional lifecycle verification. |
 

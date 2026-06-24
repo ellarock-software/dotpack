@@ -63,7 +63,10 @@ func TestRunInstallAllLifecycleSkipAndFailureBranches(t *testing.T) {
 		t.Fatalf("runInstallAll success: %v\n%s", err, out.String())
 	}
 	got := out.String()
-	for _, want := range []string{"skipped", "installed agents-cli:skill:s", "install-all complete: installed=1 skipped=1"} {
+	// command is now a first-class fan-out kind under agents-cli
+	// (ADR-0014), so both the skill and the command install — nothing is
+	// skipped for an unsupported kind anymore.
+	for _, want := range []string{"installed agents-cli:skill:s", "installed agents-cli:command:deploy", "install-all complete: installed=2 skipped=0"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("runInstallAll output missing %q:\n%s", want, got)
 		}
@@ -112,8 +115,20 @@ func TestCanonicalDiscoveryExpectedFilesAndWalkBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expectedFilesFromCanonical: %v", err)
 	}
-	if len(expected) != 1 || !strings.HasSuffix(expected[0].Path, filepath.Join("skills", "s", "SKILL.md")) {
-		t.Fatalf("expected files = %+v; want only shared skill output", expected)
+	// agents-cli now fans the command out to each sub-adapter's own file
+	// (gemini .toml, antigravity .md, codex .md) in addition to the shared
+	// skill write — 1 skill + 3 command files (ADR-0014).
+	var skillFiles, commandFiles int
+	for _, ef := range expected {
+		switch {
+		case strings.HasSuffix(ef.Path, filepath.Join("skills", "s", "SKILL.md")):
+			skillFiles++
+		case strings.Contains(ef.Path, string(filepath.Separator)+"commands"+string(filepath.Separator)):
+			commandFiles++
+		}
+	}
+	if skillFiles != 1 || commandFiles != 3 {
+		t.Fatalf("expected files = %+v; want 1 skill + 3 command fan-out files", expected)
 	}
 	if _, err := expectedFilesFromCanonical(agentsRoot, "missing-agent", adapter.ScopeUser, d); err == nil || !strings.Contains(err.Error(), "unknown agent") {
 		t.Fatalf("expectedFilesFromCanonical unknown agent err=%v", err)

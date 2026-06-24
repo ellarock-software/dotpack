@@ -42,6 +42,7 @@ import (
 	"github.com/ellarock-software/dotpack/internal/adapter/configfrag"
 	"github.com/ellarock-software/dotpack/internal/adapter/filedrop"
 	"github.com/ellarock-software/dotpack/internal/adapter/hookcmd"
+	"github.com/ellarock-software/dotpack/internal/adapter/registry"
 	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/resource"
 	"github.com/ellarock-software/dotpack/schema"
@@ -51,6 +52,11 @@ import (
 // `host:` strings in schema/*.yaml aliases — schema.HostKeepsExtension
 // compares on string equality.
 const hostID = "antigravity-cli"
+
+// init self-registers the antigravity-cli adapter (ADR-0014).
+func init() {
+	registry.RegisterAdapter(hostID, func(d dirs.Dirs) adapter.Adapter { return New(d) })
+}
 
 // userRoot returns AntigravityHome with the host-specific missing-dir error.
 func userRoot(d dirs.Dirs) (string, error) {
@@ -342,6 +348,10 @@ func New(d dirs.Dirs) *Adapter {
 
 // HostID returns the schema-side host alias.
 func (a *Adapter) HostID() string { return hostID }
+
+// DescribeLayouts exposes antigravity-cli's file-drop layouts for the
+// registry-driven scan / help (ADR-0014).
+func (a *Adapter) DescribeLayouts() []adapter.KindLayout { return a.filedrop.DescribeLayouts() }
 
 // Plan dispatches by Kind. File-drop kinds (skill, agent, rule) go to the
 // filedrop adapter; config-fragment kinds (mcp-server, hook) go to

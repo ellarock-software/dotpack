@@ -26,7 +26,6 @@ import (
 	"io/fs"
 	"math"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -35,56 +34,23 @@ import (
 	"github.com/ellarock-software/dotpack/internal/manifest"
 )
 
-// mergedFormat identifies the read-modify-write encoding for a target
-// config file. Inferred from the file extension at apply / un-merge
-// time; adapters do not declare format on each MergedKeyWrite because
-// the file extension is already an unambiguous source of truth (and
-// would diverge dangerously from a per-MergedKeyWrite declaration if
-// they disagreed).
-type mergedFormat int
-
-const (
-	mergedFormatJSON mergedFormat = iota
-	mergedFormatTOML
-)
-
-// formatFromFile returns the merged-key encoding for a target config
-// file. .json → JSON, .toml → TOML. Unknown extensions return a
-// structured error rather than defaulting — silently treating an
-// unknown extension as JSON would garble TOML (and vice versa).
-func formatFromFile(path string) (mergedFormat, error) {
-	switch filepath.Ext(path) {
-	case ".json":
-		return mergedFormatJSON, nil
-	case ".toml":
-		return mergedFormatTOML, nil
-	default:
-		return 0, fmt.Errorf("merged-key apply: unsupported file extension for %s (only .json and .toml are wired today)", path)
-	}
-}
-
 // applyMergedKey performs the read-modify-write for one (file, path,
 // value) tuple. Empty / absent file is treated as an empty root {}, so
 // fresh-user .mcp.json installs work without a pre-existing file. The
 // rewrite is atomic via writeAtomic (write tmp, fsync, rename).
 //
-// Dispatches on Op:
+// Format dispatch is by file extension via the merge-backend registry
+// (backendFor, see mergebackends.go) — adding a config format does not
+// touch this function. Each backend dispatches on Op internally:
 //   - MergedKeySet (default): path-leaf overwrite — mcp-server's shape.
 //   - MergedKeyAppend: path target is an array; value is appended —
 //     hook's $.hooks.<event> shape per ADR-0012 §9.
 func applyMergedKey(mk adapter.MergedKeyWrite) error {
-	format, err := formatFromFile(mk.File)
+	b, err := backendFor(mk.File)
 	if err != nil {
 		return err
 	}
-	switch format {
-	case mergedFormatJSON:
-		return applyJSONMergedKey(mk)
-	case mergedFormatTOML:
-		return applyTOMLMergedKey(mk)
-	default:
-		return fmt.Errorf("merged-key apply: unknown format %v", format)
-	}
+	return b.apply(mk)
 }
 
 // applyJSONMergedKey reads the target JSON file (or treats it as {} when
@@ -202,20 +168,14 @@ type MergedKeySelector struct {
 	Selector string
 }
 
-// unmergeKey dispatches by file format, mirroring applyMergedKey.
+// unmergeKey dispatches by file extension via the backend registry,
+// mirroring applyMergedKey.
 func unmergeKey(mk MergedKeySelector) error {
-	format, err := formatFromFile(mk.File)
+	b, err := backendFor(mk.File)
 	if err != nil {
 		return err
 	}
-	switch format {
-	case mergedFormatJSON:
-		return unmergeJSONKey(mk)
-	case mergedFormatTOML:
-		return unmergeTOMLKey(mk)
-	default:
-		return fmt.Errorf("merged-key un-merge: unknown format %v", format)
-	}
+	return b.unmerge(mk)
 }
 
 // readJSONOrEmpty reads a JSON file into a map. Absent file → empty
@@ -990,18 +950,18 @@ func preflightMergedKeyCollisions(store *manifest.Store, rec manifest.Record, mk
 		// .toml file (or vice versa) surfaces here at preflight rather
 		// than later at apply-time, when half a merged-key plan may
 		// already be on disk.
-		format, err := formatFromFile(mk.File)
+		b, err := backendFor(mk.File)
 		if err != nil {
 			return nil, fmt.Errorf("merged-key preflight: %w", err)
 		}
-		root, exists, err := readMergeRootForPreflight(mk.File, format)
+		root, exists, err := b.readRootForPreflight(mk.File)
 		if err != nil {
 			return nil, fmt.Errorf("merged-key preflight: %w", err)
 		}
 		if !exists {
 			continue
 		}
-		path, err := parseMergedKeyPath(format, mk.Path)
+		path, err := b.parsePath(mk.Path)
 		if err != nil {
 			return nil, fmt.Errorf("merged-key preflight: parse path %q: %w", mk.Path, err)
 		}
@@ -1052,55 +1012,7 @@ func preflightMergedKeyCollisions(store *manifest.Store, rec manifest.Record, mk
 	return collisions, nil
 }
 
-// readMergeRootForPreflight parses path's content into a map[string]any
-// for slot-occupancy checking, dispatching on format. Returns (root,
-// false, nil) for absent / empty files — preflight treats those as
-// "nothing to collide with" rather than errors (the apply step will
-// create the file from scratch). Non-map roots (e.g., a user manually
-// wrote a JSON array at the top level) return (nil, false, nil) — the
-// merged-key walkers all assume a map root, so a non-map root is
-// "incompatible with our merge model" which is itself a collision the
-// apply step will surface; preflight stays lenient here to avoid
-// double-reporting.
-func readMergeRootForPreflight(path string, format mergedFormat) (map[string]any, bool, error) {
-	raw, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, fmt.Errorf("read %s: %w", path, err)
-	}
-	if len(strings.TrimSpace(string(raw))) == 0 {
-		return nil, false, nil
-	}
-	var root map[string]any
-	switch format {
-	case mergedFormatJSON:
-		if err := json.Unmarshal(raw, &root); err != nil {
-			return nil, false, fmt.Errorf("parse %s as JSON: %w", path, err)
-		}
-	case mergedFormatTOML:
-		if err := toml.Unmarshal(raw, &root); err != nil {
-			return nil, false, fmt.Errorf("parse %s as TOML: %w", path, err)
-		}
-	default:
-		return nil, false, fmt.Errorf("unknown format %v for %s", format, path)
-	}
-	if root == nil {
-		return nil, false, nil
-	}
-	return root, true, nil
-}
-
-// parseMergedKeyPath dispatches path parsing by format — JSON paths
-// require the `$.` prefix; TOML paths use dotted segments only.
-func parseMergedKeyPath(format mergedFormat, p string) ([]string, error) {
-	switch format {
-	case mergedFormatJSON:
-		return parseJSONPath(p)
-	case mergedFormatTOML:
-		return parseTOMLPath(p)
-	default:
-		return nil, fmt.Errorf("unknown format %v", format)
-	}
-}
+// The former readMergeRootForPreflight + parseMergedKeyPath format
+// switches now live behind the mergeBackend interface
+// (readRootForPreflight / parsePath, see mergebackends.go). Callers
+// resolve a backend via backendFor and delegate.

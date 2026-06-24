@@ -30,6 +30,49 @@ Install docs dependencies with:
 pip3 install -r docs/requirements.txt
 ```
 
+## Adding a New Host Adapter
+
+dotpack's intent is universal LLM-tool coverage. The adapter path is open
+(see [ADR-0014](docs/adr/0014-open-adapter-and-merge-backend-registries.md)):
+onboarding a host is self-contained and touches no core switchboard. Use the
+`opencode` adapter as the worked example.
+
+1. **Create the package** `internal/adapter/<host>/<host>.go`. Compose the shared
+   deep modules: a `filedrop.Policy` for file-drop kinds (skill, agent, command,
+   memory, rule) and a `configfrag.Policy` for merged-config kinds (mcp-server,
+   hook). Support is *data*: a kind present in `Layouts`/`Kinds` is supported; an
+   absent kind returns the standard `kind X not yet supported` error. Ship a
+   partial matrix where the host has no concept for an operation — that is
+   expected, not a workaround.
+2. **Self-register** from an `init()`:
+   `registry.RegisterAdapter(hostID, func(d dirs.Dirs) adapter.Adapter { return New(d) })`.
+3. **Add a blank import** for the package to `internal/adapter/all/all.go`.
+4. **Add a `<Host>Home` field** to `internal/dirs.Dirs` (struct field, `FromEnv`
+   default + `DOTPACK_<HOST>_HOME` override + abs-normalization), if the host has
+   a user-scope config root.
+5. **Implement `DescribeLayouts()`** (optional but recommended) by delegating to
+   `a.filedrop.DescribeLayouts()`, so reconcile's scan and CLI help pick the host
+   up automatically. Append any non-filedrop layout (e.g. codex's TOML agent)
+   manually.
+6. **Add a `coverage_test.go`** mirroring an existing adapter's table test,
+   asserting both supported paths and the `not yet supported` error for kinds the
+   host lacks.
+7. **Update docs**: the README support matrix and the `install`/root help (the
+   help host list is registry-driven; the per-kind path table is hand-maintained).
+
+The *only* remaining touch points outside your package are the single blank
+import (step 3), the `dirs.Dirs` field (step 4), and docs (step 7). No edit to
+`install.go`, `sync.go`, or the orchestrator is required — proven by
+`internal/adapter/registry/registry_test.go`, which installs a fake host end to
+end through the unchanged core.
+
+### Adding a config-merge format
+
+Merged config writes go through `mergeBackend` (see
+`internal/orchestrator/mergebackends.go`). A new format is one interface
+implementation plus a `registerBackend(".ext", backend{})` call. `.json`,
+`.toml`, and `.yaml`/`.yml` ship today.
+
 ## Pull Requests
 
 - Keep changes focused and explain behavior changes in the PR description.

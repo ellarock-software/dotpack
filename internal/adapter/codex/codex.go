@@ -54,6 +54,7 @@ import (
 	"github.com/ellarock-software/dotpack/internal/adapter/configfrag"
 	"github.com/ellarock-software/dotpack/internal/adapter/filedrop"
 	"github.com/ellarock-software/dotpack/internal/adapter/hookcmd"
+	"github.com/ellarock-software/dotpack/internal/adapter/registry"
 	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/resource"
 )
@@ -62,6 +63,11 @@ import (
 // `host:` strings in schema/*.yaml aliases — schema.HostKeepsExtension
 // compares on string equality.
 const hostID = "codex"
+
+// init self-registers the codex adapter (ADR-0014).
+func init() {
+	registry.RegisterAdapter(hostID, func(d dirs.Dirs) adapter.Adapter { return New(d) })
+}
 
 // userRoot returns AgentsHome with the host-specific missing-dir error.
 // Codex's skill path is AgentsHome (not CodexHome) per the package
@@ -437,6 +443,23 @@ func New(d dirs.Dirs) *Adapter {
 
 // HostID returns the schema-side host alias.
 func (a *Adapter) HostID() string { return hostID }
+
+// DescribeLayouts exposes codex's file-drop layouts for the
+// registry-driven scan / help (ADR-0014). Codex's agent kind is NOT a
+// filedrop Layout (it is emitted as TOML by planAgentCodex), so it is
+// appended explicitly here — the one host-specific layout the projector
+// cannot derive from Policy.Layouts.
+func (a *Adapter) DescribeLayouts() []adapter.KindLayout {
+	layouts := a.filedrop.DescribeLayouts()
+	layouts = append(layouts, adapter.KindLayout{
+		Kind:          resource.KindAgent,
+		ProjectSubdir: ".codex",
+		KindDir:       "agents",
+		Ext:           ".toml",
+		Nested:        false,
+	})
+	return layouts
+}
 
 // Plan dispatches by Kind. File-drop kinds (skill, rule) go to the filedrop
 // adapter; config-fragment kinds (mcp-server, hook) go to the
