@@ -317,9 +317,9 @@ func configfragPolicy() configfrag.Policy {
 
 // Adapter is the claude-code per-host shell that dispatches Plan to the
 // right deep module by resource Kind. Implements adapter.Adapter; the
-// per-host registries in internal/cli (adapterFactories, isBuildableAgent)
-// type these as adapter.Adapter so the concrete return type is
-// transparent across the boundary.
+// adapter registry (internal/adapter/registry, ADR-0014) stores the
+// factory as adapter.Adapter so the concrete return type is transparent
+// across the boundary.
 type Adapter struct {
 	filedrop   *filedrop.Adapter
 	configfrag *configfrag.Adapter

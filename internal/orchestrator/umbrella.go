@@ -81,11 +81,11 @@ type UmbrellaInstaller struct {
 //     returns a structured error rather than picking a default
 //     sub-adapter (which would silently install to one CLI's path while
 //     the user typed an umbrella expecting both).
-//   - Writer-must-be-in-subAdapters: the CLI's umbrellaFactories init()
-//     panics at process start if any writer's HostID isn't in subs.
-//     Double-checking it here would be belt-and-suspenders — by the
-//     time NewUmbrellaInstaller runs, init has already validated. This
-//     constructor trusts that contract.
+//   - Writer-must-be-in-subAdapters: registry.Validate (invoked from the
+//     CLI package's init() at process start, ADR-0014) panics if any
+//     writer's HostID isn't in subs. Double-checking it here would be
+//     belt-and-suspenders — by the time NewUmbrellaInstaller runs, that
+//     validation has already passed. This constructor trusts that contract.
 func NewUmbrellaInstaller(d dirs.Dirs, label string, subAdapters []adapter.Adapter, writers map[resource.Kind][]adapter.Adapter, m *manifest.Store) *UmbrellaInstaller {
 	return &UmbrellaInstaller{
 		dirs:        d,
@@ -227,7 +227,7 @@ func (u *UmbrellaInstaller) aggregatePlans(r resource.Resource, scope adapter.Sc
 // hosts list — the user reads one reason per field, not per sub-adapter.
 //
 // Stable iteration order: sub-adapters are walked in their construction
-// order (preserved from the umbrellaFactories slice); within one sub,
+// order (preserved from the registry.Umbrella Subs slice); within one sub,
 // schema.LossyExtensions returns sorted FieldPaths. The dedup keeps the
 // FIRST sub-adapter's reason for each FieldPath, so the SupportingHosts
 // list reflects whichever sub raised the issue first — but since the

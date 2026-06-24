@@ -421,9 +421,9 @@ func planAgentCodex(r resource.Resource, scope adapter.Scope, d dirs.Dirs) (adap
 
 // Adapter is the codex per-host shell that dispatches Plan to the right
 // deep module by resource Kind. Mirror of claudecode.Adapter; the
-// per-host registries in internal/cli (adapterFactories) type these as
-// adapter.Adapter so the concrete return type is transparent across
-// the boundary.
+// adapter registry (internal/adapter/registry, ADR-0014) stores the
+// factory as adapter.Adapter so the concrete return type is transparent
+// across the boundary.
 type Adapter struct {
 	dirs       dirs.Dirs
 	filedrop   *filedrop.Adapter

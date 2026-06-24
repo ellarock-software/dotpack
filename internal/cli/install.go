@@ -251,9 +251,10 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 }
 
 // runUmbrellaInstall is the per-umbrella install dispatch. Resolves the
-// umbrella's sub-adapter set + per-kind writer list from
-// umbrellaFactories, constructs an UmbrellaInstaller, and runs the
-// install. The error-handling shape mirrors runInstall's per-host branch
+// umbrella's sub-adapter set + per-kind writer list via the registry
+// (buildUmbrella → registry.BuildUmbrella), constructs an
+// UmbrellaInstaller, and runs the install. The error-handling shape
+// mirrors runInstall's per-host branch
 // (LossyError / CollisionError pass through unwrapped) so users see the
 // same actionable failure messages regardless of which --agent flag
 // they typed.
