@@ -1,0 +1,24 @@
+version: 1
+tasks:
+  - name: sponsio-enforcement
+    phase: post-install
+    applies_to:
+      agents:
+        - codex
+        - gemini-cli
+        - antigravity-cli
+        - agents-cli
+    ensure:
+      binaries:
+        - name: sponsio
+          env: DOTPACK_SPONSIO_BINARY
+    run:
+      - command: sponsio
+        args: ["host", "install", "claude-code", "--mode", "observe"]
+    # Lifecycle tasks are opt-in via --run-lifecycle. If users opt in, fail
+    # closed when Sponsio cannot verify its guard wiring; the default install
+    # path never runs this task.
+    verify:
+      - command: sponsio
+        args: ["host", "status", "claude-code"]
+    failure: fail-closed

@@ -1,0 +1,32 @@
+# gitleaks configuration for dotpack.
+#
+# Runs in CI (.github/workflows/ci.yml, "Secret scan" job) and locally:
+#   gitleaks git . --config .gitleaks.toml --redact --no-banner
+#
+# This complements GitHub's native secret scanning + push protection, which the
+# maintainers should also enable in repository settings for the public repo.
+
+title = "dotpack gitleaks config"
+
+[extend]
+# Start from gitleaks' built-in rule set, then narrow with the allowlist below.
+useDefault = true
+
+[allowlist]
+description = "Documentation placeholders and synthetic test fixtures (no real secrets)"
+
+paths = [
+  # Synthetic resource fixtures used by unit tests (e.g. SECRET_TOKEN=shh).
+  '''internal/.*/testdata/.*''',
+  # Curated corpus survey — public frontmatter snippets only.
+  '''schema-corpus\.yaml''',
+]
+
+regexes = [
+  # Schema/ADR docs describe credential-handling *patterns* with placeholders.
+  '''figma-api-key=X+''',
+  '''X-API-Key''',
+  '''bearer_token_env_var''',
+  # Test fixture value, not a real secret.
+  '''"SECRET_TOKEN":\s*"shh"''',
+]

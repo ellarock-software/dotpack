@@ -1,0 +1,145 @@
+kind: agent
+dotpack_schema_version: 0
+template:
+  shape: file_with_frontmatter
+  filename: <agent-name>.md
+  body: required  # markdown body becomes the agent's system prompt
+fields:
+  - name: name
+    type: string
+    required: true
+    appears_in: 8/8
+    notes: |
+      Unique identifier. Lowercase letters, digits, hyphens (Gemini spec also
+      allows underscores; Claude convention is hyphens only).
+  - name: description
+    type: string
+    required: true
+    appears_in: 8/8
+    notes: |
+      Used by the host's dispatcher to decide when to invoke this agent.
+      Two strong conventions in the corpus: "Use this agent when ..."
+      (declarative trigger, VoltAgent style) and "Use PROACTIVELY for ..."
+      (active-voice auto-invocation, 0xfurai/wshobson style). dotpack does
+      not normalise; the translator passes through.
+  - name: model
+    type: string
+    required: false
+    appears_in: 8/8
+    notes: |
+      Despite 8/8 corpus presence, marked OPTIONAL because the documented
+      Gemini CLI spec allows omission (defaults to inheriting the parent
+      session's model). Corpus is Claude-biased — Claude conventionally
+      sets model explicitly. Values seen: short alias ("opus", "sonnet",
+      "haiku") and full model ID ("claude-sonnet-4-20250514"). Both are
+      pass-through; adapters resolve per host.
+  - name: tools
+    type: string | array<string>
+    required: false
+    appears_in: 5/8
+    notes: |
+      All 5 Claude examples in corpus use a comma-separated STRING
+      ("Read, Write, Edit, Bash, Glob, Grep") including MCP-prefixed names
+      (mcp__context7__resolve-library-id). Gemini's documented spec uses a
+      YAML ARRAY (["read_file", "grep_search"]) with snake_case tool names.
+      dotpack accepts either; the translator normalises to array<string>
+      internally and adapters re-emit the host-native shape.
+ecosystem_notes:
+  - Agents live under `.claude/agents/*.md` (Claude Code), `.gemini/agents/*.md`
+    (Gemini CLI), or `.antigravity/agents/*.md` (Antigravity CLI). The `.agents/agents/` convergence path is NOT yet honoured
+    by either Claude or Gemini for the agent kind (unlike skills, which both
+    honour `~/.agents/skills/`). agents-cli adapter will need to fan out to
+    each host's native directory until convergence happens.
+  - |
+    Gemini's documented spec includes fields the Claude ecosystem does not
+    use in practice: `kind: local|remote`, `temperature`, `max_turns`
+    (snake_case), `timeout_mins`, inline `mcpServers`. None appeared in the
+    corpus. Treated as adapter-layer concerns per ADR-0003.
+  - Description-as-trigger is universal across hosts. The body becomes the
+    agent's system prompt — markdown is the only format observed.
+  - Recurring body section conventions (Identity/Purpose, Capabilities,
+    Approach, Workflow, Quality Checklist) are author conventions, NOT
+    schema. dotpack does not enforce or rewrite body structure.
+deliberately_excluded:
+  # Per ADR-0012 §8, each deliberately_excluded entry declares a
+  # canonical_concept + aliases [{host, field_name}, ...]. Orchestrator's
+  # per-instance lossy detection: if a resource's Extensions carry a field
+  # listed under aliases[].field_name, install is lossy on hosts NOT in
+  # aliases[].host. The body_section_normalisation entry is meta (not a
+  # field) and has no canonical_concept.
+
+  - canonical_concept: claude_subagent_runtime_overrides
+    aliases:
+      - host: claude-code
+        field_name: maxTurns
+      - host: claude-code
+        field_name: disallowedTools
+      - host: claude-code
+        field_name: permissionMode
+      - host: claude-code
+        field_name: skills
+      - host: claude-code
+        field_name: mcpServers
+      - host: claude-code
+        field_name: hooks
+      - host: claude-code
+        field_name: memory
+    appeared_in: 0/8
+    reason: |
+      Documented in the Claude Code subagent spec but absent from every
+      corpus example. These encode subagent runtime semantics:
+      conversation turn limits (`maxTurns`), tool denylist
+      (`disallowedTools`), permission gating (`permissionMode`), inline
+      subresource dispatch (`skills`, `mcpServers`, `hooks`, `memory`).
+      Grouped into one canonical_concept because corpus presence is 0/8
+      across the entire group; finer-grained concepts can be split out
+      if/when corpus evidence surfaces them. Adapter behaviour:
+      - claude-code adapter: emit natively when present.
+      - non-claude-code adapters: surface as lossy. These fields carry
+        runtime semantics (especially `permissionMode` and `disallowedTools`,
+        which are security-relevant) that other hosts cannot honour.
+        Install proceeds only with `--allow-lossy`.
+
+  - canonical_concept: gemini_agent_runtime_overrides
+    aliases:
+      - host: gemini-cli
+        field_name: kind
+      - host: antigravity-cli
+        field_name: kind
+      - host: gemini-cli
+        field_name: temperature
+      - host: antigravity-cli
+        field_name: temperature
+      - host: gemini-cli
+        field_name: max_turns
+      - host: antigravity-cli
+        field_name: max_turns
+      - host: gemini-cli
+        field_name: timeout_mins
+      - host: antigravity-cli
+        field_name: timeout_mins
+    appeared_in: 0/8
+    reason: |
+      Gemini-spec-only fields, absent from corpus. These encode
+      Gemini-native agent runtime: agent locality (`kind: local|remote`,
+      naming clash with dotpack's universal `kind` taxonomy documented in
+      ADR-0006), sampling parameter (`temperature`), conversation cap
+      (`max_turns` — snake_case, distinct from Claude's camelCase
+      `maxTurns`), wall-clock cap (`timeout_mins`). Adapter behaviour:
+      - gemini-cli adapter: emit natively when present.
+      - non-gemini adapters: surface as lossy. Install proceeds only
+        with `--allow-lossy`.
+      Note: `max_turns` here is the Gemini name; Claude's `maxTurns` is
+      a separate canonical_concept (claude_subagent_runtime_overrides).
+      A future ADR-0017 may consolidate them under a single
+      conversation_turn_cap canonical_concept with both aliases — see
+      ADR-0012 Consequences for the Scenario B deferral.
+
+  - body_section_normalisation:
+      reason: |
+        Survey proposed canonical body sections ("## Approach", "## Workflow",
+        etc.). Rejected — author conventions vary too much to force a single
+        layout, and the agent host doesn't parse section headers as
+        structure. Section recommendations live in the survey clusters
+        as ecosystem insight, not in the schema. NOT a field; no
+        canonical_concept; not a lossy-detection participant.

@@ -1,0 +1,181 @@
+kind: skill
+dotpack_schema_version: 0
+template:
+  shape: file_with_frontmatter
+  filename: SKILL.md
+  body: required  # markdown after frontmatter is the skill's instructions
+fields:
+  - name: name
+    type: string
+    required: true
+    appears_in: 10/10
+    notes: |
+      Unique identifier. Letters, numbers, and hyphens only per Gemini CLI spec
+      (other ecosystems converge on the same constraint).
+  - name: description
+    type: string
+    required: true
+    appears_in: 10/10
+    notes: |
+      The primary LLM-triggering field. Two common phrasings in the wild:
+      "Use when ..." (declarative trigger) and "Use this skill whenever ..."
+      (imperative trigger). Both work; dotpack does not normalise. Recommend
+      <= 1024 chars (Anthropic convention noted in body of obra/writing-skills
+      and anthropic/skill-creator).
+  - name: license
+    type: string
+    required: false
+    appears_in: 3/10
+    notes: |
+      Anthropic-ecosystem convention (present in 3/4 anthropics/skills examples,
+      absent everywhere else in the corpus). Free-form pointer to LICENSE.txt or
+      a literal SPDX/proprietary string. Pass-through during translation.
+ecosystem_notes:
+  - SKILL.md is the canonical filename across Claude Code, Gemini CLI,
+    Antigravity CLI, Codex CLI, OpenCode, and Hermes. The
+    `~/.agents/skills/` alias is honoured by Gemini and Codex; Hermes
+    documents `~/.hermes/skills/` as the primary skill root plus
+    `skills.external_dirs` in `~/.hermes/config.yaml` for extra search
+    paths such as `~/.agents/skills/`. The on-disk package layout
+    (folder with SKILL.md + optional scripts/, references/, assets/) is
+    identical across these hosts.
+  - dotpack copies regular support files under the source skill directory
+    (for example `scripts/*`, `references/*`, and `assets/*`) to the same
+    relative paths under the target skill directory and records them in the
+    manifest. Symlinks are rejected.
+  - Description-as-trigger is universal. The skill's body (everything after
+    the closing `---`) is the instruction content the agent loads on trigger.
+  - Some skills mention `compatibility` as an optional frontmatter field in
+    their body text, but none of the corpus examples actually used it in
+    frontmatter. Treated as authorial intent, not schema.
+deliberately_excluded:
+  # Per ADR-0012 §8, each deliberately_excluded entry declares a
+  # canonical_concept slug plus the frontmatter field name(s) that
+  # encode it on disk. Two binding mechanisms — pick the one that
+  # matches the concept's nature, not both:
+  #
+  #   aliases: [{host, field_name}, ...]   — for concepts at least one
+  #     host natively parses. The per-instance lossy check uses this:
+  #     if Extensions carry a field listed in aliases[].field_name and
+  #     the target host is NOT in aliases[].host, the install is lossy.
+  #
+  #   field_names: [name, ...]             — for pass-through metadata
+  #     concepts (lossy_when_dropped: false) that no host parses
+  #     natively. Lets the schema bind the on-disk key to its concept
+  #     without inventing a fake "host". The lossy check matches by
+  #     this list and short-circuits on lossy_when_dropped: false.
+  #
+  # Entries without either binding cannot be matched by the lossy
+  # check at all — the field surfaces as "unknown" → lossy by default.
+
+  - canonical_concept: discovery_keywords
+    field_names: [keywords]
+    aliases: []
+    lossy_when_dropped: false       # No host parses; dropping is a no-op.
+    appeared_in: 1/10 (daymade/qa-expert only)
+    reason: |
+      Author convention for skill discoverability (tag-like). No surveyed
+      host (Claude Code, Gemini CLI, Codex CLI) parses `keywords` as a
+      first-class discovery field — skills are triggered by `description`
+      across all three. Below the 2-example floor, and adopting it would
+      not change install behaviour anywhere. Adapter behaviour: preserve
+      verbatim as pass-through metadata if the source carries it; never
+      flag as lossy (lossy_when_dropped: false). If a future host adopts
+      native keyword-based discovery, add it to `aliases` and flip
+      lossy_when_dropped to true.
+
+  - canonical_concept: metadata_bucket
+    field_names: [metadata]
+    aliases: []
+    lossy_when_dropped: false       # No host parses; dropping is a no-op.
+    appeared_in: 1/10 (openai/gh-address-comments only)
+    reason: |
+      Bucket field for non-standard sub-fields (single-author observed
+      `short-description` inside). No host parses it natively. Adapter
+      behaviour: pass-through if present; never lossy. If multiple kinds
+      eventually need a metadata bucket, promote to a universal optional
+      field rather than per-kind extensions.
+
+  - canonical_concept: skill_version_metadata
+    field_names: [version]
+    aliases: []
+    lossy_when_dropped: false
+    appeared_in: Hermes docs/examples
+    reason: |
+      Version metadata carried by Hermes-first skills. Treated as
+      pass-through metadata rather than a universal core field because
+      no surveyed non-Hermes host parses it semantically. Adapter
+      behaviour: preserve verbatim when present; never flag as lossy.
+
+  - canonical_concept: skill_author_metadata
+    field_names: [author]
+    aliases: []
+    lossy_when_dropped: false
+    appeared_in: Hermes docs/examples
+    reason: |
+      Author metadata carried by Hermes-first skills. Same policy as
+      `version`: preserve verbatim as pass-through metadata; do not
+      treat dropping it as semantically lossy.
+
+  - canonical_concept: hermes_skill_platform_filter
+    aliases:
+      - host: hermes
+        field_name: platforms
+    appeared_in: Hermes docs/examples
+    reason: |
+      Hermes-native platform gating for skills (`linux`, `macos`,
+      `windows`). Load-bearing: Hermes uses it to decide whether a skill
+      is available on the current OS. Adapter behaviour:
+      - hermes adapter: emit natively when present.
+      - non-hermes adapters: surface as lossy. Silently dropping a
+        platform filter can make a skill available on hosts/OSes the
+        author explicitly excluded.
+
+  - canonical_concept: hermes_skill_required_environment
+    aliases:
+      - host: hermes
+        field_name: required_environment_variables
+      - host: hermes
+        field_name: required_credential_files
+    appeared_in: Hermes docs/examples
+    reason: |
+      Hermes-native preflight requirements for skills. These fields
+      declare environment variables or credential files the skill needs
+      before execution. Adapter behaviour:
+      - hermes adapter: emit natively when present.
+      - non-hermes adapters: surface as lossy. Dropping them removes a
+        real runtime precondition check and makes failure mode much less
+        clear for the user.
+
+  - canonical_concept: claude_skill_runtime_overrides
+    aliases:
+      - host: claude-code
+        field_name: allowed-tools
+      - host: claude-code
+        field_name: model
+      - host: claude-code
+        field_name: context
+      - host: claude-code
+        field_name: agent
+      - host: claude-code
+        field_name: argument-hint
+      - host: claude-code
+        field_name: disable-model-invocation
+      - host: claude-code
+        field_name: user-invocable
+    appeared_in: 0/10
+    reason: |
+      Documented in the Claude Code SKILL.md spec but absent from every
+      corpus example. These are per-tool runtime concerns — tool
+      permissions (`allowed-tools`), model selection (`model`), subagent
+      dispatch (`context`, `agent`), CLI ergonomics (`argument-hint`),
+      invocation control (`disable-model-invocation`, `user-invocable`).
+      Grouped into one canonical_concept for now because corpus presence
+      is zero across all of them; splitting into per-concept entries
+      (claude_skill_tool_permissions, claude_skill_model_override, ...)
+      is a follow-up if future corpus surfaces any of them above floor.
+      Adapter behaviour:
+      - claude-code adapter: emit natively when present.
+      - non-claude-code adapters: surface as lossy (the field has runtime
+        meaning on Claude that other hosts cannot honour). Install
+        proceeds only with `--allow-lossy`.

@@ -1,0 +1,65 @@
+# GoReleaser configuration for dotpack.
+# Validate locally with: goreleaser check
+# Dry-run a build with:  goreleaser build --snapshot --clean
+version: 2
+
+project_name: dotpack
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: dotpack
+    main: ./cmd/dotpack
+    binary: dotpack
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/ellarock-software/dotpack/internal/cli.Version={{ .Version }}
+
+archives:
+  - id: dotpack
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE
+      - NOTICE
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "^build:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  draft: false
+  prerelease: auto

@@ -1,0 +1,108 @@
+kind: memory
+dotpack_schema_version: 0
+shape_note: |
+  The `memory` kind is structurally divergent from the file_with_frontmatter
+  kinds (skill/agent/command). There are no required frontmatter fields and
+  no formal field validation. The schema here documents naming conventions,
+  shape, length norms, and recurring section conventions — all advisory.
+template:
+  shape: full_file
+  formats:
+    - format: markdown
+      extension: .md
+  filename_variants:
+    # Different hosts read different filenames as the project memory. dotpack
+    # treats them as interchangeable; adapters write to the host-native name.
+    - filename: CLAUDE.md
+      hosts: [claude-code]
+    - filename: GEMINI.md
+      hosts: [gemini-cli]
+    - filename: AGENTS.md
+      hosts: [codex, claude-code, gemini-cli, hermes, cursor, jules]
+      note: |
+        AGENTS.md (agents.md spec) is the cross-tool convergence path.
+        Multiple hosts honour it as a fallback or primary memory source.
+    - filename: .hermes.md
+      hosts: [hermes]
+      note: |
+        Hermes' highest-priority project context file. If present at the
+        repo root, Hermes loads it instead of AGENTS.md / CLAUDE.md /
+        .cursorrules for startup context.
+    - filename: HERMES.md
+      hosts: [hermes]
+      note: |
+        Hermes' alternate project context filename, same priority tier as
+        `.hermes.md`.
+    - filename: SOUL.md
+      hosts: [hermes]
+      note: |
+        Hermes' global identity file. Unlike the project-scoped context
+        files above, `SOUL.md` is loaded only from `HERMES_HOME`
+        (typically `~/.hermes/SOUL.md`), not from the project root.
+  scope:
+    - root_of_repo  # most common
+    - subdirectory  # for monorepo subpackage scoping (e.g. packages/cli/GEMINI.md)
+fields:
+  - name: frontmatter
+    type: none
+    required: false
+    appears_in: 0/7
+    notes: |
+      Memory files in the corpus have NO YAML frontmatter. The entire file
+      is the prompt-context content. dotpack does not add frontmatter
+      during translation; sources that contain it would have the frontmatter
+      stripped or pre-pended into the body as a comment.
+length_norms:
+  observed_lines:
+    min: 19
+    max: 221
+    median: 96
+    p25: 38
+    p75: 116
+  guidance: |
+    The corpus is bimodal: very short paths-and-conventions files (~20 lines)
+    and structured project-wide guidelines (~100-220 lines). dotpack does not
+    enforce a length policy; the translator preserves source length.
+recurring_sections:
+  # Recurring H2 section conventions seen across the 7 examples. These are
+  # AUTHOR CONVENTIONS, NOT REQUIRED FIELDS. Documented to inform downstream
+  # tooling (e.g., a memory-extractor) and to give the translator hints
+  # about what content is meaningful to preserve.
+  - name: overview
+    appears_in: 6/7
+    aliases: ["Project Overview", "Repository Overview", "Project Context"]
+  - name: conventions
+    appears_in: 5/7
+    aliases: ["Coding Style & Naming Conventions", "Code Style", "Coding Conventions"]
+  - name: testing
+    appears_in: 4/7
+    aliases: ["Testing and Quality", "Testing", "Test Commands"]
+  - name: workflow
+    appears_in: 3/7
+    aliases: ["Pull Request Requirements", "Contributor Guidelines", "Git Workflow"]
+  - name: commands
+    appears_in: 3/7
+    aliases: ["Build, Test, and Development Commands", "Build and Run"]
+  - name: documentation
+    appears_in: 2/7
+    aliases: ["Documentation Conventions", "Docs"]
+  - name: structure
+    appears_in: 2/7
+    aliases: ["Project Structure & Module Organization", "Repository Structure"]
+ecosystem_notes:
+  - "Filename divergence (CLAUDE.md vs GEMINI.md vs AGENTS.md) is the
+    primary cross-tool concern. AGENTS.md is the converging standard
+    (multiple hosts honour it), but Claude and Gemini still prefer their
+    branded variants when present. Hermes adds two more project-local
+    filenames (`.hermes.md`, `HERMES.md`) plus a user-scoped global
+    identity file (`SOUL.md`)."
+  - "Gemini CLI supports `@file.md` import syntax inside GEMINI.md for
+    modularisation. Claude Code and Codex do not honour this syntax. The
+    translator should resolve imports when porting Gemini-style modular
+    memories to a flat host."
+  - "Hermes context-file priority is `.hermes.md` / `HERMES.md` →
+    `AGENTS.md` → `CLAUDE.md` → `.cursorrules`, with `SOUL.md` loaded
+    independently from `HERMES_HOME` as the agent identity."
+  - "Scope is hierarchical: a subdirectory memory file applies only to
+    work within that subtree. dotpack preserves the filesystem location
+    of the source; adapters install to a matching path in the target."

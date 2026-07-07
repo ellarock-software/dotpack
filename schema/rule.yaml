@@ -1,0 +1,80 @@
+kind: rule
+dotpack_schema_version: 0
+shape_note: |
+  The `rule` kind is a named Markdown guidance fragment with YAML
+  introduction metadata. Canonical shared rules live at
+  `.agents/rules/<name>.md`; adapters materialize host-native rule files.
+template:
+  shape: file_with_frontmatter
+  formats:
+    - format: markdown
+      extension: .md
+  required_identity:
+    - id
+    - name
+  body: required
+  source_locations:
+    - host: agents-cli
+      path_template: "fan-out"
+      note: "Umbrella manifest identity; writes gemini-cli and codex rule files."
+    - host: claude-code
+      path_template: "{scope}/.claude/rules/{name}.md"
+    - host: gemini-cli
+      path_template: "{scope}/.gemini/rules/{name}.md"
+    - host: antigravity-cli
+      path_template: "{scope}/.antigravity/rules/{name}.md"
+    - host: codex
+      path_template: "{scope}/.codex/rules/{name}.md"
+fields:
+  - name: id
+    type: string
+    required: one_of_id_or_name
+    notes: Stable canonical identifier. Used for install identity when `name` is absent.
+  - name: name
+    type: string
+    required: one_of_id_or_name
+    notes: Stable canonical identifier. Preferred for install identity when present.
+  - name: body
+    type: markdown
+    required: true
+    notes: Rule guidance loaded by the host.
+ecosystem_notes:
+  - "Rules are modular host guidance. They are narrower than memory
+    files such as AGENTS.md/CLAUDE.md/GEMINI.md and are installed as
+    named files under each host's native rules directory."
+  - "Introduction metadata is authoring/provenance data. Adapters
+    preserve it in emitted Markdown rule files and do not require
+    --allow-lossy for those fields."
+deliberately_excluded:
+  # Artifact introduction metadata from source packages. These
+  # fields are not host runtime switches; they explain and register the
+  # canonical artifact. Dropping them from a runtime that ignores
+  # frontmatter is not semantically lossy, and dotpack's rule adapter
+  # preserves them in standalone Markdown outputs anyway.
+  - canonical_concept: artifact_introduction_metadata
+    field_names:
+      - artifact-type
+      - owner
+      - owner/surface
+      - purpose
+      - triggers
+      - inputs
+      - outputs
+      - state-read
+      - state-write
+      - state-written
+      - registered-in
+      - tests
+      - failure-mode
+      - host-compatibility
+      - title
+      - description
+      - keywords
+      - patterns
+      - agent
+      - context
+    lossy_when_dropped: false
+    notes: |
+      These fields are schema-known pass-through metadata. If a future
+      host assigns runtime semantics to one, split that field into a
+      host-alias concept with lossy_when_dropped defaulting to true.

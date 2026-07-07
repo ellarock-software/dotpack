@@ -1,0 +1,20 @@
+# Normalize line endings to LF on check-in for all text files.
+* text=auto eol=lf
+
+# Keep CRLF for Windows-native script types, should any be added.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Treat common binary assets as binary (no diff/merge, no EOL normalization).
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+
+# GitHub linguist hints: keep test fixtures and docs out of language stats and
+# collapse them by default in diffs.
+internal/**/testdata/** linguist-generated
+docs/**                 linguist-documentation
+schema-corpus.yaml      linguist-documentation

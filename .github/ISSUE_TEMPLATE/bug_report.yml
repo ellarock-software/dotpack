@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a problem with dotpack
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please search existing issues first, and
+        redact any secrets from command output before pasting it here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including the exact command you ran.
+      placeholder: |
+        I ran `dotpack install ...` and got ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps. A small `.agents` resource or command sequence helps.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: dotpack version
+      description: Output of `dotpack version`.
+      placeholder: dotpack v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host adapter (if relevant)
+      options:
+        - "not applicable"
+        - agents-cli
+        - antigravity-cli
+        - claude-code
+        - codex
+        - gemini-cli
+        - hermes
+        - opencode
+    validations:
+      required: false
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15 / Ubuntu 24.04 / Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output or logs
+      description: Paste command output. Redact any secrets.
+      render: shell
+    validations:
+      required: false

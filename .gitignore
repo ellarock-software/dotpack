@@ -1,0 +1,38 @@
+# Build output
+/dotpack
+/bin/
+/site/
+/dist/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Scratch / ephemeral
+.scratchpad/
+.dotpack-workdirs/
+.venv/
+evidence/
+.evidence/
+**/evidence/
+**/.evidence/
+**/*-evidence.json
+**/*-evidence.jsonl
+**/browser-evidence.json
+**/runtime-evidence.json
+**/verification-evidence.json
+**/hook-health-evidence.json
+
+# Go
+*.test
+*.out
+
+# Agent Host Tooling
+.agents/
+.claude/
+.codex/
+.gemini/
+.antigravity/
+.quarantine/
+.mcp.json

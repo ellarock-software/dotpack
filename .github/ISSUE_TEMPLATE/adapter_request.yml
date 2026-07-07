@@ -1,0 +1,43 @@
+name: Adapter request
+description: Request support for a new agent host (adapter)
+labels: ["adapter-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        dotpack aims for universal coverage of LLM coding tools. Use this form
+        to request a new host adapter. If you'd like to contribute one, see the
+        "Adding a New Host Adapter" guide in CONTRIBUTING.md.
+  - type: input
+    id: host
+    attributes:
+      label: Host / tool name
+      placeholder: e.g. Cursor, GitHub Copilot, Zed
+    validations:
+      required: true
+  - type: input
+    id: docs
+    attributes:
+      label: Link to the host's configuration documentation
+      description: Where does this tool store its config on disk, and in what format?
+    validations:
+      required: true
+  - type: checkboxes
+    id: kinds
+    attributes:
+      label: Which resource kinds does the host support?
+      options:
+        - label: skill
+        - label: agent
+        - label: command
+        - label: memory
+        - label: rule
+        - label: hook
+        - label: mcp-server
+  - type: textarea
+    id: layout
+    attributes:
+      label: On-disk layout details
+      description: Paths, file formats (JSON/TOML/YAML/Markdown), user vs project scope, anything nonobvious.
+    validations:
+      required: false

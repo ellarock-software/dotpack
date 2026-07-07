@@ -1,0 +1,6 @@
+# Code owners for dotpack. These users/teams are requested for review on any
+# pull request that touches matching paths.
+#
+# Update this once an org maintainers team exists (e.g. @ellarock-software/dotpack-maintainers).
+
+* @joehosemann

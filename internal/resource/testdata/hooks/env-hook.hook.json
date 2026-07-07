@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/env-aware.sh",
+            "env": {
+              "SECRET_TOKEN": "shh",
+              "TIER": "prod"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

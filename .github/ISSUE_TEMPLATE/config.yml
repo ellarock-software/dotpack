@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/ellarock-software/dotpack/discussions
+    about: Ask questions and discuss ideas here.
+  - name: Security vulnerability
+    url: https://github.com/ellarock-software/dotpack/security/policy
+    about: Please report security issues privately per our security policy, not as a public issue.
