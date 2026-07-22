@@ -130,6 +130,36 @@ func TestScanSkillsCommandGatesOnFindingsAndHonorsReportOnly(t *testing.T) {
 	}
 }
 
+func TestScanSkillsReportOnlyAcceptsScannerFindingExitCode(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "exit-one-skill", "body\n")
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
+	prepareFakeSkillSpectorRuntime(t, dotpackHome)
+
+	var reportOnly bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&reportOnly)
+	cmd.SetErr(&reportOnly)
+	cmd.SetArgs([]string{"scan-skills", agentsRoot, "--report-only"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("scan-skills --report-only should parse a report written before exit 1: %v\n%s", err, reportOnly.String())
+	}
+	if !strings.Contains(reportOnly.String(), "Gate mode: report-only") {
+		t.Fatalf("scan-skills report-only output missing mode:\n%s", reportOnly.String())
+	}
+
+	var gated bytes.Buffer
+	cmd = NewRootCmd()
+	cmd.SetOut(&gated)
+	cmd.SetErr(&gated)
+	cmd.SetArgs([]string{"scan-skills", agentsRoot})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "gate failed") {
+		t.Fatalf("scan-skills should enforce parsed findings after exit 1, err=%v output=%s", err, gated.String())
+	}
+}
+
 func TestScanSkillsCommandWritesJSONAndSARIFOutputs(t *testing.T) {
 	_, agentsRoot := writeCanonicalSkill(t, "good-skill", "body\n")
 	dotpackHome := t.TempDir()
@@ -288,7 +318,7 @@ EOF
     done
     name="$(basename "$skill_dir")"
     if [ "$format" = "json" ]; then
-      if [ "$name" = "bad-skill" ] && [ -z "$baseline" ]; then
+      if { [ "$name" = "bad-skill" ] || [ "$name" = "exit-one-skill" ]; } && [ -z "$baseline" ]; then
         cat >"$out" <<EOF
 {"risk_assessment":{"score":7,"recommendation":"REVIEW"},"issues":[{"id":"SK001"}],"suppressed_count":0}
 EOF
@@ -301,6 +331,9 @@ EOF
       cat >"$out" <<EOF
 {"runs":[{"tool":{"driver":{"name":"SkillSpector"}},"results":[{"ruleId":"$name"}]}]}
 EOF
+    fi
+    if [ "$name" = "exit-one-skill" ] && [ -z "$baseline" ]; then
+      exit 1
     fi
     ;;
   *)

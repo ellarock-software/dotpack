@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -708,6 +709,12 @@ func runSkillScans(targets []skillScanTarget, runDir, baselineDir, format string
 func runSkillSpector(binary string, args ...string) error {
 	cmd := exec.Command(binary, args...)
 	out, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	if err != nil && len(args) > 0 && args[0] == "scan" && errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		if outputPath := commandFlagValue(args, "--output"); outputPath != "" && pathIsRegularFile(outputPath) {
+			return nil
+		}
+	}
 	if err != nil {
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {
@@ -716,6 +723,15 @@ func runSkillSpector(binary string, args ...string) error {
 		return fmt.Errorf("%s %s: %w\n%s", binary, strings.Join(args, " "), err, detail)
 	}
 	return nil
+}
+
+func commandFlagValue(args []string, flag string) string {
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] == flag {
+			return args[index+1]
+		}
+	}
+	return ""
 }
 
 func buildSkillScanOutput(command string, selection skillScanSelection, results []skillScanResult, runDir, baselineDir, baseRef string, changed bool, format string, reportOnly bool, metadata skillspector.RuntimeMetadata) skillScanCommandOutput {
