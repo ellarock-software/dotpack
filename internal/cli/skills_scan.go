@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -706,8 +707,26 @@ func runSkillScans(targets []skillScanTarget, runDir, baselineDir, format string
 }
 
 func runSkillSpector(binary string, args ...string) error {
+	outputPath := ""
+	if len(args) > 0 && args[0] == "scan" {
+		outputPath = commandFlagValue(args, "--output")
+		if outputPath == "" {
+			return fmt.Errorf("%s scan requires --output", binary)
+		}
+		if _, err := os.Lstat(outputPath); err == nil {
+			return fmt.Errorf("refusing to reuse existing SkillSpector scan output: %s", outputPath)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect SkillSpector scan output %s: %w", outputPath, err)
+		}
+	}
 	cmd := exec.Command(binary, args...)
 	out, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	if err != nil && len(args) > 0 && args[0] == "scan" && errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		if pathIsRegularFile(outputPath) {
+			return nil
+		}
+	}
 	if err != nil {
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {
@@ -716,6 +735,15 @@ func runSkillSpector(binary string, args ...string) error {
 		return fmt.Errorf("%s %s: %w\n%s", binary, strings.Join(args, " "), err, detail)
 	}
 	return nil
+}
+
+func commandFlagValue(args []string, flag string) string {
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] == flag {
+			return args[index+1]
+		}
+	}
+	return ""
 }
 
 func buildSkillScanOutput(command string, selection skillScanSelection, results []skillScanResult, runDir, baselineDir, baseRef string, changed bool, format string, reportOnly bool, metadata skillspector.RuntimeMetadata) skillScanCommandOutput {
@@ -790,8 +818,8 @@ func createSkillSpectorRunDir(dotpackHome, command string) (string, error) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return "", fmt.Errorf("create SkillSpector run directory %s: %w", root, err)
 	}
-	dir := filepath.Join(root, timestampSlug(time.Now())+"-"+command)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := os.MkdirTemp(root, timestampSlug(time.Now())+"-"+command+"-")
+	if err != nil {
 		return "", fmt.Errorf("create SkillSpector run directory %s: %w", dir, err)
 	}
 	return dir, nil
@@ -850,7 +878,11 @@ func writeSkillScanOutput(format, outputPath string, aggregate skillScanCommandO
 			return fmt.Errorf("write SkillSpector markdown output %s: %w", outputPath, err)
 		}
 	case "sarif":
-		raw, err := json.MarshalIndent(mergeSARIFReports(sarifPaths), "", "  ")
+		merged, err := mergeSARIFReports(sarifPaths)
+		if err != nil {
+			return err
+		}
+		raw, err := json.MarshalIndent(merged, "", "  ")
 		if err != nil {
 			return fmt.Errorf("encode SkillSpector SARIF output: %w", err)
 		}
@@ -879,30 +911,49 @@ func renderSkillScanMarkdown(aggregate skillScanCommandOutput) string {
 	return b.String()
 }
 
-func mergeSARIFReports(paths []string) map[string]any {
+func mergeSARIFReports(paths []string) (map[string]any, error) {
 	runs := make([]any, 0)
 	for _, path := range paths {
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("read SkillSpector SARIF report %s: %w", path, err)
 		}
 		var payload struct {
-			Runs []any `json:"runs"`
+			Version string            `json:"version"`
+			Runs    []json.RawMessage `json:"runs"`
 		}
 		if err := json.Unmarshal(raw, &payload); err != nil {
-			continue
+			return nil, fmt.Errorf("parse SkillSpector SARIF report %s: %w", path, err)
 		}
-		runs = append(runs, payload.Runs...)
+		if payload.Version != "2.1.0" {
+			return nil, fmt.Errorf("parse SkillSpector SARIF report %s: unsupported or missing version %q", path, payload.Version)
+		}
+		if payload.Runs == nil {
+			return nil, fmt.Errorf("parse SkillSpector SARIF report %s: missing runs array", path)
+		}
+		for index, rawRun := range payload.Runs {
+			var run map[string]any
+			if err := json.Unmarshal(rawRun, &run); err != nil {
+				return nil, fmt.Errorf("parse SkillSpector SARIF report %s run %d: %w", path, index, err)
+			}
+			if run == nil {
+				return nil, fmt.Errorf("parse SkillSpector SARIF report %s run %d: expected object", path, index)
+			}
+			if tool, ok := run["tool"].(map[string]any); !ok || tool == nil {
+				return nil, fmt.Errorf("parse SkillSpector SARIF report %s run %d: missing tool object", path, index)
+			}
+			runs = append(runs, run)
+		}
 	}
 	return map[string]any{
 		"$schema": "https://json.schemastore.org/sarif-2.1.0.json",
 		"version": "2.1.0",
 		"runs":    runs,
-	}
+	}, nil
 }
 
 func pathIsRegularFile(path string) bool {
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	return err == nil && info.Mode().IsRegular()
 }
 

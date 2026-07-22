@@ -130,6 +130,108 @@ func TestScanSkillsCommandGatesOnFindingsAndHonorsReportOnly(t *testing.T) {
 	}
 }
 
+func TestScanSkillsReportOnlyAcceptsScannerFindingExitCode(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "exit-one-skill", "body\n")
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
+	prepareFakeSkillSpectorRuntime(t, dotpackHome)
+
+	var reportOnly bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&reportOnly)
+	cmd.SetErr(&reportOnly)
+	cmd.SetArgs([]string{"scan-skills", agentsRoot, "--report-only"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("scan-skills --report-only should parse a report written before exit 1: %v\n%s", err, reportOnly.String())
+	}
+	if !strings.Contains(reportOnly.String(), "Gate mode: report-only") {
+		t.Fatalf("scan-skills report-only output missing mode:\n%s", reportOnly.String())
+	}
+
+	var gated bytes.Buffer
+	cmd = NewRootCmd()
+	cmd.SetOut(&gated)
+	cmd.SetErr(&gated)
+	cmd.SetArgs([]string{"scan-skills", agentsRoot})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "gate failed") {
+		t.Fatalf("scan-skills should enforce parsed findings after exit 1, err=%v output=%s", err, gated.String())
+	}
+}
+
+func TestSkillSpectorExitOneRequiresFreshValidOutput(t *testing.T) {
+	t.Run("stale output", func(t *testing.T) {
+		_, agentsRoot := writeCanonicalSkill(t, "exit-one-skill", "body\n")
+		dotpackHome := t.TempDir()
+		prepareFakeSkillSpectorRuntime(t, dotpackHome)
+		binary := filepath.Join(dotpackHome, "skillspector", "runtime", "bin", "skillspector")
+		skillDir := filepath.Join(agentsRoot, "skills", "exit-one-skill")
+		output := filepath.Join(t.TempDir(), "report.json")
+		args := []string{"scan", skillDir, "--no-llm", "--format", "json", "--output", output}
+		if err := runSkillSpector(binary, args...); err != nil {
+			t.Fatalf("first exit-one scan should accept its fresh report: %v", err)
+		}
+		err := runSkillSpector(binary, args...)
+		if err == nil || !strings.Contains(err.Error(), "refusing to reuse existing") {
+			t.Fatalf("second scan err=%v; want stale-output rejection", err)
+		}
+	})
+
+	for _, testCase := range []struct {
+		name    string
+		format  string
+		wantErr string
+		command string
+	}{
+		{name: "missing-output-skill", format: "json", wantErr: "exit status 1", command: "scan-skills"},
+		{name: "invalid-json-skill", format: "json", wantErr: "parse SkillSpector report", command: "scan-skills"},
+		{name: "invalid-sarif-skill", format: "sarif", wantErr: "parse SkillSpector SARIF report", command: "scan-skills"},
+		{name: "exit-two-skill", format: "json", wantErr: "exit status 2", command: "scan-skills"},
+		{name: "non-scan-exit-one-skill", wantErr: "exit status 1", command: "baseline-skills"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, agentsRoot := writeCanonicalSkill(t, testCase.name, "body\n")
+			dotpackHome := t.TempDir()
+			t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+			t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
+			prepareFakeSkillSpectorRuntime(t, dotpackHome)
+
+			cmd := NewRootCmd()
+			cmd.SetOut(io_DiscardWriter())
+			cmd.SetErr(io_DiscardWriter())
+			if testCase.command == "baseline-skills" {
+				cmd.SetArgs([]string{"baseline-skills", agentsRoot, "--baseline-dir", filepath.Join(t.TempDir(), "baselines")})
+			} else {
+				args := []string{"scan-skills", agentsRoot, "--format", testCase.format, "--report-only"}
+				if testCase.format == "sarif" {
+					args = append(args, "--output", filepath.Join(t.TempDir(), "aggregate.sarif"))
+				}
+				cmd.SetArgs(args)
+			}
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
+				t.Fatalf("%s err=%v; want %q", testCase.command, err, testCase.wantErr)
+			}
+		})
+	}
+}
+
+func TestCreateSkillSpectorRunDirIsUniqueWithinOneSecond(t *testing.T) {
+	dotpackHome := t.TempDir()
+	first, err := createSkillSpectorRunDir(dotpackHome, "scan-skills")
+	if err != nil {
+		t.Fatalf("create first run directory: %v", err)
+	}
+	second, err := createSkillSpectorRunDir(dotpackHome, "scan-skills")
+	if err != nil {
+		t.Fatalf("create second run directory: %v", err)
+	}
+	if first == second {
+		t.Fatalf("run directories must be unique: %s", first)
+	}
+}
+
 func TestScanSkillsCommandWritesJSONAndSARIFOutputs(t *testing.T) {
 	_, agentsRoot := writeCanonicalSkill(t, "good-skill", "body\n")
 	dotpackHome := t.TempDir()
@@ -257,6 +359,9 @@ accepted_findings:
   - id: SK001
     reason: ${reason}
 EOF
+    if [ "$(basename "$skill_dir")" = "non-scan-exit-one-skill" ]; then
+      exit 1
+    fi
     ;;
   scan)
     skill_dir="$1"
@@ -287,8 +392,13 @@ EOF
       esac
     done
     name="$(basename "$skill_dir")"
+    if [ "$name" = "missing-output-skill" ]; then
+      exit 1
+    fi
     if [ "$format" = "json" ]; then
-      if [ "$name" = "bad-skill" ] && [ -z "$baseline" ]; then
+      if [ "$name" = "invalid-json-skill" ]; then
+        printf '%s\n' 'not valid JSON' >"$out"
+      elif { [ "$name" = "bad-skill" ] || [ "$name" = "exit-one-skill" ]; } && [ -z "$baseline" ]; then
         cat >"$out" <<EOF
 {"risk_assessment":{"score":7,"recommendation":"REVIEW"},"issues":[{"id":"SK001"}],"suppressed_count":0}
 EOF
@@ -298,9 +408,19 @@ EOF
 EOF
       fi
     else
-      cat >"$out" <<EOF
-{"runs":[{"tool":{"driver":{"name":"SkillSpector"}},"results":[{"ruleId":"$name"}]}]}
+      if [ "$name" = "invalid-sarif-skill" ]; then
+        printf '%s\n' 'not valid SARIF' >"$out"
+      else
+        cat >"$out" <<EOF
+{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"SkillSpector"}},"results":[{"ruleId":"$name"}]}]}
 EOF
+      fi
+    fi
+    if { [ "$name" = "exit-one-skill" ] || [ "$name" = "invalid-json-skill" ] || [ "$name" = "invalid-sarif-skill" ]; } && [ -z "$baseline" ]; then
+      exit 1
+    fi
+    if [ "$name" = "exit-two-skill" ]; then
+      exit 2
     fi
     ;;
   *)
