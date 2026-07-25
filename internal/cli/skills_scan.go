@@ -18,7 +18,11 @@ import (
 	"github.com/ellarock-software/dotpack/internal/skillspector"
 )
 
-const defaultBaselineReason = "Accepted SkillSpector finding after review."
+const (
+	defaultBaselineReason    = "Accepted SkillSpector finding after review."
+	skillSecurityBypassFlag  = "skill-bypass-security"
+	skillSecurityBypassUsage = "Bypass SkillSpector security scanning for an exact skill name; repeatable"
+)
 
 type scanSkillsOptions struct {
 	layout      sourceLayoutOptions
@@ -42,9 +46,10 @@ type baselineSkillsOptions struct {
 }
 
 type skillScanSelection struct {
-	SourceRoot string
-	SkillRoot  string
-	Targets    []skillScanTarget
+	SourceRoot       string
+	SkillRoot        string
+	Targets          []skillScanTarget
+	SecurityBypassed []skillScanTarget
 }
 
 type skillScanTarget struct {
@@ -60,25 +65,26 @@ type skillScanCommandOutput struct {
 }
 
 type skillScanSummary struct {
-	GeneratedAt     string                         `json:"generated_at"`
-	Command         string                         `json:"command"`
-	SourceRoot      string                         `json:"source_root"`
-	SkillRoot       string                         `json:"skill_root"`
-	BaseRef         string                         `json:"base_ref,omitempty"`
-	BaselineDir     string                         `json:"baseline_dir,omitempty"`
-	Runtime         skillspector.RuntimeMetadata   `json:"runtime"`
-	OutputFormat    string                         `json:"output_format"`
-	GateMode        string                         `json:"gate_mode"`
-	GatePass        bool                           `json:"gate_pass"`
-	ReportOnly      bool                           `json:"report_only"`
-	SkillsScanned   int                            `json:"skills_scanned"`
-	IssueCount      int                            `json:"issue_count"`
-	SuppressedCount int                            `json:"suppressed_count"`
-	MaxScore        float64                        `json:"max_score"`
-	Pass            bool                           `json:"pass"`
-	RunDirectory    string                         `json:"run_directory"`
-	SelectedSkills  []skillScanTargetSummary       `json:"selected_skills"`
-	FailingSkills   []skillScanFailingSkillSummary `json:"failing_skills"`
+	GeneratedAt            string                         `json:"generated_at"`
+	Command                string                         `json:"command"`
+	SourceRoot             string                         `json:"source_root"`
+	SkillRoot              string                         `json:"skill_root"`
+	BaseRef                string                         `json:"base_ref,omitempty"`
+	BaselineDir            string                         `json:"baseline_dir,omitempty"`
+	Runtime                skillspector.RuntimeMetadata   `json:"runtime"`
+	OutputFormat           string                         `json:"output_format"`
+	GateMode               string                         `json:"gate_mode"`
+	GatePass               bool                           `json:"gate_pass"`
+	ReportOnly             bool                           `json:"report_only"`
+	SkillsScanned          int                            `json:"skills_scanned"`
+	IssueCount             int                            `json:"issue_count"`
+	SuppressedCount        int                            `json:"suppressed_count"`
+	MaxScore               float64                        `json:"max_score"`
+	Pass                   bool                           `json:"pass"`
+	RunDirectory           string                         `json:"run_directory"`
+	SelectedSkills         []skillScanTargetSummary       `json:"selected_skills"`
+	SecurityBypassedSkills []skillScanTargetSummary       `json:"security_bypassed_skills,omitempty"`
+	FailingSkills          []skillScanFailingSkillSummary `json:"failing_skills"`
 }
 
 type skillScanTargetSummary struct {
@@ -174,6 +180,7 @@ the findings in the output while returning zero.`,
 	cmd.Flags().StringVar(&opts.format, "format", "terminal", "Aggregate output format (terminal|json|markdown|sarif)")
 	cmd.Flags().StringVar(&opts.outputPath, "output", "", "Write aggregate output to this path")
 	cmd.Flags().StringArrayVar(&opts.skillNames, "skill", nil, "Limit the run to a named skill; repeatable")
+	addSkillSecurityBypassFlag(cmd)
 	cmd.Flags().BoolVar(&opts.changed, "changed", false, "Only scan changed skills in the enclosing git checkout")
 	cmd.Flags().BoolVar(&opts.reportOnly, "report-only", false, "Report findings without failing the command")
 	return cmd
@@ -218,6 +225,21 @@ func addSkillScanLayoutFlags(cmd *cobra.Command, opts *sourceLayoutOptions) {
 	cmd.Flags().StringVar(&opts.skillsPath, "skills-path", "", "Override the skill discovery path relative to the source root")
 }
 
+func addSkillSecurityBypassFlag(cmd *cobra.Command) {
+	cmd.Flags().StringArray(skillSecurityBypassFlag, nil, skillSecurityBypassUsage)
+}
+
+func requestedSkillSecurityBypasses(cmd *cobra.Command) []string {
+	if cmd == nil || cmd.Flags().Lookup(skillSecurityBypassFlag) == nil {
+		return nil
+	}
+	names, err := cmd.Flags().GetStringArray(skillSecurityBypassFlag)
+	if err != nil {
+		return nil
+	}
+	return names
+}
+
 func runScanSkills(cmd *cobra.Command, source string, opts scanSkillsOptions) error {
 	if err := validateSkillScanFormat(opts.format); err != nil {
 		return err
@@ -230,13 +252,14 @@ func runScanSkills(cmd *cobra.Command, source string, opts scanSkillsOptions) er
 	if err != nil {
 		return err
 	}
-	if len(selection.Targets) == 0 {
+	selection, err = applySkillSecurityBypasses(selection, requestedSkillSecurityBypasses(cmd))
+	if err != nil {
+		return err
+	}
+	reportSkillSecurityBypasses(cmd, selection.SecurityBypassed)
+	if len(selection.Targets) == 0 && len(selection.SecurityBypassed) == 0 {
 		cmd.Println("scan-skills: no skills selected")
 		return nil
-	}
-	runtimeInfo, err := ensureSkillSpectorRuntime(d.DotpackHome)
-	if err != nil {
-		return fmt.Errorf("ensure SkillSpector runtime: %w", err)
 	}
 	runDir, err := createSkillSpectorRunDir(d.DotpackHome, "scan-skills")
 	if err != nil {
@@ -246,9 +269,20 @@ func runScanSkills(cmd *cobra.Command, source string, opts scanSkillsOptions) er
 	if err != nil {
 		return fmt.Errorf("resolve --baseline-dir: %w", err)
 	}
-	results, sarifPaths, err := runSkillScans(selection.Targets, runDir, baselineDir, opts.format, runtimeInfo)
-	if err != nil {
-		return err
+	var (
+		runtimeInfo skillspector.Runtime
+		results     []skillScanResult
+		sarifPaths  []string
+	)
+	if len(selection.Targets) > 0 {
+		runtimeInfo, err = ensureSkillSpectorRuntime(d.DotpackHome)
+		if err != nil {
+			return fmt.Errorf("ensure SkillSpector runtime: %w", err)
+		}
+		results, sarifPaths, err = runSkillScans(selection.Targets, runDir, baselineDir, opts.format, runtimeInfo)
+		if err != nil {
+			return err
+		}
 	}
 	aggregate := buildSkillScanOutput("scan-skills", selection, results, runDir, baselineDir, opts.baseRef, opts.changed, opts.format, opts.reportOnly, runtimeInfo.Metadata)
 	outputPath, err := resolveAggregateOutputPath(opts.outputPath, runDir, "scan-skills", opts.format)
@@ -530,6 +564,66 @@ func filterSkillScanSelection(selection skillScanSelection, skillNames []string,
 	return selection, nil
 }
 
+func applySkillSecurityBypasses(selection skillScanSelection, requested []string) (skillScanSelection, error) {
+	if len(requested) == 0 {
+		return selection, nil
+	}
+	byName := make(map[string]skillScanTarget, len(selection.Targets))
+	for _, target := range selection.Targets {
+		byName[target.Name] = target
+	}
+	requestedNames := make([]string, 0, len(requested))
+	seen := make(map[string]struct{}, len(requested))
+	for _, name := range requested {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		requestedNames = append(requestedNames, name)
+	}
+	sort.Strings(requestedNames)
+
+	missing := make([]string, 0)
+	bypassedByName := make(map[string]skillScanTarget, len(requestedNames))
+	for _, name := range requestedNames {
+		target, ok := byName[name]
+		if !ok {
+			missing = append(missing, name)
+			continue
+		}
+		bypassedByName[name] = target
+	}
+	if len(missing) > 0 {
+		return skillScanSelection{}, fmt.Errorf("skill security bypass name(s) not selected: %s", strings.Join(missing, ", "))
+	}
+
+	filtered := selection
+	filtered.Targets = make([]skillScanTarget, 0, len(selection.Targets)-len(bypassedByName))
+	filtered.SecurityBypassed = make([]skillScanTarget, 0, len(bypassedByName))
+	seenTargets := make(map[string]struct{}, len(selection.Targets))
+	for _, target := range selection.Targets {
+		if _, ok := seenTargets[target.Name]; ok {
+			continue
+		}
+		seenTargets[target.Name] = struct{}{}
+		if _, ok := bypassedByName[target.Name]; ok {
+			filtered.SecurityBypassed = append(filtered.SecurityBypassed, target)
+			continue
+		}
+		filtered.Targets = append(filtered.Targets, target)
+	}
+	sort.Slice(filtered.SecurityBypassed, func(i, j int) bool {
+		return filtered.SecurityBypassed[i].Name < filtered.SecurityBypassed[j].Name
+	})
+	return filtered, nil
+}
+
+func reportSkillSecurityBypasses(cmd *cobra.Command, bypassed []skillScanTarget) {
+	for _, target := range bypassed {
+		cmd.Printf("SECURITY BYPASS: SkillSpector skipped skill %q\n", target.Name)
+	}
+}
+
 func filterSkillTargetsByName(targets []skillScanTarget, skillNames []string) ([]skillScanTarget, error) {
 	if len(skillNames) == 0 {
 		return targets, nil
@@ -540,7 +634,12 @@ func filterSkillTargetsByName(targets []skillScanTarget, skillNames []string) ([
 	}
 	selected := make([]skillScanTarget, 0, len(skillNames))
 	missing := make([]string, 0)
+	seen := make(map[string]struct{}, len(skillNames))
 	for _, name := range skillNames {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
 		target, ok := byName[name]
 		if !ok {
 			missing = append(missing, name)
@@ -657,6 +756,17 @@ type skillScanResult struct {
 }
 
 func runSkillScans(targets []skillScanTarget, runDir, baselineDir, format string, runtimeInfo skillspector.Runtime) ([]skillScanResult, []string, error) {
+	return runSkillScansWithBaselinePolicy(targets, runDir, baselineDir, format, runtimeInfo, false)
+}
+
+// runSkillScansWithOptionalBaselines preserves the mandatory gate's ability to
+// scan safe skills without a baseline while applying reviewed baselines to the
+// individual skills that need them.
+func runSkillScansWithOptionalBaselines(targets []skillScanTarget, runDir, baselineDir, format string, runtimeInfo skillspector.Runtime) ([]skillScanResult, []string, error) {
+	return runSkillScansWithBaselinePolicy(targets, runDir, baselineDir, format, runtimeInfo, true)
+}
+
+func runSkillScansWithBaselinePolicy(targets []skillScanTarget, runDir, baselineDir, format string, runtimeInfo skillspector.Runtime, allowMissingBaselines bool) ([]skillScanResult, []string, error) {
 	results := make([]skillScanResult, 0, len(targets))
 	sarifPaths := make([]string, 0, len(targets))
 	for _, target := range targets {
@@ -665,7 +775,10 @@ func runSkillScans(targets []skillScanTarget, runDir, baselineDir, format string
 		if baselineDir != "" {
 			baselinePath = filepath.Join(baselineDir, target.Name+".yaml")
 			if !pathIsRegularFile(baselinePath) {
-				return nil, nil, fmt.Errorf("missing baseline file for %s: %s", target.Name, baselinePath)
+				if !allowMissingBaselines {
+					return nil, nil, fmt.Errorf("missing baseline file for %s: %s", target.Name, baselinePath)
+				}
+				baselinePath = ""
 			}
 		}
 		args := []string{"scan", target.SkillDir, "--no-llm", "--format", "json", "--output", jsonPath}
@@ -777,8 +890,17 @@ func buildSkillScanOutput(command string, selection skillScanSelection, results 
 			})
 		}
 	}
+	for _, target := range selection.SecurityBypassed {
+		out.Summary.SecurityBypassedSkills = append(out.Summary.SecurityBypassedSkills, skillScanTargetSummary{
+			Name: target.Name,
+			Path: target.RelativePath,
+		})
+	}
 	sort.Slice(out.Results, func(i, j int) bool { return out.Results[i].Skill < out.Results[j].Skill })
 	sort.Slice(out.Summary.SelectedSkills, func(i, j int) bool { return out.Summary.SelectedSkills[i].Name < out.Summary.SelectedSkills[j].Name })
+	sort.Slice(out.Summary.SecurityBypassedSkills, func(i, j int) bool {
+		return out.Summary.SecurityBypassedSkills[i].Name < out.Summary.SecurityBypassedSkills[j].Name
+	})
 	sort.Slice(out.Summary.FailingSkills, func(i, j int) bool { return out.Summary.FailingSkills[i].Name < out.Summary.FailingSkills[j].Name })
 	out.Summary.Pass = out.Summary.IssueCount == 0
 	out.Summary.GatePass = out.Summary.Pass
@@ -850,7 +972,7 @@ func writeSkillScanOutput(format, outputPath string, aggregate skillScanCommandO
 			return fmt.Errorf("write SkillSpector markdown output %s: %w", outputPath, err)
 		}
 	case "sarif":
-		raw, err := json.MarshalIndent(mergeSARIFReports(sarifPaths), "", "  ")
+		raw, err := json.MarshalIndent(mergeSARIFReports(sarifPaths, aggregate.Summary.SecurityBypassedSkills), "", "  ")
 		if err != nil {
 			return fmt.Errorf("encode SkillSpector SARIF output: %w", err)
 		}
@@ -868,6 +990,7 @@ func renderSkillScanMarkdown(aggregate skillScanCommandOutput) string {
 	b.WriteString("# SkillSpector Scan\n\n")
 	fmt.Fprintf(&b, "- Generated: %s\n", aggregate.Summary.GeneratedAt)
 	fmt.Fprintf(&b, "- Skills scanned: %d\n", aggregate.Summary.SkillsScanned)
+	fmt.Fprintf(&b, "- Skills bypassed: %d\n", len(aggregate.Summary.SecurityBypassedSkills))
 	fmt.Fprintf(&b, "- Unsuppressed issues: %d\n", aggregate.Summary.IssueCount)
 	fmt.Fprintf(&b, "- Suppressed findings: %d\n", aggregate.Summary.SuppressedCount)
 	fmt.Fprintf(&b, "- Gate mode: %s\n", aggregate.Summary.GateMode)
@@ -876,10 +999,16 @@ func renderSkillScanMarkdown(aggregate skillScanCommandOutput) string {
 	for _, result := range aggregate.Results {
 		fmt.Fprintf(&b, "- `%s`: score %.0f, recommendation %s, issues %d, suppressed %d\n", result.Skill, result.Score, result.Recommendation, result.IssueCount, result.Suppressed)
 	}
+	if len(aggregate.Summary.SecurityBypassedSkills) > 0 {
+		b.WriteString("\n## Security bypasses\n\n")
+		for _, target := range aggregate.Summary.SecurityBypassedSkills {
+			fmt.Fprintf(&b, "- `%s` (`%s`)\n", target.Name, target.Path)
+		}
+	}
 	return b.String()
 }
 
-func mergeSARIFReports(paths []string) map[string]any {
+func mergeSARIFReports(paths []string, bypassed []skillScanTargetSummary) map[string]any {
 	runs := make([]any, 0)
 	for _, path := range paths {
 		raw, err := os.ReadFile(path)
@@ -893,6 +1022,28 @@ func mergeSARIFReports(paths []string) map[string]any {
 			continue
 		}
 		runs = append(runs, payload.Runs...)
+	}
+	if len(bypassed) > 0 {
+		if len(runs) == 0 {
+			runs = append(runs, map[string]any{
+				"tool": map[string]any{
+					"driver": map[string]any{"name": "SkillSpector"},
+				},
+				"results": []any{},
+			})
+		}
+		for _, rawRun := range runs {
+			run, ok := rawRun.(map[string]any)
+			if !ok {
+				continue
+			}
+			properties, _ := run["properties"].(map[string]any)
+			if properties == nil {
+				properties = map[string]any{}
+				run["properties"] = properties
+			}
+			properties["security_bypassed_skills"] = bypassed
+		}
 	}
 	return map[string]any{
 		"$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -914,6 +1065,7 @@ func printSkillScanTerminalSummary(cmd *cobra.Command, aggregate skillScanComman
 	cmd.Printf("SkillSpector scan: %s\n", status)
 	cmd.Printf("Source root: %s\n", aggregate.Summary.SourceRoot)
 	cmd.Printf("Skills scanned: %d\n", aggregate.Summary.SkillsScanned)
+	cmd.Printf("Skills bypassed: %d\n", len(aggregate.Summary.SecurityBypassedSkills))
 	cmd.Printf("Unsuppressed issues: %d\n", aggregate.Summary.IssueCount)
 	cmd.Printf("Suppressed findings: %d\n", aggregate.Summary.SuppressedCount)
 	cmd.Printf("Gate mode: %s\n", aggregate.Summary.GateMode)

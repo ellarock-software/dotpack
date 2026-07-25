@@ -157,6 +157,7 @@ export the same findings directly.`,
 	cmd.Flags().BoolVar(&allowLossy, "allow-lossy", false, "Proceed even if the adapter cannot honour all source fields")
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing untracked files at the install target (collisions otherwise refuse)")
 	cmd.Flags().BoolVar(&runLifecycle, "run-lifecycle", false, "Run optional post-install lifecycle tasks after materialization")
+	addSkillSecurityBypassFlag(cmd)
 	return cmd
 }
 
@@ -170,8 +171,12 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 	if err != nil {
 		return err
 	}
+	bypassNames := requestedSkillSecurityBypasses(cmd)
+	if kind != resource.KindSkill && len(bypassNames) > 0 {
+		return fmt.Errorf("--%s is only valid when installing a skill", skillSecurityBypassFlag)
+	}
 	if kind == resource.KindSkill {
-		if err := ensureMandatorySkillScanForSource("install", source, d); err != nil {
+		if err := ensureMandatorySkillScanForSource(cmd, "install", source, bypassNames, d); err != nil {
 			return err
 		}
 	}

@@ -49,6 +49,7 @@ resource or dotpack install-all for a full canonical .agents tree.`,
 
 	cmd.Flags().StringVar(&outDir, "out", ".", "Output project directory that will receive .agents")
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing files in .agents")
+	addSkillSecurityBypassFlag(cmd)
 	return cmd
 }
 
@@ -77,7 +78,7 @@ func runImport(cmd *cobra.Command, sourceAgent, sourcePath, outDir string, force
 	if err != nil {
 		return err
 	}
-	if err := ensureMandatorySkillScanForSkillRoot("import", claudeRoot, filepath.Join(claudeRoot, "skills"), d); err != nil {
+	if err := ensureMandatorySkillScanForSkillRoot(cmd, "import", claudeRoot, filepath.Join(claudeRoot, "skills"), requestedSkillSecurityBypasses(cmd), d); err != nil {
 		return err
 	}
 	if err := imp.run(); err != nil {

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 
 	"gopkg.in/yaml.v3"
 )
@@ -228,7 +229,13 @@ func (s *Store) RemoveRecord(rec Record) error {
 		return err
 	}
 	for i := range m.Installs {
-		if SameIdentity(m.Installs[i], rec) {
+		// A target-scoped reader can select a legacy record whose display
+		// ID is duplicated elsewhere in the global manifest. Legacy
+		// IdentityKey intentionally contains only ID, which is insufficient
+		// for deletion: it could remove an unrelated legacy row rather than
+		// the record just reconciled. RemoveRecord receives the fully loaded
+		// record, so structural equality identifies the exact slot.
+		if reflect.DeepEqual(m.Installs[i], rec) {
 			m.Installs = append(m.Installs[:i], m.Installs[i+1:]...)
 			return s.save(m)
 		}

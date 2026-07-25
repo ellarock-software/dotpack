@@ -19,9 +19,12 @@ gofmt -w $(git ls-files '*.go')
 go mod tidy
 go vet ./...
 go test ./...
+go test -race ./...
 go build ./cmd/dotpack
 mkdocs build --strict --site-dir /tmp/dotpack-site
 gitleaks git . --config .gitleaks.toml --redact --no-banner
+go-licenses check ./... --disallowed_types=forbidden,restricted
+bash scripts/run-govulncheck.test.sh
 ```
 
 Install docs dependencies with:
@@ -29,6 +32,27 @@ Install docs dependencies with:
 ```sh
 pip3 install -r docs/requirements.txt
 ```
+
+### Vulnerability scan consent
+
+`govulncheck` queries `vuln.go.dev` and may send dependency metadata derived
+from the module graph. Submission is opt-in:
+
+```sh
+scripts/run-govulncheck.sh
+```
+
+The default invocation does not contact the service and exits nonzero. At the
+end of an interactive validation run, offer the user the option to authorize
+the query. After explicit approval, run:
+
+```sh
+scripts/run-govulncheck.sh --allow-vuln-db-submit
+```
+
+Autonomous runs may pass `--allow-vuln-db-submit` only when submission was
+authorized before the run. CI records that authorization explicitly in its
+workflow.
 
 ## Adding a New Host Adapter
 
@@ -101,12 +125,23 @@ dotpack includes a native SkillSpector path for scanning skill packages.
 - `dotpack baseline-skills` writes per-skill baseline YAML files that
   `scan-skills --baseline-dir ...` can apply later.
 - Automatic gates look for baseline files under
-  `<policy-root>/.dotpack/skillspector/baselines`.
+  `<policy-root>/.dotpack/skillspector/baselines`, then fall back to a
+  canonical agent-config gate at
+  `<policy-root>/.agents/tools/skillspector-gate/baselines`.
+- For automatic gates, a baseline is applied only to the individual skill that
+  has a reviewed baseline file; unbaselined skills are still scanned and must
+  pass with no findings.
+- Skill-bearing commands accept repeatable
+  `--skill-bypass-security <name>` arguments for explicit invocation-local
+  exceptions. Bypasses match exact selected skill names, fail closed for
+  unknown names, and are recorded in scan output.
 - The SkillSpector runtime is provisioned under `DOTPACK_DOTPACK_HOME` and
   pinned to a specific upstream commit/version.
 
 Use `scan-skills` when you want to inspect/export findings directly, and use
 `baseline-skills` to author reviewed suppressions for the automatic gate.
+Prefer a baseline over a full security bypass whenever the skill can still be
+scanned.
 
 ## Contribution Licensing
 

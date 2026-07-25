@@ -88,6 +88,20 @@ Automatic gates look for reviewed baselines under
 the enclosing project directory for canonical `.agents` and host-native roots
 such as `.claude`.
 
+### 7. Security bypasses are explicit and invocation-local
+
+All skill-bearing command surfaces expose a repeatable
+`--skill-bypass-security <name>` option for explicit exceptions. dotpack
+applies bypasses through one central filter after ordinary skill selection and
+before runtime provisioning. Names match exactly, unknown or unselected names
+fail closed, and accepted bypasses are emitted in human-readable and structured
+scan output. The bypass is invocation-local and is never persisted in a
+baseline, manifest, or configuration file.
+
+This deliberately differs from a baseline. A baseline preserves scanning and
+suppresses specific reviewed findings; a security bypass omits the named skill
+from the scan entirely. Baselines remain the preferred exception mechanism.
+
 ## Consequences
 
 - dotpack now exposes public, generic skill scanning without any dependency on

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,6 +48,60 @@ func TestResolveSkillScanSelectionRejectsNonSkillOverrides(t *testing.T) {
 	_, err := resolveSkillScanSelection(".", sourceLayoutOptions{kindPaths: []string{"agent=agents"}}, nil, false, "HEAD", dirs.Dirs{})
 	if err == nil || !strings.Contains(err.Error(), "only accepts skill discovery overrides") {
 		t.Fatalf("non-skill override err=%v; want skill discovery override error", err)
+	}
+}
+
+func TestApplySkillSecurityBypassesFiltersExactNamesAndDeduplicates(t *testing.T) {
+	selection := skillScanSelection{
+		Targets: []skillScanTarget{
+			{Name: "alpha", RelativePath: "skills/alpha"},
+			{Name: "beta", RelativePath: "skills/beta"},
+			{Name: "beta", RelativePath: "skills/beta"},
+		},
+	}
+
+	filtered, err := applySkillSecurityBypasses(selection, []string{"beta", "beta"})
+	if err != nil {
+		t.Fatalf("apply security bypasses: %v", err)
+	}
+	if len(filtered.Targets) != 1 || filtered.Targets[0].Name != "alpha" {
+		t.Fatalf("remaining targets = %+v; want alpha", filtered.Targets)
+	}
+	if len(filtered.SecurityBypassed) != 1 || filtered.SecurityBypassed[0].Name != "beta" {
+		t.Fatalf("bypassed targets = %+v; want beta once", filtered.SecurityBypassed)
+	}
+}
+
+func TestResolveSkillScanSelectionDeduplicatesRepeatedSkillNames(t *testing.T) {
+	projectRoot, _ := writeCanonicalSkill(t, "alpha", "alpha body\n")
+
+	selection, err := resolveSkillScanSelection(
+		projectRoot,
+		sourceLayoutOptions{},
+		[]string{"alpha", "alpha"},
+		false,
+		"HEAD",
+		dirs.Dirs{},
+	)
+	if err != nil {
+		t.Fatalf("resolve repeated skill names: %v", err)
+	}
+	if len(selection.Targets) != 1 || selection.Targets[0].Name != "alpha" {
+		t.Fatalf("selection targets = %+v; want alpha once", selection.Targets)
+	}
+}
+
+func TestApplySkillSecurityBypassesFailsClosedForUnselectedNames(t *testing.T) {
+	selection := skillScanSelection{
+		Targets: []skillScanTarget{{Name: "alpha", RelativePath: "skills/alpha"}},
+	}
+
+	filtered, err := applySkillSecurityBypasses(selection, []string{"missing", "alpha"})
+	if err == nil || !strings.Contains(err.Error(), "skill security bypass name(s) not selected: missing") {
+		t.Fatalf("security bypass err=%v; want missing-name failure", err)
+	}
+	if len(filtered.Targets) != 0 || len(filtered.SecurityBypassed) != 0 {
+		t.Fatalf("failed bypass returned a partially filtered selection: %+v", filtered)
 	}
 }
 
@@ -127,6 +182,92 @@ func TestScanSkillsCommandGatesOnFindingsAndHonorsReportOnly(t *testing.T) {
 	}
 	if !strings.Contains(reportOnly.String(), "Gate mode: report-only") {
 		t.Fatalf("scan-skills report-only output missing mode:\n%s", reportOnly.String())
+	}
+}
+
+func TestScanSkillsSecurityBypassScansRemainingSkillsAndAuditsBypass(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "bad-skill", "body\n")
+	mustWriteTestFile(t, filepath.Join(agentsRoot, "skills", "good-skill", "SKILL.md"), "---\nname: good-skill\ndescription: good\n---\nbody\n")
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
+	prepareFakeSkillSpectorRuntime(t, dotpackHome)
+
+	outputPath := filepath.Join(t.TempDir(), "skills.json")
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{
+		"scan-skills",
+		agentsRoot,
+		"--skill-bypass-security", "bad-skill",
+		"--format", "json",
+		"--output", outputPath,
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("scan-skills with security bypass: %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `SECURITY BYPASS: SkillSpector skipped skill "bad-skill"`) {
+		t.Fatalf("scan output missing security warning:\n%s", stdout.String())
+	}
+
+	raw, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read scan output: %v", err)
+	}
+	var aggregate skillScanCommandOutput
+	if err := json.Unmarshal(raw, &aggregate); err != nil {
+		t.Fatalf("parse scan output: %v", err)
+	}
+	if aggregate.Summary.SkillsScanned != 1 || len(aggregate.Results) != 1 || aggregate.Results[0].Skill != "good-skill" {
+		t.Fatalf("scan results = %+v; want only good-skill", aggregate)
+	}
+	if len(aggregate.Summary.SecurityBypassedSkills) != 1 || aggregate.Summary.SecurityBypassedSkills[0].Name != "bad-skill" {
+		t.Fatalf("security bypass audit = %+v; want bad-skill", aggregate.Summary.SecurityBypassedSkills)
+	}
+	if pathIsRegularFile(filepath.Join(aggregate.Summary.RunDirectory, "bad-skill.json")) {
+		t.Fatalf("bypassed skill unexpectedly produced a SkillSpector report")
+	}
+}
+
+func TestScanSkillsAllSecurityBypassedSkipsRuntimeProvisioning(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "bad-skill", "body\n")
+	dotpackHome := t.TempDir()
+	t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+	t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
+
+	restore := stubEnsureSkillSpectorRuntime(t, func(string) (skillspector.Runtime, error) {
+		return skillspector.Runtime{}, fmt.Errorf("runtime provisioning must not run")
+	})
+	defer restore()
+
+	outputPath := filepath.Join(t.TempDir(), "skills.json")
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{
+		"scan-skills",
+		agentsRoot,
+		"--skill-bypass-security", "bad-skill",
+		"--format", "json",
+		"--output", outputPath,
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("all-bypassed scan: %v\n%s", err, stdout.String())
+	}
+
+	raw, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read all-bypassed output: %v", err)
+	}
+	var aggregate skillScanCommandOutput
+	if err := json.Unmarshal(raw, &aggregate); err != nil {
+		t.Fatalf("parse all-bypassed output: %v", err)
+	}
+	if aggregate.Summary.SkillsScanned != 0 || !aggregate.Summary.Pass || len(aggregate.Summary.SecurityBypassedSkills) != 1 {
+		t.Fatalf("all-bypassed aggregate = %+v", aggregate.Summary)
 	}
 }
 

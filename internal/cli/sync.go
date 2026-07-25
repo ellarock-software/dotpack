@@ -87,6 +87,7 @@ Statuses:
 	cmd.Flags().StringVar(&targetRoot, "target", "", "Target project root (defaults to DOTPACK_PROJECT_HOME or CWD)")
 	cmd.Flags().StringVar(&agentName, "agent", "agents-cli", "Target host adapter for canonical comparison")
 	cmd.Flags().StringVar(&scopeName, "scope", "project", "Install scope for canonical comparison (project|user)")
+	addSkillSecurityBypassFlag(cmd)
 	return cmd
 }
 
@@ -108,6 +109,7 @@ settings/config files remains an importer concern.`,
 	cmd.Flags().StringVar(&fromRoot, "from", "", "Canonical .agents tree or project containing .agents")
 	cmd.Flags().StringVar(&targetRoot, "target", "", "Target project root (defaults to DOTPACK_PROJECT_HOME or CWD)")
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite canonical files when materialized output differs")
+	addSkillSecurityBypassFlag(cmd)
 	return cmd
 }
 
@@ -173,6 +175,7 @@ to inspect or export the same findings directly.`,
 	cmd.Flags().BoolVar(&allowLossy, "allow-lossy", false, "Proceed even if an adapter cannot honour all source fields")
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing untracked files at install targets")
 	cmd.Flags().BoolVar(&runLifecycle, "run-lifecycle", false, "Run optional post-install lifecycle tasks after a non-empty batch")
+	addSkillSecurityBypassFlag(cmd)
 	return cmd
 }
 
@@ -187,6 +190,11 @@ func addSourceLayoutFlags(cmd *cobra.Command, opts *sourceLayoutOptions) {
 }
 
 func runInventory(cmd *cobra.Command, fromRoot, targetRoot, agentName, scopeName string) error {
+	bypassNames := requestedSkillSecurityBypasses(cmd)
+	if fromRoot == "" && len(bypassNames) > 0 {
+		_, err := applySkillSecurityBypasses(skillScanSelection{}, bypassNames)
+		return err
+	}
 	d, target, err := dirsForTarget(targetRoot)
 	if err != nil {
 		return err
@@ -206,7 +214,7 @@ func runInventory(cmd *cobra.Command, fromRoot, targetRoot, agentName, scopeName
 		if err != nil {
 			return err
 		}
-		if err := ensureMandatorySkillScanForSourceLayout("inventory", sourceLayout{root: agentsRoot, paths: defaultCanonicalKindPaths(false)}, d); err != nil {
+		if err := ensureMandatorySkillScanForSourceLayout(cmd, "inventory", sourceLayout{root: agentsRoot, paths: defaultCanonicalKindPaths(false)}, bypassNames, d); err != nil {
 			return err
 		}
 		expected, err = expectedFilesFromCanonical(agentsRoot, agentName, scope, d)
@@ -254,10 +262,8 @@ func runSyncBack(cmd *cobra.Command, fromRoot, targetRoot string, force bool) er
 	if err != nil {
 		return err
 	}
-	for _, skillFile := range collectSyncBackSkillPrimaryFiles(items) {
-		if err := ensureMandatorySkillScanForSkillFile("sync-back", skillFile, target, d); err != nil {
-			return err
-		}
+	if err := ensureMandatorySkillScanForSkillFiles(cmd, "sync-back", collectSyncBackSkillPrimaryFiles(items), target, requestedSkillSecurityBypasses(cmd), d); err != nil {
+		return err
 	}
 
 	written := 0
@@ -339,7 +345,7 @@ func runInstallAll(cmd *cobra.Command, fromRoot, targetRoot, agentName, scopeNam
 	if err != nil {
 		return err
 	}
-	if err := ensureMandatorySkillScanForSourceLayout("install-all", layout, d); err != nil {
+	if err := ensureMandatorySkillScanForSourceLayout(cmd, "install-all", layout, requestedSkillSecurityBypasses(cmd), d); err != nil {
 		return err
 	}
 	scope, err := parseScope(scopeName)

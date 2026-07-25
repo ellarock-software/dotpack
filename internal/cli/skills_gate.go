@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+
+	"github.com/spf13/cobra"
 
 	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/resource"
@@ -15,13 +18,8 @@ var mandatorySkillScan = runMandatorySkillScan
 var ensureSkillSpectorRuntime = skillspector.EnsureRuntime
 
 func runMandatorySkillScan(command string, selection skillScanSelection, d dirs.Dirs) error {
-	if len(selection.Targets) == 0 {
+	if len(selection.Targets) == 0 && len(selection.SecurityBypassed) == 0 {
 		return nil
-	}
-
-	runtimeInfo, err := ensureSkillSpectorRuntime(d.DotpackHome)
-	if err != nil {
-		return fmt.Errorf("%s: ensure SkillSpector runtime: %w", command, err)
 	}
 
 	runDir, err := createSkillSpectorRunDir(d.DotpackHome, sanitizeSkillGateCommand(command))
@@ -34,9 +32,19 @@ func runMandatorySkillScan(command string, selection skillScanSelection, d dirs.
 		return fmt.Errorf("%s: resolve automatic baseline directory: %w", command, err)
 	}
 
-	results, _, err := runSkillScans(selection.Targets, runDir, baselineDir, "json", runtimeInfo)
-	if err != nil {
-		return fmt.Errorf("%s: run mandatory SkillSpector scan: %w", command, err)
+	var (
+		runtimeInfo skillspector.Runtime
+		results     []skillScanResult
+	)
+	if len(selection.Targets) > 0 {
+		runtimeInfo, err = ensureSkillSpectorRuntime(d.DotpackHome)
+		if err != nil {
+			return fmt.Errorf("%s: ensure SkillSpector runtime: %w", command, err)
+		}
+		results, _, err = runSkillScansWithOptionalBaselines(selection.Targets, runDir, baselineDir, "json", runtimeInfo)
+		if err != nil {
+			return fmt.Errorf("%s: run mandatory SkillSpector scan: %w", command, err)
+		}
 	}
 
 	aggregate := buildSkillScanOutput(command, selection, results, runDir, baselineDir, "", false, "json", false, runtimeInfo.Metadata)
@@ -51,32 +59,41 @@ func runMandatorySkillScan(command string, selection skillScanSelection, d dirs.
 	return nil
 }
 
-func ensureMandatorySkillScanForSource(command, source string, d dirs.Dirs) error {
+func runMandatorySkillScanWithSecurityBypasses(cmd *cobra.Command, command string, selection skillScanSelection, bypassNames []string, d dirs.Dirs) error {
+	filtered, err := applySkillSecurityBypasses(selection, bypassNames)
+	if err != nil {
+		return err
+	}
+	reportSkillSecurityBypasses(cmd, filtered.SecurityBypassed)
+	return mandatorySkillScan(command, filtered, d)
+}
+
+func ensureMandatorySkillScanForSource(cmd *cobra.Command, command, source string, bypassNames []string, d dirs.Dirs) error {
 	selection, err := resolveSkillScanSelection(source, sourceLayoutOptions{}, nil, false, "HEAD", d)
 	if err != nil {
 		return err
 	}
-	return mandatorySkillScan(command, selection, d)
+	return runMandatorySkillScanWithSecurityBypasses(cmd, command, selection, bypassNames, d)
 }
 
-func ensureMandatorySkillScanForSourceLayout(command string, layout sourceLayout, d dirs.Dirs) error {
-	return ensureMandatorySkillScanForSkillRoot(command, layout.root, layout.kindDir(resource.KindSkill), d)
+func ensureMandatorySkillScanForSourceLayout(cmd *cobra.Command, command string, layout sourceLayout, bypassNames []string, d dirs.Dirs) error {
+	return ensureMandatorySkillScanForSkillRoot(cmd, command, layout.root, layout.kindDir(resource.KindSkill), bypassNames, d)
 }
 
-func ensureMandatorySkillScanForSkillRoot(command, sourceRoot, skillRoot string, d dirs.Dirs) error {
+func ensureMandatorySkillScanForSkillRoot(cmd *cobra.Command, command, sourceRoot, skillRoot string, bypassNames []string, d dirs.Dirs) error {
 	selection, err := buildSkillScanSelection(sourceRoot, skillRoot)
 	if err != nil {
 		return err
 	}
-	return mandatorySkillScan(command, selection, d)
+	return runMandatorySkillScanWithSecurityBypasses(cmd, command, selection, bypassNames, d)
 }
 
-func ensureMandatorySkillScanForSkillFile(command, skillFile, sourceRoot string, d dirs.Dirs) error {
-	selection, err := buildSingleSkillScanSelection(skillFile, sourceRoot)
+func ensureMandatorySkillScanForSkillFiles(cmd *cobra.Command, command string, skillFiles []string, sourceRoot string, bypassNames []string, d dirs.Dirs) error {
+	selection, err := buildSkillScanSelectionForFiles(skillFiles, sourceRoot)
 	if err != nil {
 		return err
 	}
-	return mandatorySkillScan(command, selection, d)
+	return runMandatorySkillScanWithSecurityBypasses(cmd, command, selection, bypassNames, d)
 }
 
 func buildSkillScanSelection(sourceRoot, skillRoot string) (skillScanSelection, error) {
@@ -91,18 +108,25 @@ func buildSkillScanSelection(sourceRoot, skillRoot string) (skillScanSelection, 
 	}, nil
 }
 
-func buildSingleSkillScanSelection(skillFile, sourceRoot string) (skillScanSelection, error) {
-	if strings.TrimSpace(sourceRoot) == "" {
-		sourceRoot = inferSingleSkillSourceRoot(skillFile)
+func buildSkillScanSelectionForFiles(skillFiles []string, sourceRoot string) (skillScanSelection, error) {
+	targets := make([]skillScanTarget, 0, len(skillFiles))
+	seen := make(map[string]string, len(skillFiles))
+	for _, skillFile := range skillFiles {
+		target, err := buildSkillScanTarget(skillFile, sourceRoot)
+		if err != nil {
+			return skillScanSelection{}, err
+		}
+		if prior, ok := seen[target.Name]; ok {
+			return skillScanSelection{}, fmt.Errorf("duplicate skill name %q at %s and %s", target.Name, prior, target.SkillDir)
+		}
+		seen[target.Name] = target.SkillDir
+		targets = append(targets, target)
 	}
-	target, err := buildSkillScanTarget(skillFile, sourceRoot)
-	if err != nil {
-		return skillScanSelection{}, err
-	}
+	sort.Slice(targets, func(i, j int) bool { return targets[i].Name < targets[j].Name })
 	return skillScanSelection{
 		SourceRoot: sourceRoot,
-		SkillRoot:  filepath.Dir(skillFile),
-		Targets:    []skillScanTarget{target},
+		SkillRoot:  sourceRoot,
+		Targets:    targets,
 	}, nil
 }
 
@@ -115,18 +139,23 @@ func resolveAutomaticBaselineDir(sourceRoot string) (string, error) {
 	case ".agents", ".claude", ".gemini", ".antigravity", ".opencode", ".hermes":
 		policyRoot = filepath.Dir(policyRoot)
 	}
-	candidate := filepath.Join(policyRoot, ".dotpack", "skillspector", "baselines")
-	info, err := os.Stat(candidate)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
+	for _, candidate := range []string{
+		filepath.Join(policyRoot, ".dotpack", "skillspector", "baselines"),
+		filepath.Join(policyRoot, ".agents", "tools", "skillspector-gate", "baselines"),
+	} {
+		info, err := os.Stat(candidate)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return "", fmt.Errorf("stat %s: %w", candidate, err)
 		}
-		return "", fmt.Errorf("stat %s: %w", candidate, err)
+		if !info.IsDir() {
+			return "", fmt.Errorf("%s exists but is not a directory", candidate)
+		}
+		return candidate, nil
 	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("%s exists but is not a directory", candidate)
-	}
-	return candidate, nil
+	return "", nil
 }
 
 func sanitizeSkillGateCommand(command string) string {
