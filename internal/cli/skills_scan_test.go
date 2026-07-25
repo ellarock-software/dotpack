@@ -56,6 +56,7 @@ func TestApplySkillSecurityBypassesFiltersExactNamesAndDeduplicates(t *testing.T
 		Targets: []skillScanTarget{
 			{Name: "alpha", RelativePath: "skills/alpha"},
 			{Name: "beta", RelativePath: "skills/beta"},
+			{Name: "beta", RelativePath: "skills/beta"},
 		},
 	}
 
@@ -68,6 +69,25 @@ func TestApplySkillSecurityBypassesFiltersExactNamesAndDeduplicates(t *testing.T
 	}
 	if len(filtered.SecurityBypassed) != 1 || filtered.SecurityBypassed[0].Name != "beta" {
 		t.Fatalf("bypassed targets = %+v; want beta once", filtered.SecurityBypassed)
+	}
+}
+
+func TestResolveSkillScanSelectionDeduplicatesRepeatedSkillNames(t *testing.T) {
+	projectRoot, _ := writeCanonicalSkill(t, "alpha", "alpha body\n")
+
+	selection, err := resolveSkillScanSelection(
+		projectRoot,
+		sourceLayoutOptions{},
+		[]string{"alpha", "alpha"},
+		false,
+		"HEAD",
+		dirs.Dirs{},
+	)
+	if err != nil {
+		t.Fatalf("resolve repeated skill names: %v", err)
+	}
+	if len(selection.Targets) != 1 || selection.Targets[0].Name != "alpha" {
+		t.Fatalf("selection targets = %+v; want alpha once", selection.Targets)
 	}
 }
 

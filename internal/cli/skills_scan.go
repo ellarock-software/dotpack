@@ -600,7 +600,12 @@ func applySkillSecurityBypasses(selection skillScanSelection, requested []string
 	filtered := selection
 	filtered.Targets = make([]skillScanTarget, 0, len(selection.Targets)-len(bypassedByName))
 	filtered.SecurityBypassed = make([]skillScanTarget, 0, len(bypassedByName))
+	seenTargets := make(map[string]struct{}, len(selection.Targets))
 	for _, target := range selection.Targets {
+		if _, ok := seenTargets[target.Name]; ok {
+			continue
+		}
+		seenTargets[target.Name] = struct{}{}
 		if _, ok := bypassedByName[target.Name]; ok {
 			filtered.SecurityBypassed = append(filtered.SecurityBypassed, target)
 			continue
@@ -629,7 +634,12 @@ func filterSkillTargetsByName(targets []skillScanTarget, skillNames []string) ([
 	}
 	selected := make([]skillScanTarget, 0, len(skillNames))
 	missing := make([]string, 0)
+	seen := make(map[string]struct{}, len(skillNames))
 	for _, name := range skillNames {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
 		target, ok := byName[name]
 		if !ok {
 			missing = append(missing, name)
