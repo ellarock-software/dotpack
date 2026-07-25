@@ -229,6 +229,10 @@ dotpack ships a native SkillSpector integration for skill packages.
   `sync-back` when skills are involved.
 - `scan-skills` is static-only by default and gates by default: unsuppressed
   findings return a non-zero exit code unless you pass `--report-only`.
+- Every skill-bearing command accepts repeatable
+  `--skill-bypass-security <name>` arguments when a named skill must not be
+  scanned. Bypasses are invocation-local, exact-name matched, prominently
+  reported, and fail closed when a requested name is not selected.
 - `baseline-skills` writes per-skill baseline files as
   `<baseline-dir>/<skill-name>.yaml`.
 - Automatic skill gates look for baselines at
@@ -253,12 +257,15 @@ BASELINES=/path/to/project/.dotpack/skillspector/baselines
 dotpack baseline-skills "$CATALOG" --baseline-dir "$BASELINES"
 dotpack scan-skills "$CATALOG" --baseline-dir "$BASELINES"
 dotpack scan-skills "$CATALOG" --changed --base origin/main --skill reviewer
+dotpack scan-skills "$CATALOG" --skill-bypass-security legacy-skill
 dotpack scan-skills /path/to/catalog --skills-path skills --format json --output /tmp/skills.json
 ```
 
 Use `scan-skills` when you want to inspect or export the same findings
 directly, and `baseline-skills` when you need to author reviewed suppressions
-for the automatic gate.
+for the automatic gate. Prefer a baseline when a skill can still be scanned:
+baselines suppress specific reviewed findings, while
+`--skill-bypass-security` prevents SkillSpector from scanning the named skill.
 
 ## Optional Lifecycle Verification
 

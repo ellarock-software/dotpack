@@ -150,8 +150,11 @@ jobs:
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
+      - name: Test vulnerability scan consent boundary
+        run: bash scripts/run-govulncheck.test.sh
+
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: scripts/run-govulncheck.sh --allow-vuln-db-submit
 
   build:
     name: Build (${{ matrix.os }})

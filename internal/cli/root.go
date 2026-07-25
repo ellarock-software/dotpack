@@ -46,12 +46,15 @@ Use install to translate one resource into a host, or install-all to
 materialize a full canonical .agents tree. Skill-bearing workflows run a
 mandatory static SkillSpector gate automatically; use scan-skills /
 baseline-skills when you want to inspect or manage that same scan surface
-directly. Use import to convert a native host tree into .agents; import
+directly. Skill-bearing commands accept the explicit, repeatable
+--skill-bypass-security <name> flag for invocation-local exceptions. Use
+import to convert a native host tree into .agents; import
 currently supports Claude Code input.`, shippedAdaptersLine()),
 		Example: `  dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent antigravity-cli --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent agents-cli --scope project
   dotpack scan-skills .agents --baseline-dir ./.dotpack/skillspector/baselines
+  dotpack scan-skills .agents --skill-bypass-security legacy-skill
   dotpack import claude-code . --out .`,
 		SilenceUsage:  true,
 		SilenceErrors: true,

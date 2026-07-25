@@ -48,3 +48,9 @@ node scripts/validate-learning-system.mjs --root .
 
 Before calling implementation work complete, run the broad checks from
 `CONTRIBUTING.md`, including Go tests, docs build, and secret scanning.
+
+`govulncheck` may send dependency metadata to `vuln.go.dev`. Do not submit by
+default. At the end of an interactive validation run, offer the user the option
+to authorize submission. Run
+`scripts/run-govulncheck.sh --allow-vuln-db-submit` only after explicit
+approval. Autonomous runs require that same flag and prior authorization.

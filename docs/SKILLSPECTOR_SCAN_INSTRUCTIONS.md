@@ -50,6 +50,9 @@ dotpack scan-skills "$CATALOG" --format sarif --output /tmp/skills.sarif
   `<policy-root>/.dotpack/skillspector/baselines`. For canonical `.agents` or
   host-native roots such as `.claude`, `policy-root` is the parent project
   directory.
+- `install`, `install-all`, `inventory`, `import`, and `sync-back` accept the
+  repeatable `--skill-bypass-security <name>` flag. Exact selected skill names
+  are omitted from the automatic scan for that invocation.
 
 ## Direct Commands
 
@@ -59,9 +62,32 @@ dotpack scan-skills "$CATALOG" --format sarif --output /tmp/skills.sarif
   exits non-zero.
 - Pass `--report-only` when you want the findings in the output without a
   non-zero exit.
+- Pass repeatable `--skill-bypass-security <name>` arguments only when a named
+  selected skill must not be scanned. Unknown or unselected names fail closed.
 - When `--baseline-dir` is set, dotpack expects a file named
   `<skill-name>.yaml` for every selected skill and fails closed if one is
   missing.
+
+## Security Bypasses
+
+Security bypasses are explicit, invocation-local exceptions:
+
+```sh
+dotpack scan-skills "$CATALOG" \
+  --skill-bypass-security legacy-a \
+  --skill-bypass-security legacy-b
+```
+
+Every accepted bypass prints a `SECURITY BYPASS` warning. JSON aggregates
+record the bypassed names and paths under `security_bypassed_skills`; Markdown
+and SARIF exports carry the same audit information. If other skills remain
+selected, dotpack scans them normally. If every selected skill is bypassed,
+dotpack skips SkillSpector runtime provisioning but still writes the aggregate
+audit artifact.
+
+Prefer reviewed baselines whenever scanning remains possible. A baseline
+suppresses specific known findings after SkillSpector scans a skill;
+`--skill-bypass-security` prevents the named skill from being scanned at all.
 
 ## Runtime
 

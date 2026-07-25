@@ -99,6 +99,7 @@ func TestScanSkillsHelpDocumentsSourceShapesAndGateMode(t *testing.T) {
 		"a canonical .agents tree",
 		"returns non-zero when unsuppressed findings remain",
 		"--report-only",
+		"--skill-bypass-security",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("scan-skills help missing %q:\n%s", want, got)
