@@ -119,7 +119,7 @@ compatible sub-adapters.
 | `dotpack reset-materialized` | Remove materialized host output owned by dotpack for a target; optionally remove scanned untracked file-drop output. |
 | `dotpack import` | Convert a native host tree into canonical `.agents`; currently supports Claude Code input. |
 | `dotpack list` | List installed manifest records in stable manifest order. |
-| `dotpack uninstall <name-or-id>` | Remove one installed resource by full ID or short name plus `--agent` and `--kind`. |
+| `dotpack uninstall <name-or-id>` | Remove one installed resource by full ID or short name plus `--agent` and `--kind`; duplicate project IDs resolve from CWD or `--target`. |
 | `dotpack reconcile` | Read-only manifest drift report for missing files, changed file hashes, or missing merged keys. |
 | `dotpack prune` | Remove manifest records whose recorded claims are all absent from disk. |
 | `dotpack version` | Print the dotpack version. |
@@ -201,6 +201,15 @@ dotpack stores install provenance at `~/.dotpack/installs.yaml`, or under
 Manifest records include source paths and hashes, canonical and target roots,
 target host, kind, scope, file claims, and merged config keys. dotpack removes
 only files and config keys it can prove it wrote.
+
+Reinstalling the same resource ID into the same target root reconciles
+dotpack-owned file output to the new plan: files claimed by the prior record
+but absent from the new source are removed. Untracked files are not removed.
+
+`list` intentionally reads the global manifest and shows records from every
+target root. `reconcile` is provenance-driven: it checks recorded claims for
+the current project but does not scan for unclaimed files. Use `inventory` when
+you need tracked, drifted, missing, and untracked filesystem classification.
 
 For a project with a canonical `.agents` tree:
 

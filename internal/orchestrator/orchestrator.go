@@ -219,6 +219,11 @@ func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts Insta
 		}
 	}
 
+	staleReinstallFiles, err := filesDroppedByReinstall(i.manifest, rec)
+	if err != nil {
+		return InstallResult{}, fmt.Errorf("re-install file reconciliation: %w", err)
+	}
+
 	// Partial-write orphan handling: if file K of N fails mid-loop,
 	// files 1..K-1 are on disk with no manifest record. Pre-flight on
 	// re-install will (correctly) flag them as collisions so the user can
@@ -259,6 +264,11 @@ func (i *Installer) Install(r resource.Resource, scope adapter.Scope, opts Insta
 			return InstallResult{}, fmt.Errorf("apply merged key %s in %s: %w", mk.Path, mk.File, err)
 		}
 	}
+	for _, path := range staleReinstallFiles {
+		if err := removeStaleFile(adapter.FileRemove{Path: path}); err != nil {
+			return InstallResult{}, fmt.Errorf("remove file dropped by re-install %s: %w", path, err)
+		}
+	}
 
 	if err := i.manifest.Upsert(rec); err != nil {
 		return InstallResult{}, fmt.Errorf("upsert manifest: %w", err)
@@ -285,6 +295,14 @@ type UninstallResult struct {
 	RemovedPaths     []string
 	MissingPaths     []string
 	TargetDirRemoved bool
+}
+
+// UninstallOptions controls how duplicate display IDs are resolved. TargetRoot
+// is used as a CWD-like disambiguation hint by default. RequireTargetMatch
+// makes an explicit --target restrictive even when only one record has the ID.
+type UninstallOptions struct {
+	TargetRoot         string
+	RequireTargetMatch bool
 }
 
 // Uninstall is the inverse of Install: remove the files this install
@@ -316,22 +334,24 @@ type UninstallResult struct {
 // clean stale records whose claims disappeared; they deliberately do
 // not delete record-less files or config fragments.
 func (r *Reader) Uninstall(id string) (UninstallResult, error) {
+	return r.UninstallWithOptions(id, UninstallOptions{})
+}
+
+// UninstallWithOptions removes one record selected by ID and optional target
+// root. Duplicate IDs are resolved to the record under TargetRoot; an explicit
+// target can also require that a unique ID belongs to that target.
+func (r *Reader) UninstallWithOptions(id string, opts UninstallOptions) (UninstallResult, error) {
 	m, err := r.manifest.Load()
 	if err != nil {
 		return UninstallResult{}, fmt.Errorf("load manifest: %w", err)
 	}
-	var rec manifest.Record
-	matches := 0
-	for _, r := range m.Installs {
-		if r.ID == id {
-			rec = r
-			matches++
+	var matches []manifest.Record
+	for _, rec := range m.Installs {
+		if rec.ID == id {
+			matches = append(matches, rec)
 		}
 	}
-	if matches > 1 {
-		return UninstallResult{}, fmt.Errorf("install ID %q is ambiguous across target roots; use reset-materialized with --target or prune the manifest", id)
-	}
-	if matches == 0 {
+	if len(matches) == 0 {
 		// Helpful when the user composed the ID from short-name + flag
 		// defaults: list any records sharing the trailing short-name so
 		// "did you mean --kind agent?" is one glance away. Pre-agent
@@ -360,6 +380,26 @@ func (r *Reader) Uninstall(id string) (UninstallResult, error) {
 		}
 		return UninstallResult{}, fmt.Errorf("no install with ID %q", id)
 	}
+
+	selected := matches
+	if opts.TargetRoot != "" && (len(matches) > 1 || opts.RequireTargetMatch) {
+		selected = nil
+		for _, rec := range matches {
+			if recordMatchesTarget(rec, opts.TargetRoot) {
+				selected = append(selected, rec)
+			}
+		}
+	}
+	if len(selected) == 0 {
+		if opts.RequireTargetMatch {
+			return UninstallResult{}, fmt.Errorf("no install with ID %q under target %s", id, cleanAbs(opts.TargetRoot))
+		}
+		return UninstallResult{}, fmt.Errorf("install ID %q is ambiguous across target roots; pass --target or run from the installed project", id)
+	}
+	if len(selected) > 1 {
+		return UninstallResult{}, fmt.Errorf("install ID %q is ambiguous across target roots; pass --target or run from the installed project", id)
+	}
+	rec := selected[0]
 
 	res, err := r.uninstallRecord(rec)
 	if err != nil {
@@ -476,6 +516,48 @@ func removeStaleFile(rm adapter.FileRemove) error {
 		return err
 	}
 	return nil
+}
+
+// filesDroppedByReinstall returns files owned by the prior record for this
+// exact install slot that the new record no longer claims. Re-install is a
+// reconciliation operation for dotpack-owned output: prior-minus-current
+// files must be removed so a source package cannot leave superseded support
+// files behind. Paths owned by any other manifest identity are never returned.
+func filesDroppedByReinstall(store *manifest.Store, rec manifest.Record) ([]string, error) {
+	m, err := store.Load()
+	if err != nil {
+		return nil, err
+	}
+	current := make(map[string]struct{}, len(rec.Files))
+	for _, path := range rec.Files {
+		current[filepath.Clean(path)] = struct{}{}
+	}
+	claimedByOther := map[string]struct{}{}
+	for _, existing := range m.Installs {
+		if manifest.SameIdentity(existing, rec) {
+			continue
+		}
+		for _, path := range existing.Files {
+			claimedByOther[filepath.Clean(path)] = struct{}{}
+		}
+	}
+	var stale []string
+	for _, existing := range m.Installs {
+		if !manifest.SameIdentity(existing, rec) {
+			continue
+		}
+		for _, path := range existing.Files {
+			cleaned := filepath.Clean(path)
+			if _, keep := current[cleaned]; keep {
+				continue
+			}
+			if _, shared := claimedByOther[cleaned]; !shared {
+				stale = append(stale, path)
+			}
+		}
+	}
+	sort.Strings(stale)
+	return stale, nil
 }
 
 // buildRecord composes a manifest.Record from the install context. ID

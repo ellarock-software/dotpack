@@ -170,6 +170,11 @@ func (u *UmbrellaInstaller) Install(r resource.Resource, scope adapter.Scope, op
 		}
 	}
 
+	staleReinstallFiles, err := filesDroppedByReinstall(u.manifest, rec)
+	if err != nil {
+		return InstallResult{}, fmt.Errorf("re-install file reconciliation: %w", err)
+	}
+
 	if err := unmergeExistingAppendsForRecord(u.manifest, rec); err != nil {
 		return InstallResult{}, fmt.Errorf("re-install cleanup: %w", err)
 	}
@@ -186,6 +191,11 @@ func (u *UmbrellaInstaller) Install(r resource.Resource, scope adapter.Scope, op
 	for _, mk := range plan.MergedKeys {
 		if err := applyMergedKey(mk); err != nil {
 			return InstallResult{}, fmt.Errorf("apply merged key %s in %s: %w", mk.Path, mk.File, err)
+		}
+	}
+	for _, path := range staleReinstallFiles {
+		if err := removeStaleFile(adapter.FileRemove{Path: path}); err != nil {
+			return InstallResult{}, fmt.Errorf("remove file dropped by re-install %s: %w", path, err)
 		}
 	}
 

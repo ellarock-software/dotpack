@@ -333,6 +333,46 @@ func TestInstall_Skill_OnAgentsCli_ProjectScope(t *testing.T) {
 	}
 }
 
+func TestInstall_SkillOnAgentsCli_ReinstallRemovesFilesAbsentFromNewSource(t *testing.T) {
+	setupAgentsCliEnv(t)
+	projectHome := os.Getenv("DOTPACK_PROJECT_HOME")
+
+	writeSource := func(root string, includeExtra bool) string {
+		t.Helper()
+		skillDir := filepath.Join(root, "demo")
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("mkdir source skill: %v", err)
+		}
+		skillPath := filepath.Join(skillDir, "SKILL.md")
+		if err := os.WriteFile(skillPath, []byte("---\nname: demo\ndescription: d\n---\n# demo\n"), 0o644); err != nil {
+			t.Fatalf("write source SKILL.md: %v", err)
+		}
+		if includeExtra {
+			if err := os.WriteFile(filepath.Join(skillDir, "extra.py"), []byte("print(1)\n"), 0o644); err != nil {
+				t.Fatalf("write source support file: %v", err)
+			}
+		}
+		return skillPath
+	}
+
+	sourceA := writeSource(t.TempDir(), true)
+	sourceB := writeSource(t.TempDir(), false)
+	for _, source := range []string{sourceA, sourceB} {
+		cmd := NewRootCmd()
+		cmd.SetOut(io_DiscardWriter())
+		cmd.SetErr(io_DiscardWriter())
+		cmd.SetArgs([]string{"install", source, "--agent", "agents-cli", "--scope", "project"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("install %s: %v", source, err)
+		}
+	}
+
+	extra := filepath.Join(projectHome, ".agents", "skills", "demo", "extra.py")
+	if _, err := os.Stat(extra); !os.IsNotExist(err) {
+		t.Fatalf("reinstall must remove prior-owned file absent from new source; stat %s: %v", extra, err)
+	}
+}
+
 // TestInstall_SkillOnCodexThenAgentsCli_ForceProducesDualRecords pins
 // the recovery contract for the cross-flag forced-overwrite case.
 // Sequence: `--agent codex foo` writes codex:skill:foo → file at

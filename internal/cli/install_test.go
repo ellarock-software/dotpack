@@ -342,6 +342,67 @@ func TestUninstall_OutputReportsKeptDirectoryWhenNotEmpty(t *testing.T) {
 	}
 }
 
+func TestUninstall_DuplicateIDAcrossProjectRootsSelectsOneTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		useTargetFlag bool
+	}{
+		{name: "defaults to project home"},
+		{name: "explicit target overrides project home", useTargetFlag: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dotpackHome := t.TempDir()
+			targetA := t.TempDir()
+			targetB := t.TempDir()
+			t.Setenv("DOTPACK_DOTPACK_HOME", dotpackHome)
+			t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
+
+			sourceDir := filepath.Join(t.TempDir(), "demo")
+			if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+				t.Fatalf("mkdir source skill: %v", err)
+			}
+			source := filepath.Join(sourceDir, "SKILL.md")
+			if err := os.WriteFile(source, []byte("---\nname: demo\ndescription: d\n---\n# demo\n"), 0o644); err != nil {
+				t.Fatalf("write source skill: %v", err)
+			}
+
+			for _, target := range []string{targetA, targetB} {
+				t.Setenv("DOTPACK_PROJECT_HOME", target)
+				install := NewRootCmd()
+				install.SetOut(io_DiscardWriter())
+				install.SetErr(io_DiscardWriter())
+				install.SetArgs([]string{"install", source, "--agent", "claude-code", "--scope", "project"})
+				if err := install.Execute(); err != nil {
+					t.Fatalf("install into %s: %v", target, err)
+				}
+			}
+
+			args := []string{"uninstall", "demo", "--agent", "claude-code", "--kind", "skill"}
+			if tc.useTargetFlag {
+				t.Setenv("DOTPACK_PROJECT_HOME", t.TempDir())
+				args = append(args, "--target", targetA)
+			} else {
+				t.Setenv("DOTPACK_PROJECT_HOME", targetA)
+			}
+			uninstall := NewRootCmd()
+			uninstall.SetOut(io_DiscardWriter())
+			uninstall.SetErr(io_DiscardWriter())
+			uninstall.SetArgs(args)
+			if err := uninstall.Execute(); err != nil {
+				t.Fatalf("uninstall target A: %v", err)
+			}
+
+			relative := filepath.Join(".claude", "skills", "demo", "SKILL.md")
+			if _, err := os.Stat(filepath.Join(targetA, relative)); !os.IsNotExist(err) {
+				t.Errorf("selected target file should be removed; stat err: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(targetB, relative)); err != nil {
+				t.Errorf("other target file must remain: %v", err)
+			}
+		})
+	}
+}
+
 func TestUninstall_UnknownID_Errors(t *testing.T) {
 	// Loud error when the user asks to uninstall something that isn't
 	// in the manifest — exit non-zero with a message naming the

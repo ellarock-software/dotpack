@@ -181,7 +181,7 @@ func TestPruneReconcileListAndUninstallCLIBranches(t *testing.T) {
 	if err := runPrune(&cobra.Command{}); err == nil {
 		t.Fatal("runPrune should return manifest parse error")
 	}
-	if err := runUninstall(&cobra.Command{}, "", "", "skill"); err == nil || !strings.Contains(err.Error(), "provide either") {
+	if err := runUninstall(&cobra.Command{}, "", "", "skill", ""); err == nil || !strings.Contains(err.Error(), "provide either") {
 		t.Fatalf("runUninstall resolve err=%v; want provide either", err)
 	}
 

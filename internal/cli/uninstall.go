@@ -7,15 +7,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/manifest"
 	"github.com/ellarock-software/dotpack/internal/orchestrator"
 )
 
 func newUninstallCmd() *cobra.Command {
 	var (
-		agentName string
-		kindName  string
+		agentName  string
+		kindName   string
+		targetRoot string
 	)
 
 	cmd := &cobra.Command{
@@ -31,21 +31,27 @@ Accepts either a full ID (host:kind:name) or a short name composed with
   dotpack uninstall claude-code:skill:my-skill
   dotpack uninstall my-skill --agent claude-code --kind skill
 
+When the same ID is installed into multiple project roots, dotpack selects the
+record for DOTPACK_PROJECT_HOME or CWD. Pass --target to select another root
+explicitly.
+
 Missing files are tolerated (idempotent re-uninstall finishes a previously
 crashed run). Unknown IDs are a loud error.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUninstall(cmd, args[0], agentName, kindName)
+			return runUninstall(cmd, args[0], agentName, kindName, targetRoot)
 		},
 	}
 
 	cmd.Flags().StringVar(&agentName, "agent", "claude-code", "Target host adapter (used when arg is a short name)")
 	cmd.Flags().StringVar(&kindName, "kind", "skill", "Resource kind (used when arg is a short name)")
+	cmd.Flags().StringVar(&targetRoot, "target", "", "Target project root (defaults to DOTPACK_PROJECT_HOME or CWD when disambiguation is needed)")
 	return cmd
 }
 
-func runUninstall(cmd *cobra.Command, handle, agentName, kindName string) error {
-	d, err := dirs.FromEnv()
+func runUninstall(cmd *cobra.Command, handle, agentName, kindName, targetRoot string) error {
+	explicitTarget := targetRoot != ""
+	d, target, err := dirsForTarget(targetRoot)
 	if err != nil {
 		return err
 	}
@@ -66,7 +72,10 @@ func runUninstall(cmd *cobra.Command, handle, agentName, kindName string) error 
 	// no adapter is constructed at all on the uninstall path.
 	r := orchestrator.NewReader(d, mf)
 
-	res, err := r.Uninstall(id)
+	res, err := r.UninstallWithOptions(id, orchestrator.UninstallOptions{
+		TargetRoot:         target,
+		RequireTargetMatch: explicitTarget,
+	})
 	if err != nil {
 		return err
 	}

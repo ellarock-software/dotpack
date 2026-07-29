@@ -64,6 +64,34 @@ func TestInstallerErrorBranchesAndBuildRecordMetadata(t *testing.T) {
 	}
 }
 
+func TestInstallerReinstallKeepsDroppedFileClaimedByAnotherInstall(t *testing.T) {
+	tmp := t.TempDir()
+	store := manifest.NewStore(filepath.Join(tmp, "installs.yaml"))
+	primary := filepath.Join(tmp, "SKILL.md")
+	extra := filepath.Join(tmp, "extra.py")
+	fullPlan := adapter.InstallPlan{Files: []adapter.FileWrite{
+		{Path: primary, Content: []byte("skill")},
+		{Path: extra, Content: []byte("extra")},
+	}}
+	skill := &resource.Skill{Name: "shared", Description: "d", Body: "b"}
+
+	for _, host := range []string{"host-a", "host-b"} {
+		inst := NewInstaller(dirs.Dirs{}, coverageAdapter{host: host, plan: fullPlan}, store)
+		if _, err := inst.Install(skill, adapter.ScopeUser, InstallOptions{Force: true}); err != nil {
+			t.Fatalf("install %s: %v", host, err)
+		}
+	}
+
+	reducedPlan := adapter.InstallPlan{Files: []adapter.FileWrite{{Path: primary, Content: []byte("skill")}}}
+	reinstall := NewInstaller(dirs.Dirs{}, coverageAdapter{host: "host-b", plan: reducedPlan}, store)
+	if _, err := reinstall.Install(skill, adapter.ScopeUser, InstallOptions{Force: true}); err != nil {
+		t.Fatalf("reinstall host-b: %v", err)
+	}
+	if _, err := os.Stat(extra); err != nil {
+		t.Fatalf("file still claimed by host-a must remain: %v", err)
+	}
+}
+
 func TestBuildRecordMergedKeyHashErrorsAndCacheBranches(t *testing.T) {
 	ch := make(chan int)
 	_, err := buildRecord("host", &resource.Skill{Name: "s", Description: "d", Body: "b"}, adapter.ScopeUser, adapter.InstallPlan{

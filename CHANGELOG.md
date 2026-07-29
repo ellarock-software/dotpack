@@ -8,6 +8,13 @@ from the first tagged release onward.
 
 ## [Unreleased]
 
+### Fixed
+
+- Reinstalling the same resource into the same target now removes files owned
+  by the prior record that are absent from the replacement source.
+- `uninstall` can select one of several same-ID project installs from the
+  current project root or an explicit `--target`.
+
 ## [0.1.0] - 2026-07-07
 
 First public release.
