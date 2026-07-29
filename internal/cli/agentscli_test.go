@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -171,15 +173,12 @@ body content
 	}
 }
 
-// TestInstall_SkillWithAllowedTools_OnAgentsCli_AllowLossyDropsField is
-// the counterpart to the refusal test: with --allow-lossy, install
-// succeeds and the emitted SKILL.md has allowed-tools stripped per the
-// union HostKeepsExtension semantics — since NEITHER gemini-cli nor
-// codex keeps allowed-tools, the umbrella drops it too. (For a field
-// supported by SOME sub-adapter, the union check would keep it; today's
-// schema has no such field, so this test only pins the universal-drop
-// case.)
-func TestInstall_SkillWithAllowedTools_OnAgentsCli_AllowLossyDropsField(t *testing.T) {
+// TestInstall_SkillWithAllowedTools_OnAgentsCli_AllowLossyPreservesSource is
+// the counterpart to the refusal test: with --allow-lossy, install succeeds
+// while ADR-0004 source identity remains intact. Neither Gemini nor Codex
+// honours allowed-tools, so the install remains semantically lossy even though
+// dotpack preserves the authorial bytes.
+func TestInstall_SkillWithAllowedTools_OnAgentsCli_AllowLossyPreservesSource(t *testing.T) {
 	agentsHome, _ := setupAgentsCliEnv(t)
 
 	tmp := t.TempDir()
@@ -213,13 +212,63 @@ body content
 	if err != nil {
 		t.Fatalf("read emitted: %v", err)
 	}
-	if bytes.Contains(emitted, []byte("\nallowed-tools:")) ||
-		bytes.HasPrefix(bytes.TrimPrefix(emitted, []byte("---\n")), []byte("allowed-tools:")) {
-		t.Errorf("emitted SKILL.md must NOT carry allowed-tools key (dropped on union of {gemini-cli, codex}); got:\n%s",
+	if !bytes.Equal(emitted, body) {
+		t.Errorf("emitted SKILL.md must preserve source bytes under --allow-lossy; got:\n%s",
 			string(emitted))
 	}
-	if !bytes.Contains(emitted, []byte("name: claudish-umbrella-skill-2")) {
-		t.Errorf("emitted SKILL.md must preserve universal core; got:\n%s", string(emitted))
+}
+
+func TestInstall_SealedSkill_OnAgentsCli_AllowLossyPreservesSeal(t *testing.T) {
+	agentsHome, _ := setupAgentsCliEnv(t)
+
+	skillDir := filepath.Join(t.TempDir(), "sealed-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	source := []byte(`---
+name: sealed-skill
+description: sealed skill with host-specific authorial intent
+compatibility: Requires git
+disable-model-invocation: true
+---
+sealed body
+`)
+	sourceDigest := sha256.Sum256(source)
+	provenance := []byte(fmt.Sprintf("SKILL.md sha256:%x\n", sourceDigest))
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), source, 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "PROVENANCE.md"), provenance, 0o644); err != nil {
+		t.Fatalf("write PROVENANCE.md: %v", err)
+	}
+
+	cmd := NewRootCmd()
+	cmd.SetOut(io_DiscardWriter())
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{
+		"install",
+		filepath.Join(skillDir, "SKILL.md"),
+		"--agent", "agents-cli",
+		"--allow-lossy",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install sealed skill with --allow-lossy: %v", err)
+	}
+
+	targetDir := filepath.Join(agentsHome, "skills", "sealed-skill")
+	installedSkill, err := os.ReadFile(filepath.Join(targetDir, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read installed SKILL.md: %v", err)
+	}
+	installedProvenance, err := os.ReadFile(filepath.Join(targetDir, "PROVENANCE.md"))
+	if err != nil {
+		t.Fatalf("read installed PROVENANCE.md: %v", err)
+	}
+	installedDigest := sha256.Sum256(installedSkill)
+	wantProvenance := []byte(fmt.Sprintf("SKILL.md sha256:%x\n", installedDigest))
+	if !bytes.Equal(installedProvenance, wantProvenance) {
+		t.Fatalf("installed package invalidated its own seal:\nrecorded: %sactual:   %s",
+			string(installedProvenance), string(wantProvenance))
 	}
 }
 

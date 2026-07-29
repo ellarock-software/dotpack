@@ -19,7 +19,7 @@ The open questions §1 left for implementation were resolved as:
 - **Manifest record shape**: one record per umbrella install with `agent: "agents-cli"` and ID `agents-cli:{kind}:{name}`. The user-typed CLI flag IS the user-visible identity; sub-adapter HostIDs never surface on the record. Cross-flag installs of the same resource (e.g., `--agent codex foo` then `--agent agents-cli foo`) produce DIFFERENT record IDs and the second one collides at the convergence path — the user must explicitly resolve via `--force` or uninstall the other. The umbrella never silently shares an ID with a sub-adapter; that would lose the umbrella identity in `dotpack list` and break the misroute-hint surface.
 - **Resolution layer**: orchestrator-side per §10. `internal/orchestrator/umbrella.go` declares `UmbrellaInstaller` (sibling to `Installer` and `Reader` per Card #3's split); `internal/cli/install.go` declares `umbrellaFactories` (the CLI-flag-to-adapter-set alias table) alongside the per-host `adapterFactories`. `runInstall` branches on `umbrellaFactories` membership BEFORE `buildAdapter`, dispatching to `runUmbrellaInstall` which constructs the `UmbrellaInstaller` from sub-adapter HostIDs resolved through `adapterFactories`. The init-time validator panics if an umbrella references an unknown sub-adapter or a writer that isn't in its sub-adapter set.
 - **Per-kind writer list**: `umbrellaFactories[{umbrella}].writers[{kind}]` names the ordered sub-adapter HostIDs whose plans are applied for that kind. File-drop convergence uses ONE writer: `agents-cli + skill → codex` (codex's `AgentsHome/skills/{name}/SKILL.md` per developers.openai.com/codex/skills; gemini-cli reads the same path per `schema/skill.yaml` ecosystem_notes). Config-fragment kinds use multiple writers: `agents-cli + mcp-server` and `agents-cli + hook` fan out to both `gemini-cli` and `codex`, each writing its own native config file while the umbrella manifest record aggregates all merged-key tuples. Rule kind also fans out to both `gemini-cli` and `codex`, writing each host's native `rules/<name>.md` file while preserving one `agents-cli:rule:<name>` manifest row. Kinds absent from `writers` are explicitly unsupported under the umbrella — `UmbrellaInstaller.Install` returns "kind not supported under umbrella" rather than silently picking a default sub-adapter. Agent kind fans out: `agents-cli + agent` writes a markdown file for `gemini-cli` and translates the abstraction into a TOML file for `codex` (which natively loads `~/.codex/agents/*.toml`).
-- **Lossy aggregation under the umbrella**: literal §8 — a field is lossy on the umbrella if ANY sub-adapter would drop it. `UmbrellaInstaller.aggregateLossy` calls `schema.LossyExtensions(kind, sub.HostID(), ext)` for each sub-adapter and unions the reasons by `FieldPath` (dedup) and surfaces them via a `LossyError` naming the umbrella label (not a sub-adapter). The 2026-05-25 empirical check confirmed every skill-kind `deliberately_excluded` is either claude-code-only (lossy on BOTH sub-adapters) or has empty aliases with `lossy_when_dropped: false` (never lossy), so literal §8 produces identical results to a convergence-write reading for skill kind today. If a future schema entry has gemini-cli-XOR-codex support, literal §8 will be strictly stricter than the convergence-write reading — at that point this section gets a refinement (see §1c).
+- **Lossy aggregation under the umbrella**: literal §8 — a field is lossy on the umbrella if ANY sub-adapter cannot honour it. `UmbrellaInstaller.aggregateLossy` calls `schema.LossyExtensions(kind, sub.HostID(), ext)` for each sub-adapter and unions the reasons by `FieldPath` (dedup) and surfaces them via a `LossyError` naming the umbrella label (not a sub-adapter). The 2026-05-25 empirical check confirmed every skill-kind `deliberately_excluded` is either claude-code-only (lossy on BOTH sub-adapters) or has empty aliases with `lossy_when_dropped: false` (never lossy), so literal §8 produces identical results to a convergence-write reading for skill kind today. If a future schema entry has gemini-cli-XOR-codex support, literal §8 will be strictly stricter than the convergence-write reading — at that point this section gets a refinement (see §1c).
 - **Misroute hint inclusion**: `isBuildableAgent(name)` consults both `adapterFactories` AND `umbrellaFactories`, so `checkDefaultAgentMisroute` surfaces umbrella suggestions when an existing umbrella record matches the (kind, name) tuple. A user defaulting to `--agent claude-code` with an existing agents-cli install gets "did you mean --agent agents-cli?".
 - **Uninstall round-tripping**: zero new code. `orchestrator.Reader.Uninstall` works from manifest absolute paths regardless of the host segment in the ID; an umbrella record with ID `agents-cli:skill:foo` and `Files: [/home/u/.agents/skills/foo/SKILL.md]` round-trips through Reader exactly as a per-host record does. This is the no-code payoff of Option A (label = `--agent` flag value).
 
@@ -135,6 +135,26 @@ The `lossy_when_dropped: false` escape hatch exists because some host-specific f
 The object-array form (not a map keyed by host) is chosen because (a) it matches the schema's existing convention in `template.source_locations`, (b) it nudges Go code toward data-driven iteration (`for _, alias := range aliases`) rather than baked-in host enums, and (c) it extends per-host without restructuring (a future `deprecated_alias: ["headers"]` annotation on a Codex entry is a field-add, not a shape change).
 
 A separate per-field `host_support: [...]` projection is not stored — it would be redundant with `aliases[].host` and create drift risk. Adapters that need the projection compute it from `aliases`.
+
+#### 8a. Source-backed skill bytes remain immutable
+
+ADR-0004's byte-identity requirement applies even when a skill install is
+semantically lossy. For a parsed source package, adapters emit `Raw`
+`SKILL.md` bytes verbatim. `--allow-lossy` acknowledges that the target host
+cannot honour one or more fields; it does not authorize mutation of the
+package. Retaining an unsupported field in frontmatter does not make that field
+effective on a host that ignores it.
+
+This distinction is required because sibling package files may contain
+signatures, seals, or provenance records over `SKILL.md`. Re-encoding only the
+frontmatter while copying those siblings unchanged creates a package that
+fails its own integrity checks and also contradicts the manifest/cache identity
+contract.
+
+Translator-produced or otherwise in-memory skills with no `Raw` source bytes
+still use deterministic host-native re-encoding and omit extensions the target
+does not keep. Lossy detection remains unchanged and still fails closed unless
+the caller explicitly passes `--allow-lossy`.
 
 ### 9. Manifest `merged_keys` — populated from the install plan
 

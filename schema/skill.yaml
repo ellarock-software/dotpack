@@ -43,6 +43,11 @@ ecosystem_notes:
     (for example `scripts/*`, `references/*`, and `assets/*`) to the same
     relative paths under the target skill directory and records them in the
     manifest. Symlinks are rejected.
+  - Source-backed skill packages preserve SKILL.md byte-for-byte per ADR-0004,
+    including when --allow-lossy acknowledges fields the target host cannot
+    honour. Physical preservation does not make an unsupported field effective
+    on that host. Skills synthesized in memory without source bytes are
+    re-encoded into the target host's supported shape.
   - Description-as-trigger is universal. The skill's body (everything after
     the closing `---`) is the instruction content the agent loads on trigger.
   - Some skills mention `compatibility` as an optional frontmatter field in
@@ -178,4 +183,6 @@ deliberately_excluded:
       - claude-code adapter: emit natively when present.
       - non-claude-code adapters: surface as lossy (the field has runtime
         meaning on Claude that other hosts cannot honour). Install
-        proceeds only with `--allow-lossy`.
+        proceeds only with `--allow-lossy`. Source-backed skill packages retain
+        the original bytes per ADR-0004, but the unsupported host still does
+        not honour these fields. Synthesized skills omit unsupported fields.

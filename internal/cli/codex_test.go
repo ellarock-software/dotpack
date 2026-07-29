@@ -104,12 +104,11 @@ body content
 	}
 }
 
-func TestInstall_SkillWithAllowedTools_OnCodex_AllowLossyDropsField(t *testing.T) {
+func TestInstall_SkillWithAllowedTools_OnCodex_AllowLossyPreservesSource(t *testing.T) {
 	// Counterpart to the refusal test: with --allow-lossy, install
-	// succeeds AND the emitted SKILL.md has `allowed-tools` stripped
-	// per schema.HostKeepsExtension on codex. Assert key-form, not substring (description in
-	// fixture is deliberately benign — but the key-form pattern guards
-	// against future fixture drift containing the phrase in prose).
+	// succeeds while ADR-0004 keeps the source package byte-identical.
+	// Codex does not honour allowed-tools, so lossy detection and the
+	// explicit acknowledgement remain required.
 	agentsHome, _ := setupCodexEnv(t)
 
 	tmp := t.TempDir()
@@ -143,13 +142,9 @@ body content
 	if err != nil {
 		t.Fatalf("read emitted: %v", err)
 	}
-	if bytes.Contains(emitted, []byte("\nallowed-tools:")) ||
-		bytes.HasPrefix(bytes.TrimPrefix(emitted, []byte("---\n")), []byte("allowed-tools:")) {
-		t.Errorf("emitted SKILL.md must NOT carry allowed-tools key (dropped on codex); got:\n%s",
+	if !bytes.Equal(emitted, body) {
+		t.Errorf("emitted SKILL.md must preserve source bytes under --allow-lossy; got:\n%s",
 			string(emitted))
-	}
-	if !bytes.Contains(emitted, []byte("name: claudish-codex-skill-2")) {
-		t.Errorf("emitted SKILL.md must preserve universal core; got:\n%s", string(emitted))
 	}
 }
 
