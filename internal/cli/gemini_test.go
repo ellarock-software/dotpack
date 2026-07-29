@@ -102,11 +102,11 @@ body content
 	}
 }
 
-func TestInstall_SkillWithAllowedTools_OnGeminiCLI_AllowLossyDropsField(t *testing.T) {
+func TestInstall_SkillWithAllowedTools_OnGeminiCLI_AllowLossyPreservesSource(t *testing.T) {
 	// Counterpart to the refusal test: with --allow-lossy, install
-	// succeeds AND the emitted SKILL.md does NOT carry `allowed-tools`
-	// (it's stripped per schema.HostKeepsExtension returning false on gemini-cli). The lossy gate
-	// is honest about what dropped — not just a "proceed anyway" flag.
+	// succeeds while ADR-0004 keeps the source package byte-identical.
+	// Gemini does not honour allowed-tools, so lossy detection and the
+	// explicit acknowledgement remain required.
 	geminiHome, _ := setupGeminiEnv(t)
 
 	tmp := t.TempDir()
@@ -140,16 +140,9 @@ body content
 	if err != nil {
 		t.Fatalf("read emitted: %v", err)
 	}
-	// Assert the `allowed-tools:` KEY is absent — not just the substring,
-	// which would false-positive against any description text containing
-	// the phrase. The emit must drop the key entirely on gemini-cli.
-	if bytes.Contains(emitted, []byte("\nallowed-tools:")) ||
-		bytes.HasPrefix(bytes.TrimPrefix(emitted, []byte("---\n")), []byte("allowed-tools:")) {
-		t.Errorf("emitted SKILL.md must NOT carry allowed-tools key (dropped on gemini-cli); got:\n%s",
+	if !bytes.Equal(emitted, body) {
+		t.Errorf("emitted SKILL.md must preserve source bytes under --allow-lossy; got:\n%s",
 			string(emitted))
-	}
-	if !bytes.Contains(emitted, []byte("name: claudish-skill-2")) {
-		t.Errorf("emitted SKILL.md must preserve universal core; got:\n%s", string(emitted))
 	}
 }
 

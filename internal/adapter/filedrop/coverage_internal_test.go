@@ -159,7 +159,7 @@ func TestTargetPathErrorsForInvalidScopeAndMissingRoots(t *testing.T) {
 	}
 }
 
-func TestPassThroughAndReencodeBySchemaExtensions(t *testing.T) {
+func TestSkillSourcePassThroughAndSynthesizedReencode(t *testing.T) {
 	tmp := t.TempDir()
 	a := New(dirs.Dirs{}, coveragePolicy(tmp))
 	raw := []byte("---\nname: raw\n\ndescription: d\nkeywords:\n  - one\n---\nbody\n")
@@ -187,10 +187,20 @@ func TestPassThroughAndReencodeBySchemaExtensions(t *testing.T) {
 	}
 	plan, err = other.Plan(parsed, adapter.ScopeUser)
 	if err != nil {
-		t.Fatalf("Plan reencode: %v", err)
+		t.Fatalf("Plan source pass-through: %v", err)
+	}
+	if string(plan.Files[0].Content) != string(claudeOnly) {
+		t.Fatalf("source-backed gemini skill changed:\n%s", plan.Files[0].Content)
+	}
+
+	synthesized := (&resource.Skill{Name: "synthetic", Description: "d", Body: "body\n"}).
+		WithExtensions(map[string]any{"allowed-tools": "Read"})
+	plan, err = other.Plan(synthesized, adapter.ScopeUser)
+	if err != nil {
+		t.Fatalf("Plan synthesized reencode: %v", err)
 	}
 	if strings.Contains(string(plan.Files[0].Content), "allowed-tools") {
-		t.Fatalf("reencoded gemini skill should drop claude-only field:\n%s", plan.Files[0].Content)
+		t.Fatalf("synthesized gemini skill should drop claude-only field:\n%s", plan.Files[0].Content)
 	}
 }
 

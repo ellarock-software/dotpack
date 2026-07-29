@@ -307,9 +307,9 @@ func (a *Adapter) targetPath(layout Layout, scope adapter.Scope, name string) (s
 }
 
 // encode dispatches per-kind:
-//   - Skill: byte-pass-through (Raw verbatim) when every extension key
-//     passes schema.HostKeepsExtension; otherwise re-encode the
-//     universal core + retained extensions.
+//   - Skill: byte-pass-through (Raw verbatim) for parsed source packages,
+//     preserving ADR-0004's content-identity guarantee. Skills constructed
+//     in memory have no Raw bytes and are re-encoded as host-native output.
 //   - Agent: always re-encode (the tools-shape divergence means a
 //     pass-through across hosts is unsafe — see claudecode.planAgent's
 //     pre-consolidation comment for the rationale).
@@ -334,19 +334,17 @@ func (a *Adapter) encode(r resource.Resource) ([]byte, error) {
 	}
 }
 
-// encodeSkill emits SKILL.md bytes. ADR-0004 byte-identity: when Raw is
-// set AND every extension would be kept by this host, ship Raw
-// verbatim. Otherwise re-encode the universal core + retained
-// extensions in deterministic order.
+// encodeSkill emits SKILL.md bytes. Parsed source packages always ship Raw
+// verbatim per ADR-0004. Lossy detection remains an orchestrator concern:
+// --allow-lossy acknowledges that a target host cannot honour a field; it
+// does not authorize mutation of a package whose support files may seal or
+// otherwise attest the original SKILL.md bytes.
+//
+// Skills constructed in memory have no Raw bytes and therefore use the
+// deterministic host-native re-encode path.
 func (a *Adapter) encodeSkill(s *resource.Skill) ([]byte, error) {
 	if len(s.Raw) > 0 {
-		pass, err := a.canPassThrough(s)
-		if err != nil {
-			return nil, fmt.Errorf("%s: schema unavailable for pass-through check: %w", a.policy.HostID, err)
-		}
-		if pass {
-			return s.Raw, nil
-		}
+		return s.Raw, nil
 	}
 	return a.reencodeSkill(s)
 }

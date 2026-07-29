@@ -174,6 +174,13 @@ For skills, dotpack installs the full regular-file package rooted at the source
 directory, recorded as manifest file claims, and removed on uninstall when
 still owned by that install. Symlinks are rejected for skill support files.
 
+Source-backed skill packages preserve `SKILL.md` byte-for-byte, including when
+an install requires `--allow-lossy`. The flag acknowledges that the target host
+cannot honor one or more source fields; it does not authorize dotpack to mutate
+the package. This distinction keeps package-local signatures, seals, and
+provenance references valid. Skills synthesized in memory without source bytes
+are encoded into the target host's supported shape.
+
 ## Flexible Source Layouts
 
 `install-all` defaults to the canonical `.agents` layout. When `--from` points

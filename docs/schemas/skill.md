@@ -20,6 +20,7 @@
 
 - SKILL.md is the canonical filename across Claude Code, Gemini CLI, Antigravity CLI, Codex CLI, OpenCode, and Hermes. The `~/.agents/skills/` alias is honoured by Gemini and Codex; Hermes documents `~/.hermes/skills/` as the primary skill root plus `skills.external_dirs` in `~/.hermes/config.yaml` for extra search paths such as `~/.agents/skills/`. The on-disk package layout (folder with SKILL.md + optional scripts/, references/, assets/) is identical across these hosts.
 - dotpack copies regular support files under the source skill directory (for example `scripts/*`, `references/*`, and `assets/*`) to the same relative paths under the target skill directory and records them in the manifest. Symlinks are rejected.
+- Source-backed skill packages preserve SKILL.md byte-for-byte per [ADR-0004](../adr/0004-manifest-as-install-provenance-source-of-truth.md), including when --allow-lossy acknowledges fields the target host cannot honour. Physical preservation does not make an unsupported field effective on that host. Skills synthesized in memory without source bytes are re-encoded into the target host's supported shape.
 - Description-as-trigger is universal. The skill's body (everything after the closing `---`) is the instruction content the agent loads on trigger.
 - Some skills mention `compatibility` as an optional frontmatter field in their body text, but none of the corpus examples actually used it in frontmatter. Treated as authorial intent, not schema.
 
@@ -114,7 +115,9 @@ Adapter behaviour:
 - claude-code adapter: emit natively when present.
 - non-claude-code adapters: surface as lossy (the field has runtime
   meaning on Claude that other hosts cannot honour). Install
-  proceeds only with `--allow-lossy`.
+  proceeds only with `--allow-lossy`. Source-backed skill packages retain
+  the original bytes per [ADR-0004](../adr/0004-manifest-as-install-provenance-source-of-truth.md), but the unsupported host still does
+  not honour these fields. Synthesized skills omit unsupported fields.
 
 **Aliases:**
 
