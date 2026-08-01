@@ -23,8 +23,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/ellarock-software/dotpack/internal/dirs"
 )
 
 // Selection is the set of skill packages a gate run covers. Targets are
@@ -57,9 +55,10 @@ type Request struct {
 	Command   string
 	Selection Selection
 
-	// Dirs carries the machine-local state roots. Gates own state under
-	// Dirs.DotpackHome and nothing else.
-	Dirs dirs.Dirs
+	// Machine-local state roots are deliberately NOT carried here. Every
+	// gate is constructed by the registry from a dirs.Dirs, so a gate
+	// already holds them; carrying a second copy on the request meant two
+	// sources of truth that could disagree, and they did.
 
 	// PolicyRoot is the repository root that owns .dotpack/ policy for
 	// this run — approvals, baselines, suppressions. Empty when none

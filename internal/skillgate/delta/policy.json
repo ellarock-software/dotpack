@@ -1,0 +1,72 @@
+{
+  "id": "skillgate",
+  "policy_version": "1",
+  "artifact-type": "tool-policy",
+  "owner/surface": "ellarock-corporate",
+  "purpose": "Delta gate for agent skill packages: block a skill when its security posture changes, not when it merely matches a pattern.",
+  "gate_model": "delta",
+  "rationale": "Absolute gating on a high-recall/low-precision scanner forces whole-skill bypasses, which are permanent holes. Approving a package at a reviewed state and blocking only on NEW findings makes constant scanner noise harmless and makes any change to a trusted external skill an explicit review event.",
+  "detector": {
+    "name": "cisco-ai-skill-scanner",
+    "package": "cisco-ai-skill-scanner",
+    "license": "Apache-2.0",
+    "engines_enabled_by_default": [
+      "static_analyzer",
+      "bytecode",
+      "pipeline",
+      "behavioral_analyzer"
+    ],
+    "network_required": false,
+    "optional_llm": {
+      "enabled": false,
+      "provider": "openai-compatible",
+      "note": "Bring your own key. Adds semantic analysis; not load-bearing. Set SKILL_SCANNER_LLM_{PROVIDER,BASE_URL,API_KEY,MODEL}."
+    }
+  },
+  "baseline_directory": ".dotpack/skillgate/baselines",
+  "fail_on_severity": "HIGH",
+  "fail_closed": true,
+  "fail_closed_note": "An unscannable or SKILL.md-less package is never approved.",
+  "hash_exclusions": {
+    "rationale": "Some skills legitimately write runtime state into their own installed directory (daily-cleanup-triage writes logs/ and __pycache__). Hashing those would make the content tripwire churn on every run. Such paths are EXCLUDED FROM THE HASH BUT STILL SCANNED, so a payload dropped into a runtime directory is still blocked. NOTHING is excluded by default: a package earns an exclusion only by declaring the path in its own .gitignore AND that name appearing in `paths` below. Granting this list unconditionally let any package that shipped no .gitignore hide a directory named logs/ or node_modules/ from the tripwire for free.",
+    "paths": [
+      "logs",
+      "__pycache__",
+      ".pytest_cache",
+      ".ruff_cache",
+      "node_modules",
+      ".venv",
+      ".git"
+    ],
+    "honor_package_gitignore": true,
+    "nestable_paths": [
+      "__pycache__",
+      ".pytest_cache",
+      ".ruff_cache",
+      "node_modules",
+      ".venv",
+      ".git"
+    ],
+    "nestable_rationale": "Names that legitimately appear below the package root. Everything else is root-anchored: declaring `logs` must not also exclude `scripts/logs/`, which would be a hiding place one directory deeper than the package declared."
+  },
+  "invisible_character_policy": {
+    "rationale": "Invisible and direction-controlling codepoints are never legitimate in a skill package. They are invisible to a human reviewer AND to an LLM analyser, which makes them the highest-leverage place to hide an instruction or to split a keyword so literal matching fails. This class must be caught deterministically; it cannot be delegated to a semantic analyser.",
+    "severity": "HIGH",
+    "scan_suffixes": [
+      ".md",
+      ".markdown",
+      ".txt",
+      ".yaml",
+      ".yml",
+      ".json",
+      ".toml",
+      ".sh",
+      ".bash",
+      ".py",
+      ".js",
+      ".mjs",
+      ".cjs",
+      ".ts"
+    ]
+  }
+}
