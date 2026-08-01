@@ -87,9 +87,21 @@ func evaluate(skill, pkgAbs string, baseline *Baseline, findings []Finding, h Ha
 
 	// No baseline: nothing about this package has been reviewed, so
 	// nothing about it is trusted. First sighting always blocks.
+	//
+	// Every finding is reported, not just counted. "Review the package,
+	// then approve it" is not actionable if the operator cannot see what
+	// the detector found -- and an operator who cannot see it will reach
+	// for a bypass instead.
 	if baseline == nil {
 		e.Decision = DecisionBlocked
 		e.Reason = fmt.Sprintf("no approved baseline - first sighting of this package. %d finding(s) present.", len(findings))
+		for _, fp := range e.fingerprints {
+			f := e.current[fp]
+			e.NewFindings = append(e.NewFindings, f)
+			if skillgate.SeverityAtLeast(f.Severity, failOn) {
+				e.Blocking = append(e.Blocking, f)
+			}
+		}
 		return e
 	}
 

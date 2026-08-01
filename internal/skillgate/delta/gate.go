@@ -54,6 +54,10 @@ type PackageResult struct {
 	// be written. Named in output so the operator can go look at it.
 	BaselinePath string `json:"baseline_path,omitempty"`
 
+	// PolicyRootUntrusted marks a run whose source dotpack fetched, so
+	// no approvals were available to it at all.
+	PolicyRootUntrusted bool `json:"policy_root_untrusted,omitempty"`
+
 	// PolicyRoot is the repository that owns the approval. Carried
 	// explicitly rather than recovered from BaselinePath, so the
 	// baseline layout can change without silently mis-keying the
@@ -128,7 +132,16 @@ func (g *Gate) Run(ctx context.Context, req skillgate.Request) (skillgate.Verdic
 
 	for _, target := range req.Selection.Targets {
 		result := g.inspect(ctx, target, policyRoot, runtimeInfo)
+		result.PolicyRootUntrusted = !req.PolicyRootTrusted
 		artifact.Results = append(artifact.Results, result)
+
+		// Record what this machine installed against, so a later change to
+		// the committed approval is detectable. Advisory; a failure to
+		// write it must never affect the verdict.
+		if result.Decision != DecisionBlocked {
+			_ = g.recordSeen(result)
+			verdict.Notices = append(verdict.Notices, result.Notices()...)
+		}
 		if result.Decision == DecisionBlocked {
 			artifact.Pass = false
 			verdict.Pass = false
@@ -199,6 +212,29 @@ func (g *Gate) recordSeen(result PackageResult) error {
 // inspect runs the ordered gates over one package. Each stage fails
 // closed; the first failure short-circuits, so a package that cannot be
 // read is never partially evaluated.
+// Notices are advisory lines the CLI prints on a PASSING run. Without
+// them a drifted or newly-re-approved package installs in silence, and
+// the gate's claim that any change becomes a review event would be true
+// only inside a JSON file nobody is told about.
+func (r PackageResult) Notices() []string {
+	var out []string
+	if r.Decision == DecisionApprovedWithDrift {
+		out = append(out, fmt.Sprintf("%s: %s", r.Skill, r.Reason))
+	}
+	for _, w := range r.Evaluation.Warnings {
+		out = append(out, fmt.Sprintf("%s: %s", r.Skill, w))
+	}
+	if r.BaselineChangedSinceLastInstall {
+		out = append(out, fmt.Sprintf("%s: the committed approval changed since you last installed this package (%s)", r.Skill, r.BaselinePath))
+	}
+	for _, f := range r.Evaluation.NewFindings {
+		if r.Decision != DecisionBlocked {
+			out = append(out, fmt.Sprintf("%s: new %s finding %s in %s", r.Skill, f.Severity, f.RuleID, f.File))
+		}
+	}
+	return out
+}
+
 func (g *Gate) inspect(ctx context.Context, target skillgate.Target, policyRoot string, rt skillscanner.Runtime) PackageResult {
 	pkgAbs, err := filepath.Abs(target.SkillDir)
 	if err != nil {
@@ -303,7 +339,15 @@ func blockedDetail(r PackageResult) []string {
 		return out
 	}
 
-	for _, f := range r.Evaluation.Blocking {
+	// Show every finding that is new, not only the blocking ones. The
+	// operator is being asked to review the package; a count is not a
+	// review, and an operator who cannot see what was found reaches for a
+	// bypass.
+	shown := r.Evaluation.NewFindings
+	if len(shown) == 0 {
+		shown = r.Evaluation.Blocking
+	}
+	for _, f := range shown {
 		loc := f.File
 		if f.Line != nil {
 			loc = fmt.Sprintf("%s:%d", f.File, *f.Line)
@@ -315,16 +359,40 @@ func blockedDetail(r PackageResult) []string {
 			out = append(out, "         "+f.Title)
 		}
 	}
-	if r.Evaluation.Decision == DecisionBlocked && len(r.Evaluation.Blocking) == 0 && len(r.UnsafeLinks) == 0 {
-		if r.BaselinePath != "" {
-			out = append(out, "Review the package, then approve it:",
-				fmt.Sprintf("    dotpack approve-skill --skill %s", r.Skill))
-		}
-	} else if len(r.Evaluation.Blocking) > 0 && r.BaselinePath != "" {
-		out = append(out, "If these are expected, review them and re-approve:",
-			fmt.Sprintf("    dotpack approve-skill --skill %s", r.Skill))
-	}
+	out = append(out, remedy(r)...)
 	return out
+}
+
+// remedy tells the operator what to actually do. A refusal with no next
+// step is the single most reliable way to produce a blanket bypass.
+func remedy(r PackageResult) []string {
+	if len(r.UnsafeLinks) > 0 {
+		return nil
+	}
+	if r.PolicyRootUntrusted {
+		// The source was fetched by dotpack, so it cannot supply its own
+		// approvals -- otherwise a remote repository would approve itself.
+		// Without this the operator gets a refusal and no way forward at
+		// all, which is what happened to every `github:` source.
+		return []string{
+			"This source was fetched by dotpack, so it cannot supply its own approvals.",
+			"Review it, then approve it into a repository you control:",
+			fmt.Sprintf("    dotpack approve-skill <source> --skill %s --skill-policy-root .", r.Skill),
+			"    dotpack install <source> ... --skill-policy-root .",
+		}
+	}
+	if r.BaselinePath == "" {
+		return []string{
+			"No policy root was resolved, so there is nowhere to record an approval.",
+			"Name the repository that owns approvals for this install:",
+			fmt.Sprintf("    dotpack approve-skill <source> --skill %s --skill-policy-root .", r.Skill),
+		}
+	}
+	verb := "Review the package, then approve it:"
+	if r.Evaluation.PreviousSHA256 != "" {
+		verb = "If these are expected, review them and re-approve:"
+	}
+	return []string{verb, fmt.Sprintf("    dotpack approve-skill --skill %s", r.Skill)}
 }
 
 func writeArtifact(path string, a runArtifact) error {

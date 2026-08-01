@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	skillGateFlag = "skill-gate"
-	skillGateEnv  = "DOTPACK_SKILL_GATE"
+	skillGateFlag       = "skill-gate"
+	skillGateEnv        = "DOTPACK_SKILL_GATE"
+	skillPolicyRootFlag = "skill-policy-root"
+	skillPolicyRootEnv  = "DOTPACK_SKILL_POLICY_ROOT"
 )
 
 // selectedSkillGate is the operator's choice, captured by the root
@@ -27,6 +29,16 @@ const (
 // writer, resolveSelectedSkillGate, and it reads only the flag and the
 // environment.
 var selectedSkillGate string
+
+// selectedSkillPolicyRoot is the operator's answer to "which repository
+// owns approvals for this install".
+//
+// It exists because a source dotpack FETCHED cannot supply its own
+// approvals, and without a way to say where approvals live, every
+// `github:` source would be permanently un-installable with no remedy
+// but a bypass. Like the gate selection, it comes from the operator and
+// never from the package.
+var selectedSkillPolicyRoot string
 
 // addSkillGateFlag registers the operator's gate selection on the root
 // command.
@@ -41,6 +53,9 @@ func addSkillGateFlag(root *cobra.Command) {
 	root.PersistentFlags().String(skillGateFlag, "", fmt.Sprintf(
 		"Skill security gate to enforce: %s (default %q, or $%s). Operator-controlled; dotpack never reads gate selection from the package being installed",
 		strings.Join(registry.Names(), ", "), registry.DefaultName(), skillGateEnv))
+	root.PersistentFlags().String(skillPolicyRootFlag, "", fmt.Sprintf(
+		"Repository that owns skill approvals for this run (or $%s). Required to install skills from a source dotpack fetched, which cannot approve itself",
+		skillPolicyRootEnv))
 }
 
 // resolveSelectedSkillGate captures the gate choice. Precedence: the
@@ -64,6 +79,15 @@ func resolveSelectedSkillGate(cmd *cobra.Command) error {
 		return fmt.Errorf("unknown skill gate %q; registered gates: %s", name, strings.Join(registry.Names(), ", "))
 	}
 	selectedSkillGate = name
+
+	policyRoot := ""
+	if f := cmd.Flags().Lookup(skillPolicyRootFlag); f != nil && f.Changed {
+		policyRoot = strings.TrimSpace(f.Value.String())
+	}
+	if policyRoot == "" {
+		policyRoot = strings.TrimSpace(os.Getenv(skillPolicyRootEnv))
+	}
+	selectedSkillPolicyRoot = policyRoot
 	return nil
 }
 
@@ -90,6 +114,11 @@ func currentSkillGate() string {
 // A policy root under DotpackHome is therefore always untrusted: nothing
 // dotpack fetched can vouch for itself.
 func resolvePolicyRoot(sourceRoot string, d dirs.Dirs) (root string, trusted bool, err error) {
+	// An operator-supplied root wins. They are naming their own
+	// repository, which is exactly the authority a fetched source lacks.
+	if override := strings.TrimSpace(selectedSkillPolicyRoot); override != "" {
+		sourceRoot = override
+	}
 	if strings.TrimSpace(sourceRoot) == "" {
 		return "", false, nil
 	}

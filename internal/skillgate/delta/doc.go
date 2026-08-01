@@ -5,11 +5,11 @@
 // # Why delta rather than absolute
 //
 // Gating on absolute findings requires a precise detector. Measured on a
-// 216-package corpus, the incumbent absolute gate ran about 5% precision
-// — 271 findings hand-triaged against the cited file and line, 14 real.
-// The response to that much noise is a whole-package bypass, and a
-// permanent bypass is strictly worse than a noisy gate: it turns the
-// packages most worth watching into the ones never scanned.
+// private 216-package corpus, the incumbent absolute gate ran about 5%
+// precision — 271 findings hand-triaged against the cited file and line,
+// 14 real. The response to that much noise is a whole-package bypass, and
+// a permanent bypass is strictly worse than a noisy gate: it turns the
+// packages most worth watching into the ones never scanned. See ADR-0016.
 //
 // Delta inverts the requirement. A constant noise floor is baselined
 // once and never fires again, so precision stops mattering and recall
@@ -18,11 +18,11 @@
 //
 // # Provenance
 //
-// Ported from skillgate.mjs (499 lines) in the ellarock-config
-// repository at commit cccd07fa076a, together with its policy document
-// and its 37-case test suite. Three adversarial review rounds against
-// that implementation each found a working bypass in the previous
-// round's fixes; the fixes are reproduced here and pinned by tests:
+// Ported from a prior JavaScript implementation of the same design,
+// together with its policy document and test suite. Several adversarial
+// review rounds against that implementation each found a working bypass
+// in the previous round's fixes; the fixes are reproduced here and
+// pinned by tests:
 //
 //   - a symlinked SKILL.md, hashed by nothing and scanned by nothing,
 //     allowing approval with zero bytes read;
@@ -52,6 +52,18 @@
 //     returned partial results, so part of a tree could be approved
 //     having never been inspected. Here it is BLOCKED, consistent with
 //     the existing rule for an unreadable symlink.
+//
+//  3. The finding fingerprint includes the detector's snippet, not only
+//     its description. The description truncates at the first pattern
+//     match on a line, so an exfiltration appended to an
+//     already-approved line produced an identical fingerprint and
+//     installed under the approved finding's identity. Demonstrated
+//     against the pinned detector.
+//
+//  4. The hidden-codepoint scan covers every file the package would
+//     install, rather than an extension allowlist, and the content hash
+//     covers every regular file including .DS_Store. Both narrower
+//     versions left channels that install copied but nothing inspected.
 //
 // # Failure posture
 //

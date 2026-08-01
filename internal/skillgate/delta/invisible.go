@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // invisibleNames is the invisible and bidi-control codepoint table.
@@ -48,13 +49,6 @@ var invisibleByCP = func() map[rune]string {
 	return m
 }()
 
-// invisibleSkipDirs are never searched. Distinct from the hash
-// exclusions on purpose: those are earned per package, these are
-// third-party trees where a hit would be noise. Note that "logs" is NOT
-// here, which is how a runtime directory stays excluded from the hash
-// while still being inspected for hidden codepoints.
-var invisibleSkipDirs = newSet([]string{".git", "node_modules", ".venv", "__pycache__"})
-
 // maxReportedLines caps the line list in one finding. The count field
 // still carries the true total.
 const maxReportedLines = 20
@@ -90,7 +84,6 @@ func (t *codepointTally) add(cp rune, line int) {
 // Cyrillic letter there can disguise an instruction or defeat keyword
 // matching; elsewhere in a package, non-Latin script is ordinary content.
 func scanInvisible(pkgAbs string, files []string, p Policy) []Finding {
-	suffixes := newSet(p.Invisible.ScanSuffixes)
 	severity := p.Invisible.Severity
 	if severity == "" {
 		severity = "HIGH"
@@ -102,14 +95,20 @@ func scanInvisible(pkgAbs string, files []string, p Policy) []Finding {
 		if err != nil {
 			continue
 		}
-		if hasSkippedSegment(rel) {
-			continue
-		}
-		if !suffixes.has(strings.ToLower(filepath.Ext(abs))) {
-			continue
-		}
+		// Slash-normalised: File is a fingerprint input, and a baseline
+		// approved on Linux must match on Windows.
+		rel = filepath.ToSlash(rel)
 		raw, err := os.ReadFile(abs)
 		if err != nil {
+			continue
+		}
+		// Every file dotpack would install is inspected. An extension
+		// allowlist and a skipped-directory list were both wrong here:
+		// install copies support files verbatim with no filtering, so any
+		// file this scan skipped was a place to hide instructions an
+		// agent would still read. Binary files are skipped only because
+		// there is no text in them to hide anything in.
+		if !utf8.Valid(raw) {
 			continue
 		}
 
@@ -140,7 +139,10 @@ func scanInvisible(pkgAbs string, files []string, p Policy) []Finding {
 			})
 		}
 
-		if filepath.Base(abs) == "SKILL.md" {
+		// EqualFold, not ==: on a case-insensitive filesystem a package
+		// can ship "skill.md", which every other stage resolves to the
+		// same file while an exact compare skips the homoglyph check.
+		if strings.EqualFold(filepath.Base(abs), "SKILL.md") {
 			for _, cp := range homoglyph.order {
 				ls := homoglyph.lines[cp]
 				findings = append(findings, Finding{
@@ -163,15 +165,6 @@ func scanInvisible(pkgAbs string, files []string, p Policy) []Finding {
 // commonly render identically to Latin.
 func isConfusableScript(r rune) bool {
 	return unicode.Is(unicode.Cyrillic, r) || unicode.Is(unicode.Greek, r)
-}
-
-func hasSkippedSegment(relPath string) bool {
-	for _, seg := range strings.Split(relPath, string(filepath.Separator)) {
-		if invisibleSkipDirs.has(seg) {
-			return true
-		}
-	}
-	return false
 }
 
 func codepointHex(cp rune) string {

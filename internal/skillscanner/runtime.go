@@ -56,6 +56,17 @@ const (
 	DefaultScanTimeout = 5 * time.Minute
 )
 
+// Progress receives a one-line notice before a slow provisioning step.
+// It exists because the first run downloads a large dependency tree, and
+// without it dotpack appears to hang for minutes with no output at all.
+var Progress func(string)
+
+func announce(format string, args ...any) {
+	if Progress != nil {
+		Progress(fmt.Sprintf(format, args...))
+	}
+}
+
 // NoProvisionEnv short-circuits provisioning with an error. It exists so
 // the test suite can prove that no test path ever reaches a real pip
 // install: TestMain sets it, and any test that forgets to install a fake
@@ -174,10 +185,14 @@ func EnsureRuntime(ctx context.Context, dotpackHome string) (Runtime, error) {
 		return Runtime{}, fmt.Errorf("clear existing %s runtime %s: %w", PackageName, venvDir, err)
 	}
 
+	announce("Provisioning the skill security detector (%s==%s). This is a one-time download of roughly 400 MB and can take several minutes.", PackageName, Version)
+
 	selectedPython, err := createVenv(ctx, rootDir, venvDir)
 	if err != nil {
 		return Runtime{}, withInstallPrompt(dotpackHome, err)
 	}
+
+	announce("Installing %s into %s ...", PackageName, venvDir)
 
 	installCtx, cancelInstall := context.WithTimeout(ctx, installTimeout)
 	defer cancelInstall()
@@ -218,6 +233,8 @@ func EnsureRuntime(ctx context.Context, dotpackHome string) (Runtime, error) {
 		return Runtime{}, err
 	}
 
+	announce("Detector ready: %s", trimmedVersion)
+
 	rt.Metadata = metadata
 	return rt, nil
 }
@@ -257,8 +274,26 @@ func createVenv(ctx context.Context, rootDir, venvDir string) (string, error) {
 	return "", fmt.Errorf("create %s runtime: no compatible Python interpreter succeeded (%s)", PackageName, strings.Join(failures, "; "))
 }
 
+// withInstallPrompt appends remediation guidance.
+//
+// The HUMAN instructions come first and are short. An agent-ready prompt
+// follows, because dotpack is often driven by one -- but a person who
+// hits this must not have to read thirty lines of prompt to learn that
+// they need Python.
 func withInstallPrompt(dotpackHome string, err error) error {
-	return fmt.Errorf("%w\n\nPass this prompt to an LLM agent to install the managed skill-scanner dependency:\n\n%s", err, installPrompt(dotpackHome))
+	return fmt.Errorf(`%w
+
+To fix this you need Python 3.11 or newer with venv and pip, and network
+access to PyPI for the first run. dotpack installs %s into its own
+virtual environment under %s and never globally.
+
+If you cannot provision it here, the alternatives are:
+  --skill-gate skillspector      a different gate (also needs Python and network)
+  --skill-bypass-security NAME   skip the gate for one named package, reported
+
+--- agent-ready prompt ---
+
+%s`, err, PackageName, filepath.Join(dotpackHome, "skillgate"), installPrompt(dotpackHome))
 }
 
 func installPrompt(dotpackHome string) string {
@@ -281,10 +316,6 @@ Steps:
    - %s/runtime.json exists
    - the managed %s binary under %s reports version %s
    - the original dotpack command now succeeds
-
-If the machine has no network access, the operator can fall back to
-"--skill-gate skillspector" or bypass a specific package with
-"--skill-bypass-security <name>". Both are explicit and both are reported.
 
 Report exact commands run, exact outputs, and whether dotpack reused or recreated the runtime.`,
 		PackageName, runtimeRoot, PackageName, PackageName, Version,

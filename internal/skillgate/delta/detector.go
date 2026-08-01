@@ -33,6 +33,7 @@ type detectorReport struct {
 		LineNumber  *int   `json:"line_number"`
 		Title       string `json:"title"`
 		Description string `json:"description"`
+		Snippet     string `json:"snippet"`
 	} `json:"findings"`
 }
 
@@ -60,16 +61,25 @@ var runDetector detectorRunner = func(ctx context.Context, bin string, args ...s
 // Every failure fails closed. An unscannable package is not an approved
 // package.
 func scanDetector(ctx context.Context, bin, pkgAbs string, timeout time.Duration) detectorResult {
-	reportPath := filepath.Join(os.TempDir(),
-		fmt.Sprintf("skillgate-%d-%s.json", os.Getpid(), filepath.Base(pkgAbs)))
-	defer func() { _ = os.Remove(reportPath) }()
+	// A private directory, not a predictable path in the shared temp
+	// directory. The detector's exit code is ignored by design, so if the
+	// report path were guessable, anything already sitting there would be
+	// read as the detector's own output -- a planted empty report, or a
+	// stale one from a killed run under a reused pid, would silence the
+	// detector half of the gate entirely.
+	tmpDir, err := os.MkdirTemp("", "dotpack-skillgate-")
+	if err != nil {
+		return detectorResult{Err: fmt.Sprintf("could not create a private directory for the detector report: %v", err)}
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+	reportPath := filepath.Join(tmpDir, "report.json")
 
 	args := []string{"scan", pkgAbs, "--use-behavioral", "--format", "json", "--output-json", reportPath}
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	err := runDetector(runCtx, bin, args...)
+	err = runDetector(runCtx, bin, args...)
 	switch {
 	case errors.Is(runCtx.Err(), context.DeadlineExceeded):
 		return detectorResult{Err: fmt.Sprintf("detector timed out after %s", timeout)}
@@ -112,6 +122,7 @@ func scanDetector(ctx context.Context, bin, pkgAbs string, timeout time.Duration
 			Line:     x.LineNumber,
 			Title:    x.Title,
 			Why:      x.Description,
+			Snippet:  x.Snippet,
 		})
 	}
 	return detectorResult{Findings: findings}

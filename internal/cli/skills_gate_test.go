@@ -97,7 +97,7 @@ func TestInstallSecurityBypassFiltersMandatoryScanAndReportsWarning(t *testing.T
 	if len(scanned.Targets) != 0 || len(scanned.SecurityBypassed) != 1 || scanned.SecurityBypassed[0].Name != "scan-me" {
 		t.Fatalf("mandatory scan selection = %+v", scanned)
 	}
-	if !strings.Contains(stdout.String(), `SECURITY BYPASS: SkillSpector skipped skill "scan-me"`) {
+	if !strings.Contains(stdout.String(), `SECURITY BYPASS: `+currentSkillGate()+` gate skipped skill "scan-me"`) {
 		t.Fatalf("install output missing security warning:\n%s", stdout.String())
 	}
 }
@@ -196,7 +196,7 @@ func executeCommandExpectingSecurityBypass(t *testing.T, args []string, command,
 	if len(scanned.Targets) != 0 || len(scanned.SecurityBypassed) != 1 || scanned.SecurityBypassed[0].Name != skillName {
 		t.Fatalf("mandatory scan selection = %+v", scanned)
 	}
-	if !strings.Contains(stdout.String(), `SECURITY BYPASS: SkillSpector skipped skill "`+skillName+`"`) {
+	if !strings.Contains(stdout.String(), `SECURITY BYPASS: `+currentSkillGate()+` gate skipped skill "`+skillName+`"`) {
 		t.Fatalf("%s output missing security warning:\n%s", command, stdout.String())
 	}
 }

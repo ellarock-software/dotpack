@@ -59,8 +59,12 @@ type PolicyHashExclusions struct {
 }
 
 type PolicyInvisible struct {
-	Severity     string   `json:"severity"`
-	ScanSuffixes []string `json:"scan_suffixes"`
+	Severity string `json:"severity"`
+
+	// ScanScope is documentation. The scan covers every file the package
+	// would install; there is deliberately no configurable allowlist,
+	// because a skipped file is a hiding place.
+	ScanScope string `json:"scan_scope"`
 }
 
 // policy is parsed once at package init. A malformed embedded policy is
@@ -93,8 +97,8 @@ func parsePolicy(raw []byte) (Policy, error) {
 	if p.BaselineDirectory == "" {
 		return Policy{}, fmt.Errorf("policy has no baseline_directory")
 	}
-	if len(p.Invisible.ScanSuffixes) == 0 {
-		return Policy{}, fmt.Errorf("policy has no invisible_character_policy.scan_suffixes")
+	if p.Invisible.Severity == "" {
+		return Policy{}, fmt.Errorf("policy has no invisible_character_policy.severity")
 	}
 	return p, nil
 }

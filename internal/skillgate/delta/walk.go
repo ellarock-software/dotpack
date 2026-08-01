@@ -50,9 +50,9 @@ func walkPackage(pkgAbs string) (walkResult, error) {
 		case d.IsDir():
 			return nil
 		case d.Type().IsRegular():
-			if d.Name() == ".DS_Store" {
-				return nil
-			}
+			// Every regular file is walked, including .DS_Store. Dropping
+			// it here would have made it a channel that is neither hashed
+			// nor scanned -- while install copies it verbatim.
 			out.Files = append(out.Files, path)
 			return nil
 		default:

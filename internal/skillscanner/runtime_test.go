@@ -201,11 +201,17 @@ func TestEnsureRuntimeFailsWithAnInstallPromptWhenNoInterpreterExists(t *testing
 	if err == nil {
 		t.Fatal("EnsureRuntime succeeded with no interpreter available")
 	}
-	if !strings.Contains(err.Error(), "Pass this prompt to an LLM agent") {
-		t.Errorf("error lacks the remediation prompt: %v", err)
+	// A HUMAN must learn what they need without reading an agent prompt.
+	for _, want := range []string{"Python 3.11", "--skill-gate skillspector", "--skill-bypass-security"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not tell a person about %q: %v", want, err)
+		}
+	}
+	if !strings.Contains(err.Error(), "agent-ready prompt") {
+		t.Errorf("error lacks the agent-ready prompt: %v", err)
 	}
 	if !strings.Contains(err.Error(), PackageName+"=="+Version) {
-		t.Errorf("remediation prompt does not carry the pin: %v", err)
+		t.Errorf("remediation does not carry the pin: %v", err)
 	}
 }
 

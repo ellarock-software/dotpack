@@ -9,15 +9,21 @@ The design reasoning is in
 ## The short version
 
 ```sh
-# First install of a package: blocked, because nothing about it is reviewed yet.
+# First install of a package: blocked, because nothing about it is reviewed
+# yet. The refusal lists every finding and names the remedy.
 dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope user
 
-# Read the findings, then record the reviewed state.
+# Having read them, record the reviewed state.
 dotpack approve-skill .agents --skill code-review --reason "Reviewed in PR #42"
 
 # Now it installs, and keeps installing until something NEW appears.
 dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope user
 ```
+
+**First run downloads a detector.** The gate provisions a Python virtual
+environment holding `cisco-ai-skill-scanner` -- roughly 400 MB, once per machine.
+dotpack says so before it starts. You need Python 3.11+ and network access for
+that one run.
 
 Commit the file `approve-skill` writes. It is a security decision, and the diff
 is where it gets reviewed.
@@ -27,10 +33,11 @@ is where it gets reviewed.
 The default gate, `skillgate`, gates on **change**. It approves a package at a
 reviewed state and blocks only findings that are *new* since that approval.
 
-That model exists because the previous absolute gate ran about 5% precision on a
-216-package corpus — 271 findings triaged, 14 real. Nobody reads 257 false
-positives; they reach for `--skill-bypass-security`, which exempts a whole
-package permanently, on exactly the large active packages most worth watching.
+That model exists because absolute gating on a noisy detector does not survive
+contact with reviewers. Nobody reads hundreds of false positives; they reach for
+`--skill-bypass-security`, which exempts a whole package permanently, on exactly
+the large active packages most worth watching. (The measurement behind this is in
+ADR-0016; it was taken on a private corpus.)
 
 Gating on change makes that noise harmless. A package's constant findings are
 baselined once and never fire again, so the gate can afford a noisy, high-recall
@@ -48,12 +55,27 @@ The corollary is that an unapproved package is never trusted. There is no
 | A new finding below `HIGH` | reported, installs |
 | Content changed, no new finding | reported as drift, installs |
 | An approved finding disappeared | not an event, installs |
-| No `SKILL.md`, or it is a symlink | **BLOCKED** |
-| A symlink escaping the package, or dangling | **BLOCKED** |
+| No `SKILL.md` | **BLOCKED** |
+| Any symlink escaping the package, dangling, or unreadable — including a symlinked `SKILL.md` | **BLOCKED** |
+| A symlink resolving inside the package to a file that exists | allowed |
 | Nothing could be hashed | **BLOCKED** |
 | Detector missing, timed out, crashed, or emitted garbage | **BLOCKED** |
 
 An unscannable package is not an approved package.
+
+## Skills fetched from a remote source
+
+A source dotpack fetched cannot supply its own approvals -- otherwise a remote
+repository would approve itself. So `github:` sources block until you approve
+them into a repository *you* control:
+
+```sh
+dotpack approve-skill github:OWNER/REPO --all --skill-policy-root .
+dotpack install-all --from github:OWNER/REPO --skills-path skills --skill-policy-root .
+```
+
+`--skill-policy-root` names the repository that owns approvals for the run. Like
+gate selection, it is operator-controlled.
 
 ## Choosing a gate
 
@@ -75,11 +97,17 @@ the weakest one.
 
 ```sh
 dotpack approve-skill [source] (--skill <name>... | --all) [--reason <text>]
-                      [--policy-root <dir>] [--json]
+                      [--skill-policy-root <dir>] [--accept-at-risk-findings] [--json]
 ```
 
 You must pass `--skill` or `--all` explicitly — approving an entire tree is
 never the accidental result of a mistyped flag.
+
+Approving **refuses by default** when it would record a finding at or above the
+severity floor, and prints those findings instead. Pass
+`--accept-at-risk-findings` to record them deliberately. Without that guard, the
+natural reaction to a block — re-run with `--all` — would quietly launder exactly
+the findings the gate exists to stop.
 
 Baselines are written to
 `<policy-root>/.dotpack/skillgate/baselines/<skill>.json` and record the
@@ -99,8 +127,9 @@ finding describes. What the provenance fields buy is that an approval cannot be
 *silent*.
 
 dotpack also keeps a machine-local note of what you last installed against, and
-tells you when a committed baseline has changed since then. That is advisory; it
-never blocks.
+prints a notice when a committed baseline has changed since then. That is
+advisory; it never blocks, and it only fires on machines that have installed the
+package before.
 
 ## The hidden-character check
 
@@ -110,6 +139,11 @@ homoglyphs in `SKILL.md` itself, rather than delegating it to the detector.
 That class cannot be delegated to a semantic analyser, because an invisible
 codepoint is invisible in the analyser's input too. In testing, the detector with
 its LLM engine enabled still missed 21 zero-width spaces in a real skill.
+
+The scan covers **every file the package would install**, decoded as UTF-8 —
+not an extension allowlist. install copies support files verbatim with no
+filtering, so any file the scan skipped would be a place to hide instructions an
+agent would still read.
 
 ## Runtime directories
 
@@ -145,15 +179,22 @@ private virtual environment under `~/.dotpack/skillgate/runtime`. Its default
 engines run locally: no API key, no network at scan time. The optional LLM
 engine is not enabled and is deliberately not load-bearing.
 
-First run needs network access to install it. On an offline machine the gate
-fails closed; the escapes are `--skill-gate skillspector` and
-`--skill-bypass-security`, both explicit.
+First run needs Python 3.11+ and network access to install it, and takes roughly
+400 MB.
+
+On an offline machine the gate fails closed. Note that `--skill-gate
+skillspector` is **not** an offline escape: that gate provisions its own Python
+environment from a git clone, so it needs Python and network too. The only
+offline escape is `--skill-bypass-security <name>`, which is the permanent hole
+described above — so on an air-gapped machine, provision the detector once while
+you still have a network.
 
 ## Where things live
 
 | Path | What |
 |---|---|
 | `<repo>/.dotpack/skillgate/baselines/<skill>.json` | approvals — **commit these** |
+| `<repo>` | resolved from the source, or named with `--skill-policy-root` |
 | `~/.dotpack/skillgate/runtime/` | the pinned detector |
 | `~/.dotpack/skillgate/runs/<timestamp>-<command>/` | per-run reports |
 | `~/.dotpack/skillgate/seen/` | machine-local install notes |

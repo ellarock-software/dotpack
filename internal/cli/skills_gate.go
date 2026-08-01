@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/ellarock-software/dotpack/internal/resource"
 	"github.com/ellarock-software/dotpack/internal/skillgate"
 	"github.com/ellarock-software/dotpack/internal/skillgate/registry"
+	"github.com/ellarock-software/dotpack/internal/skillscanner"
 	"github.com/ellarock-software/dotpack/internal/skillspector"
 )
 
@@ -56,8 +58,16 @@ func runMandatorySkillScan(command string, selection skillScanSelection, d dirs.
 	if !verdict.Pass {
 		return gateBlockedError(command, gateName, verdict)
 	}
+	for _, notice := range verdict.Notices {
+		skillGateNotice(notice)
+	}
 	return nil
 }
+
+// skillGateNotice reports an advisory line from a passing gate run. It is
+// a package var so the funnel, which has no cobra command in scope, can
+// still reach the command's stderr.
+var skillGateNotice = func(msg string) { fmt.Fprintln(os.Stderr, "skill gate: "+msg) }
 
 // gateBlockedError renders a refusal.
 //
@@ -90,7 +100,41 @@ func runMandatorySkillScanWithSecurityBypasses(cmd *cobra.Command, command strin
 		return err
 	}
 	reportSkillSecurityBypasses(cmd, filtered.SecurityBypassed)
+
+	// Provisioning downloads a large dependency tree on first run. Without
+	// this the command sits silent for minutes and looks hung.
+	restore := announceSkillGateProgress(cmd)
+	defer restore()
+
+	restoreNotice := routeSkillGateNotices(cmd)
+	defer restoreNotice()
+
 	return mandatorySkillScan(command, filtered, d)
+}
+
+// routeSkillGateNotices sends advisory gate output to the command's
+// stderr rather than raw os.Stderr, so tests and piped callers see it in
+// the right stream.
+func routeSkillGateNotices(cmd *cobra.Command) func() {
+	prev := skillGateNotice
+	skillGateNotice = func(msg string) {
+		if cmd != nil {
+			fmt.Fprintln(cmd.ErrOrStderr(), "skill gate: "+msg)
+		}
+	}
+	return func() { skillGateNotice = prev }
+}
+
+// announceSkillGateProgress routes detector provisioning notices to
+// stderr, so they are visible but do not contaminate piped stdout.
+func announceSkillGateProgress(cmd *cobra.Command) func() {
+	prev := skillscanner.Progress
+	skillscanner.Progress = func(msg string) {
+		if cmd != nil {
+			fmt.Fprintln(cmd.ErrOrStderr(), msg)
+		}
+	}
+	return func() { skillscanner.Progress = prev }
 }
 
 func ensureMandatorySkillScanForSource(cmd *cobra.Command, command, source string, bypassNames []string, d dirs.Dirs) error {

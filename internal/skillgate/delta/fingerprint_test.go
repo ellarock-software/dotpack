@@ -62,10 +62,13 @@ func TestCollapseSpaceNormalisesWrapping(t *testing.T) {
 
 // ---------------------------------------------------------- fingerprint
 
-// Produced by the source skillgate.mjs fingerprint() on the identical
-// finding. If the field set or the join order ever changes, every
-// baseline in every adopter's repository silently stops matching; this
-// makes that a test failure instead.
+// If the keyed field set or the join order ever changes, every baseline
+// in every adopter's repository silently stops matching; this makes that
+// a test failure instead.
+//
+// This deliberately DIFFERS from the reference implementation, which
+// keyed on the description alone. See fingerprint() for why that was a
+// working bypass.
 func TestFingerprintGoldenVector(t *testing.T) {
 	f := Finding{
 		RuleID:   "DATA_EXFIL_HTTP_POST",
@@ -76,7 +79,7 @@ func TestFingerprintGoldenVector(t *testing.T) {
 		Title:    "Outbound POST to a non-allowlisted host",
 		Why:      "POST to https://discord.com/api/webhooks/xxx in /tmp/pkg/scripts/send.py",
 	}
-	const want = "4682d6fe8122fa54"
+	const want = "d726c5e0e8f36429"
 	if got := fingerprint(f, "/tmp/pkg"); got != want {
 		t.Fatalf("fingerprint drifted.\n got: %s\nwant: %s\n\nThe keyed field set or its join order changed. Every existing baseline stops matching.", got, want)
 	}
@@ -159,11 +162,13 @@ func TestWithOccurrencesNormalisesTheFilePath(t *testing.T) {
 	if got[0].File != "scripts/a.py" {
 		t.Errorf("File = %q, want scripts/a.py", got[0].File)
 	}
-	// A file that normalises away must keep its original value rather
-	// than becoming empty, or unrelated findings would collide on "".
-	got = withOccurrences([]Finding{{RuleID: "R1", File: ""}}, "/pkg")
-	if got[0].File != "" {
-		t.Errorf("File = %q, want the original empty value preserved", got[0].File)
+	// A file that normalises away to the empty string must keep its
+	// ORIGINAL value, or unrelated findings would collide on "". The input
+	// here is the package root itself, which normalises to "" -- an empty
+	// input would not distinguish "preserved" from "overwritten".
+	got = withOccurrences([]Finding{{RuleID: "R1", File: "/pkg"}}, "/pkg")
+	if got[0].File != "/pkg" {
+		t.Errorf("File = %q, want the original %q preserved when normalisation empties it", got[0].File, "/pkg")
 	}
 }
 
@@ -171,14 +176,34 @@ func TestWithOccurrencesNormalisesTheFilePath(t *testing.T) {
 // -- detector findings first, invisible findings second -- is part of
 // the contract. Swapping it renumbers findings and invalidates every
 // approved fingerprint.
+//
+// The findings here are byte-IDENTICAL apart from position. An earlier
+// version of this test compared two findings that differed in rule,
+// title and evidence, so it passed even with occurrence assignment
+// deleted entirely -- it proved nothing.
 func TestWithOccurrencesIsOrderSensitive(t *testing.T) {
-	detector := Finding{RuleID: "R1", File: "a.py", Title: "T", Why: "W"}
-	invisible := Finding{RuleID: "INVISIBLE_CHAR_U+200B", File: "a.py", Title: "T2", Why: "W2"}
+	same := Finding{RuleID: "R1", File: "a.py", Title: "T", Why: "W"}
+	other := Finding{RuleID: "R2", File: "b.py", Title: "T2", Why: "W2"}
 
-	forward := withOccurrences([]Finding{detector, invisible}, "/pkg")
-	reversed := withOccurrences([]Finding{invisible, detector}, "/pkg")
+	got := withOccurrences([]Finding{same, other, same}, "/pkg")
+	if len(got) != 3 {
+		t.Fatalf("want 3 findings, got %d", len(got))
+	}
+	// Positions 0 and 2 are identical findings, so they must receive
+	// distinct indices; position 1 is unrelated and must start at zero.
+	if got[0].Occurrence != 0 || got[1].Occurrence != 0 || got[2].Occurrence != 1 {
+		t.Fatalf("occurrences = [%d %d %d], want [0 0 1]",
+			got[0].Occurrence, got[1].Occurrence, got[2].Occurrence)
+	}
 
-	if fingerprint(forward[0], "/pkg") == fingerprint(reversed[0], "/pkg") {
-		t.Fatal("order made no difference; this test cannot detect a reordering regression")
+	// Moving the duplicate pair apart must not change which of them is
+	// first, but removing the leading duplicate must renumber the trailing
+	// one -- proving the index depends on position, not on identity alone.
+	shifted := withOccurrences([]Finding{other, same}, "/pkg")
+	if shifted[1].Occurrence != 0 {
+		t.Fatalf("occurrence = %d, want 0: indices must be assigned by position within a key", shifted[1].Occurrence)
+	}
+	if fingerprint(got[2], "/pkg") == fingerprint(shifted[1], "/pkg") {
+		t.Fatal("the same finding at occurrence 1 and occurrence 0 fingerprinted identically")
 	}
 }

@@ -107,23 +107,42 @@ implementation plus a `registerBackend(".ext", backend{})` call. `.json`,
 - Do not include private paths, credentials, or organization-specific examples
   in public docs or fixtures.
 
-## SkillSpector Gating
+## Skill Security Gating
 
-dotpack includes a native SkillSpector path for scanning skill packages.
+Skill-bearing workflows run a mandatory security gate before dotpack reads or
+materializes skill content. Gates are an open registry (ADR-0016): a gate
+registers itself from its own `init()` and a single blank import in
+`internal/skillgate/all` wires it in, so adding one touches no CLI core.
 
-- Skill-bearing workflows automatically run a static SkillSpector gate before
-  dotpack reads or materializes skill content.
+The default gate is `skillgate`, which gates on CHANGE -- a package is approved
+at a reviewed state with `dotpack approve-skill`, and only NEW findings block.
+Its baselines live at `<policy-root>/.dotpack/skillgate/baselines/<skill>.json`.
+See docs/SKILLGATE.md and ADR-0016.
+
+Two invariants to preserve when touching this area:
+
+- Gate selection and the policy root come from the operator (`--skill-gate`,
+  `--skill-policy-root`, or their environment variables), never from the package
+  being installed. A source that could choose its own gate could choose the
+  weakest one.
+- A policy root inside `DOTPACK_DOTPACK_HOME` is untrusted. dotpack clones
+  `github:` sources there, so approvals found in one would be a repository
+  vouching for itself.
+
+The `skillspector` gate remains available with `--skill-gate skillspector`:
+
+- It runs the same static SkillSpector scan the automatic gate used to run.
 - `dotpack scan-skills` runs the same static-only scan surface directly and
   gates by default.
 - `dotpack baseline-skills` writes per-skill baseline YAML files that
   `scan-skills --baseline-dir ...` can apply later.
-- Automatic gates look for baseline files under
-  `<policy-root>/.dotpack/skillspector/baselines`, then fall back to a
+- It looks for baseline files under
+  `<policy-root>/.dotpack/skillspector/baselines`, then falls back to a
   canonical agent-config gate at
   `<policy-root>/.agents/tools/skillspector-gate/baselines`.
-- For automatic gates, a baseline is applied only to the individual skill that
-  has a reviewed baseline file; unbaselined skills are still scanned and must
-  pass with no findings.
+- A baseline is applied only to the individual skill that has a reviewed
+  baseline file; unbaselined skills are still scanned and must pass with no
+  findings.
 - Skill-bearing commands accept repeatable
   `--skill-bypass-security <name>` arguments for explicit invocation-local
   exceptions. Bypasses match exact selected skill names, fail closed for
@@ -131,8 +150,10 @@ dotpack includes a native SkillSpector path for scanning skill packages.
 - The SkillSpector runtime is provisioned under `DOTPACK_DOTPACK_HOME` and
   pinned to a specific upstream commit/version.
 
-Use `scan-skills` when you want to inspect/export findings directly, and use
-`baseline-skills` to author reviewed suppressions for the automatic gate.
+Use `scan-skills` when you want to inspect/export SkillSpector findings
+directly, and `baseline-skills` to author reviewed suppressions for the
+`skillspector` gate. Neither affects the default gate, which uses
+`approve-skill`.
 Prefer a baseline over a full security bypass whenever the skill can still be
 scanned.
 

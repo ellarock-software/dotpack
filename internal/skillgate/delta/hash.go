@@ -3,6 +3,7 @@ package delta
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,15 +122,25 @@ func packageHash(pkgAbs string, files []string, p Policy) HashInfo {
 			info.RuntimeFilesSkipped++
 			continue
 		}
-		h.Write([]byte(rel))
+		// Slash-normalised and length-delimited. Slashes because a
+		// baseline is committed and read back on another platform, and a
+		// backslash here would make every Linux approval fail on Windows.
+		// Lengths because bare concatenation is ambiguous: a file named
+		// "a<64 hex chars>b" would otherwise hash identically to the two
+		// files "a" and "b".
+		relSlash := filepath.ToSlash(rel)
+		fmt.Fprintf(h, "%d:%s", len(relSlash), relSlash)
 		content, err := os.ReadFile(abs)
 		if err != nil {
 			// Counted, not skipped: an unreadable file is still part of
 			// the package, and its becoming readable must move the hash.
-			h.Write([]byte("UNREADABLE"))
+			// Fixed width, matching a hex digest, so it cannot be forged
+			// by a file whose contents hash to the literal.
+			fmt.Fprintf(h, "%d:%s", 64, strings.Repeat("U", 64))
 		} else {
 			sum := sha256.Sum256(content)
-			h.Write([]byte(hex.EncodeToString(sum[:])))
+			digest := hex.EncodeToString(sum[:])
+			fmt.Fprintf(h, "%d:%s", len(digest), digest)
 		}
 		info.HashedFiles++
 	}

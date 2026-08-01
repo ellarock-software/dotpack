@@ -101,6 +101,12 @@ type Verdict struct {
 	// the CLI error so a refusal is always reviewable.
 	ArtifactPath string
 
+	// Notices are advisory lines printed on a PASSING run: drift, a
+	// re-approved baseline, a below-floor finding. Without them the gate's
+	// claim that any change becomes a review event would hold only inside
+	// a JSON file the operator is never told about.
+	Notices []string
+
 	Blocked []Blocked
 }
 

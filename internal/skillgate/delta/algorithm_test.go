@@ -1,6 +1,8 @@
 package delta
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -172,15 +174,43 @@ func TestScanInvisibleFlagsHiddenCharactersInAnyScannedFile(t *testing.T) {
 	}
 }
 
-func TestScanInvisibleIgnoresUnscannedSuffixesAndVendorDirectories(t *testing.T) {
+// The scan must cover every file dotpack would install. An extension
+// allowlist and a skipped-directory list were both wrong: install copies
+// support files verbatim with no filtering, so any file the scan skipped
+// was a place to hide instructions an agent would still read.
+func TestScanInvisibleCoversEveryFileInstallWouldCopy(t *testing.T) {
 	pkg := tmpSkill(t, map[string]string{
 		"SKILL.md":                  "clean\n",
 		"assets/logo.svg":           "<svg>\u200b</svg>\n",
 		"node_modules/pkg/index.js": "var a = 1\u200b\n",
 		".venv/lib/mod.py":          "x\u200b\n",
+		"ref/guide.mdx":             "read this\u200b\n",
+		".DS_Store":                 "junk\u200b\n",
 	})
+	got := invisibleOf(t, pkg)
+	found := map[string]bool{}
+	for _, f := range got {
+		found[f.File] = true
+	}
+	for _, want := range []string{
+		"assets/logo.svg", "node_modules/pkg/index.js",
+		".venv/lib/mod.py", "ref/guide.mdx", ".DS_Store",
+	} {
+		if !found[want] {
+			t.Errorf("%s was not scanned; install copies it verbatim, so it is a hiding place", want)
+		}
+	}
+}
+
+// Binary files are skipped only because there is no text in them to hide
+// an instruction in -- not because of their name or extension.
+func TestScanInvisibleSkipsOnlyNonTextFiles(t *testing.T) {
+	pkg := tmpSkill(t, map[string]string{"SKILL.md": "clean\n"})
+	if err := os.WriteFile(filepath.Join(pkg, "blob.bin"), []byte{0xff, 0xfe, 0x00, 0x01}, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
 	if got := invisibleOf(t, pkg); len(got) != 0 {
-		t.Fatalf("unexpected findings: %+v", got)
+		t.Fatalf("unexpected findings from a binary file: %+v", got)
 	}
 }
 
@@ -362,13 +392,38 @@ func TestGitignoreFormsAllResolveAndGlobsAndNegationsAreIgnored(t *testing.T) {
 	}
 }
 
-func TestPackageHashSkipsDSStoreAndCountsUnreadableFiles(t *testing.T) {
+// .DS_Store is hashed like any other file. Excluding it made it a
+// channel that was neither hashed nor scanned, while install copied it.
+func TestPackageHashCoversEveryRegularFileIncludingDSStore(t *testing.T) {
 	pkg := tmpSkill(t, map[string]string{
 		"SKILL.md":  "body\n",
 		".DS_Store": "junk\n",
 	})
-	if got := hashOf(t, pkg); got.HashedFiles != 1 {
-		t.Errorf("hashedFiles = %d, want 1 (.DS_Store must not be hashed)", got.HashedFiles)
+	before := hashOf(t, pkg)
+	if before.HashedFiles != 2 {
+		t.Fatalf("hashedFiles = %d, want 2", before.HashedFiles)
+	}
+	if err := os.WriteFile(filepath.Join(pkg, ".DS_Store"), []byte("payload\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if after := hashOf(t, pkg); after.Digest == before.Digest {
+		t.Fatal("a .DS_Store change did not move the tripwire")
+	}
+}
+
+// Bare concatenation of (relative path, content hash) is ambiguous: a
+// file named "a<64 hex chars>b" would hash identically to the two files
+// "a" and "b". Length prefixes remove the ambiguity.
+func TestPackageHashIsUnambiguousAcrossFileBoundaries(t *testing.T) {
+	contentA := "alpha\n"
+	sumA := sha256.Sum256([]byte(contentA))
+	hexA := hex.EncodeToString(sumA[:])
+
+	split := tmpSkill(t, map[string]string{"SKILL.md": "x\n", "a": contentA, "b": "beta\n"})
+	merged := tmpSkill(t, map[string]string{"SKILL.md": "x\n", "a" + hexA + "b": "beta\n"})
+
+	if hashOf(t, split).Digest == hashOf(t, merged).Digest {
+		t.Fatal("two different file sets produced the same content digest")
 	}
 }
 
@@ -383,9 +438,11 @@ func TestPackageHashGoldenVector(t *testing.T) {
 		"scripts/helper.py": "print('hi')\n",
 	})
 	got := hashOf(t, pkg)
-	// Cross-checked against the source skillgate.mjs implementation on the
-	// identical fixture: both produce this digest, so the port is faithful.
-	const want = "a0d3e8b1ed933e272c9670918f52ade8268ed65ec0c311fc52de84cd7c42a568"
+	// This deliberately DIFFERS from the reference implementation, which
+	// concatenated the relative path and content hash with no delimiter.
+	// That was ambiguous across file boundaries; see
+	// TestPackageHashIsUnambiguousAcrossFileBoundaries.
+	const want = "dfe84093990ca288709a04890bac81a559f9ec86b8d903872c704de6559650e9"
 	if got.HashedFiles != 3 {
 		t.Fatalf("hashedFiles = %d, want 3", got.HashedFiles)
 	}

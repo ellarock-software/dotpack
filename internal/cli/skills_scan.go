@@ -616,7 +616,7 @@ func applySkillSecurityBypasses(selection skillScanSelection, requested []string
 
 func reportSkillSecurityBypasses(cmd *cobra.Command, bypassed []skillScanTarget) {
 	for _, target := range bypassed {
-		cmd.Printf("SECURITY BYPASS: SkillSpector skipped skill %q\n", target.Name)
+		cmd.Printf("SECURITY BYPASS: %s gate skipped skill %q\n", currentSkillGate(), target.Name)
 	}
 }
 

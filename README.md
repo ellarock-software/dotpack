@@ -92,10 +92,11 @@ Import a Claude Code tree back into canonical `.agents`:
 dotpack import claude-code "$TARGET" --out "$TARGET"
 ```
 
-Inspect or baseline the automatic skill gate:
+Inspect or baseline the SkillSpector scan surface (the `skillspector` gate only;
+the default gate uses `dotpack approve-skill` -- see Skill Security Gating):
 
 ```sh
-BASELINES=/path/to/project/.dotpack/skillspector/baselines
+BASELINES=/path/to/project/.dotpack/skillspector/baselines   # skillspector gate only
 
 dotpack baseline-skills "$CATALOG" --baseline-dir "$BASELINES"
 dotpack scan-skills "$CATALOG" --baseline-dir "$BASELINES"
@@ -264,13 +265,13 @@ dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope 
 #   Installed claude-code:skill:code-review
 ```
 
-Why gate on change rather than on absolutes: measured on a 216-package corpus,
-absolute gating on this class of detector ran about 5% precision - 271 findings
-triaged by hand, 14 real. Nobody reads 257 false positives; they reach for
-`--skill-bypass-security`, which exempts a whole package permanently, on exactly
-the large active packages most worth watching. Baselining a package's constant
-findings once makes that noise harmless, so the gate can afford a high-recall
-detector.
+Why gate on change rather than on absolutes: absolute gating on a noisy detector
+does not survive contact with reviewers. Nobody reads hundreds of false
+positives; they reach for `--skill-bypass-security`, which exempts a whole
+package permanently, on exactly the large active packages most worth watching.
+Baselining a package's constant findings once makes that noise harmless, so the
+gate can afford a high-recall detector. The measurement behind this decision is
+recorded in [ADR-0016](docs/adr/0016-delta-skill-security-gate-and-gate-registry.md).
 
 Approvals are committed to `<repo>/.dotpack/skillgate/baselines/<skill>.json`
 and reviewed in the pull-request diff. They record the detector version, policy
@@ -285,10 +286,25 @@ Cyrillic/Greek homoglyphs itself - that class cannot be delegated to a semantic
 analyser, because an invisible codepoint is invisible in the analyser's input
 too.
 
+Skills fetched from a remote source cannot approve themselves, so approve them
+into a repository you control:
+
+```sh
+dotpack approve-skill github:OWNER/REPO --all --skill-policy-root .
+dotpack install-all --from github:OWNER/REPO --skills-path skills --skill-policy-root .
+```
+
+First run provisions a Python virtual environment holding the detector, roughly
+400 MB, once per machine. Python 3.11+ and network access are required for that
+run; dotpack announces it before it starts.
+
 ### `skillspector` - gates on absolutes
 
-The previous behaviour, unchanged and still available with
-`--skill-gate skillspector`.
+The previous behaviour, still available with `--skill-gate skillspector`. It
+reads its own YAML baselines from `.dotpack/skillspector/baselines`, which the
+default gate ignores. One behaviour did change for it too: baselines shipped by a
+source dotpack fetched are no longer honoured, because a remote repository could
+otherwise suppress findings about itself.
 
 - Skill-bearing workflows automatically run a static SkillSpector gate before
   dotpack reads or materializes skill content. This covers `install`,

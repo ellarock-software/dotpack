@@ -26,9 +26,9 @@ from the first tagged release onward.
 - **BREAKING:** the default skill gate is now `skillgate`, which gates on
   change rather than on absolutes. The first install of any package blocks as
   a first sighting until it is approved with `dotpack approve-skill`. Pass
-  `--skill-gate skillspector` to restore the previous behaviour. The change is
-  motivated by measured ~5% precision from absolute gating on a 216-package
-  corpus, which drove permanent whole-package bypasses.
+  `--skill-gate skillspector` to restore the previous behaviour. Absolute
+  gating on this class of detector produced enough false positives to drive
+  permanent whole-package bypasses; see ADR-0016 for the reasoning.
 
 ### Security
 
