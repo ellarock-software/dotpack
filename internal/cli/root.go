@@ -7,7 +7,23 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ellarock-software/dotpack/internal/adapter/registry"
+	skillgateregistry "github.com/ellarock-software/dotpack/internal/skillgate/registry"
+
+	// Registers every shipped skill gate (ADR-0016). One blank import;
+	// adding a gate touches no CLI core.
+	_ "github.com/ellarock-software/dotpack/internal/skillgate/all"
 )
+
+// init validates the skill-gate registry once every gate package's own
+// init() has run. Go initialises imported packages first, so by the time
+// this executes the registry is fully populated. A registry without its
+// default gate is a build-time mistake and must fail at process start,
+// not at the first install.
+func init() {
+	if err := skillgateregistry.Validate(); err != nil {
+		panic(err)
+	}
+}
 
 // shippedAdaptersLine renders the currently-registered per-host adapters
 // as a comma-separated list, sourced from the registry rather than a
@@ -43,13 +59,23 @@ The main direction is .agents -> host, e.g.:
   - opencode:    .opencode/skills, .opencode/agents, opencode.json for mcp
 
 Use install to translate one resource into a host, or install-all to
-materialize a full canonical .agents tree. Skill-bearing workflows run a
-mandatory static SkillSpector gate automatically; use scan-skills /
-baseline-skills when you want to inspect or manage that same scan surface
-directly. Skill-bearing commands accept the explicit, repeatable
---skill-bypass-security <name> flag for invocation-local exceptions. Use
-import to convert a native host tree into .agents; import
-currently supports Claude Code input.`, shippedAdaptersLine()),
+materialize a full canonical .agents tree.
+
+Skill-bearing workflows run a mandatory security gate before dotpack
+reads or materializes any skill. The default gate is %q, which gates on
+CHANGE: a package is approved at a reviewed state with
+"dotpack approve-skill", and only findings that are NEW since that
+approval block. Registered gates: %s. Select one with --skill-gate or
+$DOTPACK_SKILL_GATE; dotpack never reads gate selection from the package
+being installed. Skill-bearing commands also accept the explicit,
+repeatable --skill-bypass-security <name> flag for invocation-local
+exceptions.
+
+Use scan-skills / baseline-skills to inspect or manage the SkillSpector
+scan surface directly. Use import to convert a native host tree into
+.agents; import currently supports Claude Code input.`,
+			shippedAdaptersLine(), skillgateregistry.DefaultName(),
+			strings.Join(skillgateregistry.Names(), ", ")),
 		Example: `  dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent antigravity-cli --scope project
   dotpack install .agents/skills/code-review/SKILL.md --agent agents-cli --scope project
@@ -58,7 +84,16 @@ currently supports Claude Code input.`, shippedAdaptersLine()),
   dotpack import claude-code . --out .`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+
+		// Capture the operator's gate selection before any subcommand
+		// runs. PersistentPreRunE is inherited, so every subcommand gets
+		// it, and the value is resolved from the flag and the environment
+		// only -- never from a source tree.
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			return resolveSelectedSkillGate(cmd)
+		},
 	}
+	addSkillGateFlag(root)
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newInstallCmd())
 	root.AddCommand(newScanSkillsCmd())
@@ -72,5 +107,6 @@ currently supports Claude Code input.`, shippedAdaptersLine()),
 	root.AddCommand(newSyncBackCmd())
 	root.AddCommand(newResetMaterializedCmd())
 	root.AddCommand(newInstallAllCmd())
+	root.AddCommand(newApproveSkillCmd())
 	return root
 }

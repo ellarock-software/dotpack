@@ -8,6 +8,36 @@ from the first tagged release onward.
 
 ## [Unreleased]
 
+### Added
+
+- `skillgate`, a delta-based skill security gate, and an open gate registry
+  (ADR-0016). A package is approved at a reviewed state with the new
+  `dotpack approve-skill` command, and only findings that are NEW since that
+  approval block. Approvals are committed JSON carrying the detector version,
+  policy version, dotpack version and a timestamp.
+- `--skill-gate` and `$DOTPACK_SKILL_GATE` select the gate. Gate selection is
+  operator-controlled and is never read from the package being installed.
+- A deterministic check for zero-width characters, bidi controls and
+  Cyrillic/Greek homoglyphs in `SKILL.md`, which cannot be delegated to a
+  semantic analyser.
+
+### Changed
+
+- **BREAKING:** the default skill gate is now `skillgate`, which gates on
+  change rather than on absolutes. The first install of any package blocks as
+  a first sighting until it is approved with `dotpack approve-skill`. Pass
+  `--skill-gate skillspector` to restore the previous behaviour. Absolute
+  gating on this class of detector produced enough false positives to drive
+  permanent whole-package bypasses; see ADR-0016 for the reasoning.
+
+### Security
+
+- Gate policy is no longer honoured from a source dotpack fetched. `github:`
+  sources are cloned into `DOTPACK_DOTPACK_HOME` and previously supplied their
+  own baseline directory, so a remote repository could ship suppressions that
+  silenced findings about itself. Policy roots under dotpack-managed state are
+  now untrusted, for both gates.
+
 ### Removed
 
 - The bundled Sponsio post-install lifecycle task, its example configuration

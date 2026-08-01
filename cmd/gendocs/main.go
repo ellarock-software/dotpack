@@ -140,7 +140,8 @@ func generateMkDocsYML(schemaFiles []os.DirEntry, adrDir string) {
 		}
 	}
 
-	sb.WriteString("  - Optional Hardening:\n")
+	sb.WriteString("  - Skill Security:\n")
+	sb.WriteString("    - Skill Gates: SKILLGATE.md\n")
 	sb.WriteString("    - SkillSpector Scanning: SKILLSPECTOR_SCAN_INSTRUCTIONS.md\n")
 
 	sb.WriteString("  - Standards & Architecture (ADR):\n")

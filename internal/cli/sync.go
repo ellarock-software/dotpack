@@ -159,8 +159,7 @@ github:OWNER/REPO@REF; dotpack caches them under DOTPACK_DOTPACK_HOME.
 By default, install-all only materializes host files. Pass --run-lifecycle to
 run optional post-install lifecycle tasks after a non-empty batch.
 
-Skill resources discovered by install-all are gated by an automatic static
-SkillSpector scan before materialization. Use dotpack scan-skills when you want
+Skill resources discovered by install-all pass the mandatory security gate before materialization. Use dotpack scan-skills when you want
 to inspect or export the same findings directly.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

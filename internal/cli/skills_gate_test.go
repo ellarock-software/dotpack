@@ -97,7 +97,7 @@ func TestInstallSecurityBypassFiltersMandatoryScanAndReportsWarning(t *testing.T
 	if len(scanned.Targets) != 0 || len(scanned.SecurityBypassed) != 1 || scanned.SecurityBypassed[0].Name != "scan-me" {
 		t.Fatalf("mandatory scan selection = %+v", scanned)
 	}
-	if !strings.Contains(stdout.String(), `SECURITY BYPASS: SkillSpector skipped skill "scan-me"`) {
+	if !strings.Contains(stdout.String(), `SECURITY BYPASS: `+currentSkillGate()+` gate skipped skill "scan-me"`) {
 		t.Fatalf("install output missing security warning:\n%s", stdout.String())
 	}
 }
@@ -196,7 +196,7 @@ func executeCommandExpectingSecurityBypass(t *testing.T, args []string, command,
 	if len(scanned.Targets) != 0 || len(scanned.SecurityBypassed) != 1 || scanned.SecurityBypassed[0].Name != skillName {
 		t.Fatalf("mandatory scan selection = %+v", scanned)
 	}
-	if !strings.Contains(stdout.String(), `SECURITY BYPASS: SkillSpector skipped skill "`+skillName+`"`) {
+	if !strings.Contains(stdout.String(), `SECURITY BYPASS: `+currentSkillGate()+` gate skipped skill "`+skillName+`"`) {
 		t.Fatalf("%s output missing security warning:\n%s", command, stdout.String())
 	}
 }
@@ -257,6 +257,7 @@ func TestInstallMandatorySkillScanUsesAutomaticBaselineAndWritesAggregate(t *tes
 	t.Setenv("DOTPACK_CLAUDE_HOME", claudeHome)
 	t.Setenv("DOTPACK_PROJECT_HOME", configRoot)
 
+	useSkillGate(t, spectorGateName)
 	restore := stubMandatorySkillScan(t, runMandatorySkillScan)
 	defer restore()
 
@@ -297,14 +298,25 @@ func TestInstallMandatorySkillScanUsesAutomaticBaselineAndWritesAggregate(t *tes
 	}
 }
 
-func TestResolveAutomaticBaselineDirFindsCanonicalAgentGateBaselines(t *testing.T) {
+// Baseline discovery is now two steps: the funnel resolves the policy
+// root once for every gate, and each gate finds its own baselines under
+// it. The behaviour asserted here is unchanged.
+func TestSpectorBaselineDirFindsCanonicalAgentGateBaselines(t *testing.T) {
 	configRoot := t.TempDir()
 	baselineDir := filepath.Join(configRoot, ".agents", "tools", "skillspector-gate", "baselines")
 	mustWriteTestFile(t, filepath.Join(baselineDir, "safe-skill.yaml"), "accepted_findings: []\n")
 
-	got, err := resolveAutomaticBaselineDir(filepath.Join(configRoot, ".agents"))
+	policyRoot, trusted, err := resolvePolicyRoot(filepath.Join(configRoot, ".agents"), dirs.Dirs{DotpackHome: t.TempDir()})
 	if err != nil {
-		t.Fatalf("resolve automatic baseline dir: %v", err)
+		t.Fatalf("resolve policy root: %v", err)
+	}
+	if !trusted {
+		t.Fatal("a policy root outside DotpackHome must be trusted")
+	}
+
+	got, err := spectorBaselineDir(policyRoot)
+	if err != nil {
+		t.Fatalf("resolve baseline dir: %v", err)
 	}
 	if got != baselineDir {
 		t.Fatalf("baseline dir = %q; want %q", got, baselineDir)
@@ -349,6 +361,7 @@ func TestMandatorySkillScanAllSecurityBypassedWritesAggregateWithoutRuntime(t *t
 			RelativePath: "skills/bypass-me",
 		}},
 	}
+	useSkillGate(t, spectorGateName)
 	restore := stubEnsureSkillSpectorRuntime(t, func(string) (skillspector.Runtime, error) {
 		return skillspector.Runtime{}, errors.New("runtime provisioning must not run")
 	})
@@ -382,6 +395,7 @@ func TestInstallReturnsLLMAgentPromptWhenRuntimeUnavailable(t *testing.T) {
 	t.Setenv("DOTPACK_CLAUDE_HOME", t.TempDir())
 	t.Setenv("DOTPACK_PROJECT_HOME", configRoot)
 
+	useSkillGate(t, spectorGateName)
 	restoreScan := stubMandatorySkillScan(t, runMandatorySkillScan)
 	defer restoreScan()
 	restoreRuntime := stubEnsureSkillSpectorRuntime(t, func(string) (skillspector.Runtime, error) {
@@ -398,7 +412,10 @@ func TestInstallReturnsLLMAgentPromptWhenRuntimeUnavailable(t *testing.T) {
 		t.Fatal("install should fail when the SkillSpector runtime cannot be prepared")
 	}
 	for _, want := range []string{
-		"install: ensure SkillSpector runtime:",
+		// The failure now names the gate. With more than one registered,
+		// "the runtime could not be prepared" is not actionable unless the
+		// operator knows which gate wanted it.
+		"install: skillspector gate: ensure SkillSpector runtime:",
 		"Pass this prompt to an LLM agent to install the managed SkillSpector dependency:",
 		"PROMPT",
 	} {

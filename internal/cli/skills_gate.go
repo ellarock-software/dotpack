@@ -1,9 +1,10 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -11,52 +12,86 @@ import (
 
 	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/skillgate"
+	"github.com/ellarock-software/dotpack/internal/skillgate/registry"
+	"github.com/ellarock-software/dotpack/internal/skillscanner"
 	"github.com/ellarock-software/dotpack/internal/skillspector"
 )
 
 var mandatorySkillScan = runMandatorySkillScan
 var ensureSkillSpectorRuntime = skillspector.EnsureRuntime
 
+// runMandatorySkillScan is the single enforcement funnel every
+// skill-bearing command passes through. It selects the operator's gate,
+// resolves the policy root once so every gate agrees on it, and turns a
+// refusal into the error that aborts the command.
+//
+// The registry lookup lives INSIDE this function on purpose. The
+// mandatorySkillScan var above is stubbed package-wide by
+// testmain_test.go; if gate selection moved above that seam, every CLI
+// test would start provisioning a Python environment.
 func runMandatorySkillScan(command string, selection skillScanSelection, d dirs.Dirs) error {
 	if len(selection.Targets) == 0 && len(selection.SecurityBypassed) == 0 {
 		return nil
 	}
 
-	runDir, err := createSkillSpectorRunDir(d.DotpackHome, sanitizeSkillGateCommand(command))
+	gateName := currentSkillGate()
+	gate, err := registry.Build(gateName, d)
 	if err != nil {
-		return fmt.Errorf("%s: create SkillSpector run directory: %w", command, err)
+		return fmt.Errorf("%s: %w", command, err)
 	}
 
-	baselineDir, err := resolveAutomaticBaselineDir(selection.SourceRoot)
+	policyRoot, trusted, err := resolvePolicyRoot(selection.SourceRoot, d)
 	if err != nil {
-		return fmt.Errorf("%s: resolve automatic baseline directory: %w", command, err)
+		return fmt.Errorf("%s: %w", command, err)
 	}
 
-	var (
-		runtimeInfo skillspector.Runtime
-		results     []skillScanResult
-	)
-	if len(selection.Targets) > 0 {
-		runtimeInfo, err = ensureSkillSpectorRuntime(d.DotpackHome)
-		if err != nil {
-			return fmt.Errorf("%s: ensure SkillSpector runtime: %w", command, err)
-		}
-		results, _, err = runSkillScansWithOptionalBaselines(selection.Targets, runDir, baselineDir, "json", runtimeInfo)
-		if err != nil {
-			return fmt.Errorf("%s: run mandatory SkillSpector scan: %w", command, err)
-		}
+	verdict, err := gate.Run(context.Background(), skillgate.Request{
+		Command:           command,
+		Selection:         selection,
+		PolicyRoot:        policyRoot,
+		PolicyRootTrusted: trusted,
+	})
+	if err != nil {
+		return fmt.Errorf("%s: %s gate: %w", command, gateName, err)
 	}
-
-	aggregate := buildSkillScanOutput(command, selection, results, runDir, baselineDir, "", false, "json", false, runtimeInfo.Metadata)
-	outputPath := filepath.Join(runDir, "mandatory-scan-aggregate.json")
-	if err := writeSkillScanOutput("json", outputPath, aggregate, nil); err != nil {
-		return fmt.Errorf("%s: write mandatory SkillSpector aggregate output: %w", command, err)
+	if !verdict.Pass {
+		return gateBlockedError(command, gateName, verdict)
 	}
-
-	if !aggregate.Summary.Pass {
-		return fmt.Errorf("%s: mandatory SkillSpector scan failed for %d skill(s) with %d unsuppressed issue(s); review %s", command, aggregate.Summary.SkillsScanned, aggregate.Summary.IssueCount, outputPath)
+	for _, notice := range verdict.Notices {
+		skillGateNotice(notice)
 	}
 	return nil
+}
+
+// skillGateNotice reports an advisory line from a passing gate run. It is
+// a package var so the funnel, which has no cobra command in scope, can
+// still reach the command's stderr.
+var skillGateNotice = func(msg string) { fmt.Fprintln(os.Stderr, "skill gate: "+msg) }
+
+// gateBlockedError renders a refusal.
+//
+// The per-package detail is included rather than left in the artifact
+// because an operator who cannot see WHY a package was refused, and what
+// to do about it, reaches for --skill-bypass-security. A bypass is
+// permanent and covers the whole package, which is a worse outcome than
+// whatever the gate caught.
+func gateBlockedError(command, gateName string, verdict skillgate.Verdict) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s: %s gate blocked %d skill package(s)", command, gateName, len(verdict.Blocked))
+	if verdict.Reason != "" {
+		fmt.Fprintf(&b, ": %s", verdict.Reason)
+	}
+	for _, blocked := range verdict.Blocked {
+		fmt.Fprintf(&b, "\n\nBLOCKED  %s: %s", blocked.Skill, blocked.Reason)
+		for _, line := range blocked.Detail {
+			fmt.Fprintf(&b, "\n         %s", line)
+		}
+	}
+	if verdict.ArtifactPath != "" {
+		fmt.Fprintf(&b, "\n\nFull report: %s", verdict.ArtifactPath)
+	}
+	return errors.New(b.String())
 }
 
 func runMandatorySkillScanWithSecurityBypasses(cmd *cobra.Command, command string, selection skillScanSelection, bypassNames []string, d dirs.Dirs) error {
@@ -65,7 +100,41 @@ func runMandatorySkillScanWithSecurityBypasses(cmd *cobra.Command, command strin
 		return err
 	}
 	reportSkillSecurityBypasses(cmd, filtered.SecurityBypassed)
+
+	// Provisioning downloads a large dependency tree on first run. Without
+	// this the command sits silent for minutes and looks hung.
+	restore := announceSkillGateProgress(cmd)
+	defer restore()
+
+	restoreNotice := routeSkillGateNotices(cmd)
+	defer restoreNotice()
+
 	return mandatorySkillScan(command, filtered, d)
+}
+
+// routeSkillGateNotices sends advisory gate output to the command's
+// stderr rather than raw os.Stderr, so tests and piped callers see it in
+// the right stream.
+func routeSkillGateNotices(cmd *cobra.Command) func() {
+	prev := skillGateNotice
+	skillGateNotice = func(msg string) {
+		if cmd != nil {
+			fmt.Fprintln(cmd.ErrOrStderr(), "skill gate: "+msg)
+		}
+	}
+	return func() { skillGateNotice = prev }
+}
+
+// announceSkillGateProgress routes detector provisioning notices to
+// stderr, so they are visible but do not contaminate piped stdout.
+func announceSkillGateProgress(cmd *cobra.Command) func() {
+	prev := skillscanner.Progress
+	skillscanner.Progress = func(msg string) {
+		if cmd != nil {
+			fmt.Fprintln(cmd.ErrOrStderr(), msg)
+		}
+	}
+	return func() { skillscanner.Progress = prev }
 }
 
 func ensureMandatorySkillScanForSource(cmd *cobra.Command, command, source string, bypassNames []string, d dirs.Dirs) error {
@@ -128,55 +197,4 @@ func buildSkillScanSelectionForFiles(skillFiles []string, sourceRoot string) (sk
 		SkillRoot:  sourceRoot,
 		Targets:    targets,
 	}, nil
-}
-
-func resolveAutomaticBaselineDir(sourceRoot string) (string, error) {
-	if strings.TrimSpace(sourceRoot) == "" {
-		return "", nil
-	}
-	policyRoot := filepath.Clean(sourceRoot)
-	switch filepath.Base(policyRoot) {
-	case ".agents", ".claude", ".gemini", ".antigravity", ".opencode", ".hermes":
-		policyRoot = filepath.Dir(policyRoot)
-	}
-	for _, candidate := range []string{
-		filepath.Join(policyRoot, ".dotpack", "skillspector", "baselines"),
-		filepath.Join(policyRoot, ".agents", "tools", "skillspector-gate", "baselines"),
-	} {
-		info, err := os.Stat(candidate)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return "", fmt.Errorf("stat %s: %w", candidate, err)
-		}
-		if !info.IsDir() {
-			return "", fmt.Errorf("%s exists but is not a directory", candidate)
-		}
-		return candidate, nil
-	}
-	return "", nil
-}
-
-func sanitizeSkillGateCommand(command string) string {
-	var b strings.Builder
-	for _, r := range command {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '-' || r == '_':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('-')
-		}
-	}
-	out := strings.Trim(b.String(), "-")
-	if out == "" {
-		return "skill-gate"
-	}
-	return out
 }

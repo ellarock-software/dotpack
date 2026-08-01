@@ -92,10 +92,11 @@ Import a Claude Code tree back into canonical `.agents`:
 dotpack import claude-code "$TARGET" --out "$TARGET"
 ```
 
-Inspect or baseline the automatic skill gate:
+Inspect or baseline the SkillSpector scan surface (the `skillspector` gate only;
+the default gate uses `dotpack approve-skill` -- see Skill Security Gating):
 
 ```sh
-BASELINES=/path/to/project/.dotpack/skillspector/baselines
+BASELINES=/path/to/project/.dotpack/skillspector/baselines   # skillspector gate only
 
 dotpack baseline-skills "$CATALOG" --baseline-dir "$BASELINES"
 dotpack scan-skills "$CATALOG" --baseline-dir "$BASELINES"
@@ -110,10 +111,11 @@ compatible sub-adapters.
 
 | Command | Purpose |
 | --- | --- |
-| `dotpack install <source-path>` | Install one portable resource into one host or umbrella target; skill installs run a mandatory static SkillSpector gate first. |
-| `dotpack install-all` | Discover and install supported direct resources from a canonical `.agents` tree or explicit source layout; discovered skills are gated with SkillSpector first. |
+| `dotpack install <source-path>` | Install one portable resource into one host or umbrella target; skill installs run the mandatory security gate first. |
+| `dotpack install-all` | Discover and install supported direct resources from a canonical `.agents` tree or explicit source layout; discovered skills pass the mandatory security gate first. |
 | `dotpack scan-skills [source]` | Run static SkillSpector scans against one skill, a canonical `.agents` tree, or a custom skill root. |
 | `dotpack baseline-skills [source]` | Generate one SkillSpector baseline YAML file per selected skill. |
+| `dotpack approve-skill [source]` | Record skill packages as approved at their current reviewed state, for the default delta gate. |
 | `dotpack inventory` | Classify materialized host file outputs against manifest claims and optional canonical output. |
 | `dotpack sync-back` | Copy drifted or untracked materialized file-drop output back into canonical `.agents`. |
 | `dotpack reset-materialized` | Remove materialized host output owned by dotpack for a target; optionally remove scanned untracked file-drop output. |
@@ -235,9 +237,74 @@ and commands. Config-fragment sync-back from settings/config files remains an
 importer concern because dotpack cannot prove ownership of arbitrary untracked
 merged settings.
 
-## SkillSpector Gating
+## Skill Security Gating
 
-dotpack ships a native SkillSpector integration for skill packages.
+Skill-bearing workflows run a mandatory security gate before dotpack reads or
+materializes any skill content: `install`, `install-all`, canonical `inventory`
+comparisons, Claude Code `import`, and `sync-back` when skills are involved.
+
+Two gates ship. Select one with `--skill-gate` or `$DOTPACK_SKILL_GATE`; gate
+selection is operator-controlled and is never read from the package being
+installed. Full guide: [docs/SKILLGATE.md](docs/SKILLGATE.md), design reasoning
+in [ADR-0016](docs/adr/0016-delta-skill-security-gate-and-gate-registry.md).
+
+### `skillgate` (default) - gates on change
+
+A package is approved at a reviewed state, and only findings that are **new**
+since that approval block.
+
+**The first install of a package blocks** until you approve it. That is the
+point: nothing about an unreviewed package is trusted.
+
+```sh
+dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope user
+#   BLOCKED  code-review: no approved baseline - first sighting of this package.
+
+dotpack approve-skill .agents --skill code-review --reason "Reviewed in PR #42"
+dotpack install .agents/skills/code-review/SKILL.md --agent claude-code --scope user
+#   Installed claude-code:skill:code-review
+```
+
+Why gate on change rather than on absolutes: absolute gating on a noisy detector
+does not survive contact with reviewers. Nobody reads hundreds of false
+positives; they reach for `--skill-bypass-security`, which exempts a whole
+package permanently, on exactly the large active packages most worth watching.
+Baselining a package's constant findings once makes that noise harmless, so the
+gate can afford a high-recall detector. The measurement behind this decision is
+recorded in [ADR-0016](docs/adr/0016-delta-skill-security-gate-and-gate-registry.md).
+
+Approvals are committed to `<repo>/.dotpack/skillgate/baselines/<skill>.json`
+and reviewed in the pull-request diff. They record the detector version, policy
+version, dotpack version and timestamp, so an approval cannot be silent. They
+are tamper-evident, not tamper-proof.
+
+The detector is `cisco-ai-skill-scanner` (Apache-2.0), pinned and provisioned
+into a private virtual environment under `DOTPACK_DOTPACK_HOME/skillgate`. Its
+default engines run locally with no API key and no network at scan time. dotpack
+additionally checks `SKILL.md` for zero-width characters, bidi controls and
+Cyrillic/Greek homoglyphs itself - that class cannot be delegated to a semantic
+analyser, because an invisible codepoint is invisible in the analyser's input
+too.
+
+Skills fetched from a remote source cannot approve themselves, so approve them
+into a repository you control:
+
+```sh
+dotpack approve-skill github:OWNER/REPO --all --skill-policy-root .
+dotpack install-all --from github:OWNER/REPO --skills-path skills --skill-policy-root .
+```
+
+First run provisions a Python virtual environment holding the detector, roughly
+400 MB, once per machine. Python 3.11+ and network access are required for that
+run; dotpack announces it before it starts.
+
+### `skillspector` - gates on absolutes
+
+The previous behaviour, still available with `--skill-gate skillspector`. It
+reads its own YAML baselines from `.dotpack/skillspector/baselines`, which the
+default gate ignores. One behaviour did change for it too: baselines shipped by a
+source dotpack fetched are no longer honoured, because a remote repository could
+otherwise suppress findings about itself.
 
 - Skill-bearing workflows automatically run a static SkillSpector gate before
   dotpack reads or materializes skill content. This covers `install`,

@@ -26,7 +26,8 @@ nav:
     - Memory: schemas/memory.md
     - Rule: schemas/rule.md
     - Skill: schemas/skill.md
-  - Optional Hardening:
+  - Skill Security:
+    - Skill Gates: SKILLGATE.md
     - SkillSpector Scanning: SKILLSPECTOR_SCAN_INSTRUCTIONS.md
   - Standards & Architecture (ADR):
     - ADR 0001: adr/0001-empirically-derived-schema-via-corpus-survey.md
@@ -44,6 +45,7 @@ nav:
     - ADR 0013: adr/0013-rule-schema.md
     - ADR 0014: adr/0014-open-adapter-and-merge-backend-registries.md
     - ADR 0015: adr/0015-native-skillspector-skill-scanning.md
+    - ADR 0016: adr/0016-delta-skill-security-gate-and-gate-registry.md
   - Archive:
     - Archived Context: archive/CONTEXT-archived-2026-05-26.md
     - Archived ADR 0001: archive/adr/0001-llm-only-trust-gate-for-translated-resources.md

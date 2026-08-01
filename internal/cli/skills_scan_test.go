@@ -208,7 +208,7 @@ func TestScanSkillsSecurityBypassScansRemainingSkillsAndAuditsBypass(t *testing.
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("scan-skills with security bypass: %v\n%s", err, stdout.String())
 	}
-	if !strings.Contains(stdout.String(), `SECURITY BYPASS: SkillSpector skipped skill "bad-skill"`) {
+	if !strings.Contains(stdout.String(), `SECURITY BYPASS: `+currentSkillGate()+` gate skipped skill "bad-skill"`) {
 		t.Fatalf("scan output missing security warning:\n%s", stdout.String())
 	}
 
