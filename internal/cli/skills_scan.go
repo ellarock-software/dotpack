@@ -15,6 +15,7 @@ import (
 
 	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/skillgate"
 	"github.com/ellarock-software/dotpack/internal/skillspector"
 )
 
@@ -45,19 +46,14 @@ type baselineSkillsOptions struct {
 	changed     bool
 }
 
-type skillScanSelection struct {
-	SourceRoot       string
-	SkillRoot        string
-	Targets          []skillScanTarget
-	SecurityBypassed []skillScanTarget
-}
-
-type skillScanTarget struct {
-	Name         string
-	SkillDir     string
-	SkillFile    string
-	RelativePath string
-}
+// The gate selection types live in internal/skillgate so the registry
+// and every gate can name them without importing CLI core (ADR-0016).
+// These aliases keep the original spellings, so existing call sites and
+// the package-wide gate stub in testmain_test.go are unaffected.
+type (
+	skillScanSelection = skillgate.Selection
+	skillScanTarget    = skillgate.Target
+)
 
 type skillScanCommandOutput struct {
 	Summary skillScanSummary         `json:"summary"`
