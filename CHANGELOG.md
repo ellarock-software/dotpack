@@ -8,6 +8,13 @@ from the first tagged release onward.
 
 ## [Unreleased]
 
+### Removed
+
+- The bundled Sponsio post-install lifecycle task, its example configuration
+  (`sponsio.yaml`), and its documentation. `--run-lifecycle` remains as an
+  extension point, but the public distribution now ships no bundled external
+  lifecycle task and stays external-tool-neutral.
+
 ### Fixed
 
 - Reinstalling the same resource into the same target now removes files owned

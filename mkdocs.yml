@@ -28,8 +28,6 @@ nav:
     - Skill: schemas/skill.md
   - Optional Hardening:
     - SkillSpector Scanning: SKILLSPECTOR_SCAN_INSTRUCTIONS.md
-    - Sponsio Lifecycle: SPONSIO_INSTALL_INSTRUCTIONS.md
-    - Testing Sponsio: SPONSIO_TEST_INSTRUCTIONS.md
   - Standards & Architecture (ADR):
     - ADR 0001: adr/0001-empirically-derived-schema-via-corpus-survey.md
     - ADR 0002: adr/0002-schema-template-as-anchor.md

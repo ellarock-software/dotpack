@@ -107,13 +107,6 @@ implementation plus a `registerBackend(".ext", backend{})` call. `.json`,
 - Do not include private paths, credentials, or organization-specific examples
   in public docs or fixtures.
 
-## Optional Sponsio Hardening
-
-dotpack includes an optional post-install lifecycle hook for Sponsio-based
-runtime guard verification. It is recommended for teams that use Sponsio, but
-it is not required for dotpack itself. Use `--run-lifecycle` only after Sponsio
-is installed and configured for your environment.
-
 ## SkillSpector Gating
 
 dotpack includes a native SkillSpector path for scanning skill packages.

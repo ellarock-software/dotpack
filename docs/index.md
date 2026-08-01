@@ -2,7 +2,7 @@
 
 dotpack validates portable `.agents` resources and translates them into host-native agent configuration files.
 
-Use this documentation to inspect the CLI's schema contracts, contributor workflow, architecture decisions, and optional lifecycle hardening behavior.
+Use this documentation to inspect the CLI's schema contracts, contributor workflow, architecture decisions, and skill-security behavior.
 
 ## Start Here
 
@@ -10,7 +10,6 @@ Use this documentation to inspect the CLI's schema contracts, contributor workfl
 - [Contributing guide](https://github.com/ellarock-software/dotpack/blob/main/CONTRIBUTING.md)
 - [Schema reference](schemas/skill.md)
 - [SkillSpector skill scanning](SKILLSPECTOR_SCAN_INSTRUCTIONS.md)
-- [Optional Sponsio lifecycle hardening](SPONSIO_INSTALL_INSTRUCTIONS.md)
 - [Architecture decisions](adr/0001-empirically-derived-schema-via-corpus-survey.md)
 
 ## Schemas

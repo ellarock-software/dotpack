@@ -97,13 +97,12 @@ func main() {
 	// Create an index file.
 	indexContent := "# dotpack Documentation\n\n"
 	indexContent += "dotpack validates portable `.agents` resources and translates them into host-native agent configuration files.\n\n"
-	indexContent += "Use this documentation to inspect the CLI's schema contracts, contributor workflow, architecture decisions, and optional lifecycle hardening behavior.\n\n"
+	indexContent += "Use this documentation to inspect the CLI's schema contracts, contributor workflow, architecture decisions, and skill-security behavior.\n\n"
 	indexContent += "## Start Here\n\n"
 	indexContent += "- [Project README](https://github.com/ellarock-software/dotpack#readme)\n"
 	indexContent += "- [Contributing guide](https://github.com/ellarock-software/dotpack/blob/main/CONTRIBUTING.md)\n"
 	indexContent += "- [Schema reference](schemas/skill.md)\n"
 	indexContent += "- [SkillSpector skill scanning](SKILLSPECTOR_SCAN_INSTRUCTIONS.md)\n"
-	indexContent += "- [Optional Sponsio lifecycle hardening](SPONSIO_INSTALL_INSTRUCTIONS.md)\n"
 	indexContent += "- [Architecture decisions](adr/0001-empirically-derived-schema-via-corpus-survey.md)\n\n"
 	indexContent += "## Schemas\n\n"
 	for _, file := range files {
@@ -143,8 +142,6 @@ func generateMkDocsYML(schemaFiles []os.DirEntry, adrDir string) {
 
 	sb.WriteString("  - Optional Hardening:\n")
 	sb.WriteString("    - SkillSpector Scanning: SKILLSPECTOR_SCAN_INSTRUCTIONS.md\n")
-	sb.WriteString("    - Sponsio Lifecycle: SPONSIO_INSTALL_INSTRUCTIONS.md\n")
-	sb.WriteString("    - Testing Sponsio: SPONSIO_TEST_INSTRUCTIONS.md\n")
 
 	sb.WriteString("  - Standards & Architecture (ADR):\n")
 	adrFiles, err := os.ReadDir(adrDir)
