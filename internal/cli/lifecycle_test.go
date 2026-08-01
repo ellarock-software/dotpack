@@ -43,7 +43,6 @@ func (f *fakeCommandRunner) Run(name string, args ...string) error {
 
 func withFakeLifecycleRunner(t *testing.T, runner *fakeCommandRunner) {
 	t.Helper()
-	t.Setenv("DOTPACK_SPONSIO_BINARY", "")
 	orig := lifecycleRunner
 	lifecycleRunner = runner
 	t.Cleanup(func() { lifecycleRunner = orig })
@@ -56,26 +55,13 @@ func withPostInstallLifecycle(t *testing.T, fn func(string) error) {
 	t.Cleanup(func() { runPostInstallLifecycle = orig })
 }
 
-func TestLifecycleMetadataDeclaresSponsioAsData(t *testing.T) {
+func TestLifecycleMetadataDeclaresNoBundledTasks(t *testing.T) {
 	def, err := loadLifecycleDefinition()
 	if err != nil {
 		t.Fatalf("load lifecycle definition: %v", err)
 	}
-	if len(def.Tasks) != 1 {
-		t.Fatalf("tasks = %d; want 1", len(def.Tasks))
-	}
-	task := def.Tasks[0]
-	if task.Name != "sponsio-enforcement" {
-		t.Fatalf("task name = %q; want sponsio-enforcement", task.Name)
-	}
-	if task.Phase != lifecyclePhasePostInstall {
-		t.Fatalf("phase = %q; want %q", task.Phase, lifecyclePhasePostInstall)
-	}
-	if fmt.Sprint(task.AppliesTo.Agents) != fmt.Sprint([]string{"codex", "gemini-cli", "antigravity-cli", "agents-cli"}) {
-		t.Fatalf("agents = %v", task.AppliesTo.Agents)
-	}
-	if len(task.Ensure.Binaries) != 1 || len(task.Ensure.Binaries[0].Install.Candidates) != 0 {
-		t.Fatalf("Sponsio lifecycle must not auto-install binaries in public default config: %+v", task.Ensure.Binaries)
+	if len(def.Tasks) != 0 {
+		t.Fatalf("tasks = %d; want 0", len(def.Tasks))
 	}
 }
 
@@ -91,146 +77,54 @@ func TestLifecycleNoopsForUnrelatedHosts(t *testing.T) {
 	}
 }
 
-func TestLifecycleExistingBinaryRunsInstallAndVerifiesRequiredHosts(t *testing.T) {
+func TestLifecycleTaskRunsConfiguredBinary(t *testing.T) {
 	runner := &fakeCommandRunner{
 		lookPathResults: map[string][]lookPathResult{
-			"sponsio": {{path: "/usr/local/bin/sponsio"}},
+			"example-guard": {{path: "/usr/local/bin/example-guard"}},
 		},
 	}
 	withFakeLifecycleRunner(t, runner)
 
-	if err := runLifecyclePhase(lifecyclePhasePostInstall, "codex"); err != nil {
+	task := lifecycleTask{
+		Name:   "example",
+		Ensure: lifecycleEnsure{Binaries: []lifecycleBinary{{Name: "example-guard"}}},
+		Run:    []lifecycleCommand{{Command: "example-guard", Args: []string{"install"}}},
+		Verify: []lifecycleCommand{{Command: "example-guard", Args: []string{"status"}}},
+	}
+	if err := runLifecycleTask(task); err != nil {
 		t.Fatalf("lifecycle: %v", err)
 	}
 
 	want := []string{
-		"/usr/local/bin/sponsio host install claude-code --mode observe",
-		"/usr/local/bin/sponsio host status claude-code",
+		"/usr/local/bin/example-guard install",
+		"/usr/local/bin/example-guard status",
 	}
 	if fmt.Sprint(runner.runs) != fmt.Sprint(want) {
 		t.Fatalf("runs = %v; want %v", runner.runs, want)
 	}
 }
 
-func TestLifecycleFailsWhenSponsioIsMissing(t *testing.T) {
+func TestLifecycleFailsWhenRequiredBinaryIsMissing(t *testing.T) {
 	runner := &fakeCommandRunner{
 		lookPathResults: map[string][]lookPathResult{
-			"sponsio": {{err: exec.ErrNotFound}},
+			"example-guard": {{err: exec.ErrNotFound}},
 		},
 	}
 	withFakeLifecycleRunner(t, runner)
 
-	err := runLifecyclePhase(lifecyclePhasePostInstall, "agents-cli")
+	err := runLifecycleTask(lifecycleTask{
+		Name:   "example",
+		Ensure: lifecycleEnsure{Binaries: []lifecycleBinary{{Name: "example-guard"}}},
+	})
 	if err == nil {
-		t.Fatal("expected lifecycle failure when Sponsio is missing")
+		t.Fatal("expected lifecycle failure when the required binary is missing")
 	}
 	if !strings.Contains(err.Error(), "no install candidates are declared") {
-		t.Fatalf("error should explain that Sponsio must be installed separately; got %v", err)
+		t.Fatalf("error should explain that the binary must be installed separately; got %v", err)
 	}
 	if len(runner.runs) != 0 {
-		t.Fatalf("missing Sponsio must not trigger installer commands; got %v", runner.runs)
+		t.Fatalf("missing binary must not trigger installer commands; got %v", runner.runs)
 	}
-}
-
-func TestLifecycleFailsClosedWhenRequiredHostIsUnsupported(t *testing.T) {
-	runner := &fakeCommandRunner{
-		lookPathResults: map[string][]lookPathResult{
-			"sponsio": {{path: "/usr/local/bin/sponsio"}},
-		},
-		runErrs: map[string]error{
-			"/usr/local/bin/sponsio host status claude-code": errors.New("unknown host claude-code"),
-		},
-	}
-	withFakeLifecycleRunner(t, runner)
-
-	err := runLifecyclePhase(lifecyclePhasePostInstall, "codex")
-	if err == nil {
-		t.Fatal("expected lifecycle failure when Sponsio lacks claude-code support")
-	}
-	if !strings.Contains(err.Error(), "verify sponsio host status claude-code") {
-		t.Fatalf("error should name the failed verify command; got %v", err)
-	}
-}
-
-func TestInstallFailsClosedWithUnsupportedRealSponsioHosts(t *testing.T) {
-	if os.Getenv("DOTPACK_TEST_REAL_SPONSIO") != "1" {
-		t.Skip("set DOTPACK_TEST_REAL_SPONSIO=1 to probe the installed Sponsio binary")
-	}
-	binary := realSponsioBinaryForTest(t)
-	t.Setenv("DOTPACK_SPONSIO_BINARY", binary)
-
-	// Sponsio resolves `host install all` through its host registry. This probe
-	// exercises the same public status command dotpack uses so an installed
-	// binary that still lacks these host registrations proves the fail-closed
-	// path without running pip or touching network state.
-	probe := lifecycleTask{
-		Name: "real-sponsio-host-support-probe",
-		Ensure: lifecycleEnsure{Binaries: []lifecycleBinary{{
-			Name: "sponsio",
-			Env:  "DOTPACK_SPONSIO_BINARY",
-		}}},
-		Verify: []lifecycleCommand{
-			{Command: "sponsio", Args: []string{"host", "status", "claude-code"}},
-		},
-		Failure: "fail-closed",
-	}
-	lifecycleErr := runLifecycleTask(probe)
-	if lifecycleErr == nil {
-		t.Skipf("%s supports claude-code; unsupported-host fail-closed path is not applicable", binary)
-	}
-
-	agentsHome, _ := setupCodexEnv(t)
-	withPostInstallLifecycle(t, func(agent string) error {
-		if agent != "codex" {
-			return fmt.Errorf("unexpected lifecycle agent %q", agent)
-		}
-		return lifecycleErr
-	})
-
-	src := filepath.Join("..", "resource", "testdata", "skills", "dotpack-tracer-bullet", "SKILL.md")
-	cmd := NewRootCmd()
-	cmd.SetOut(io_DiscardWriter())
-	cmd.SetErr(io_DiscardWriter())
-	cmd.SetArgs([]string{"install", src, "--agent", "codex", "--scope", "user", "--run-lifecycle"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected install to fail closed when the real Sponsio binary lacks required host support")
-	}
-	for _, want := range []string{"installed codex:skill:dotpack-tracer-bullet", "post-install lifecycle failed", "host status codex"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error missing %q: %v", want, err)
-		}
-	}
-	if _, statErr := os.Stat(filepath.Join(agentsHome, "skills", "dotpack-tracer-bullet", "SKILL.md")); statErr != nil {
-		t.Fatalf("materialization should have happened before real Sponsio failure is reported: %v", statErr)
-	}
-}
-
-func realSponsioBinaryForTest(t *testing.T) string {
-	t.Helper()
-	if configured := strings.TrimSpace(os.Getenv("DOTPACK_SPONSIO_BINARY")); configured != "" {
-		abs, err := filepath.Abs(configured)
-		if err != nil {
-			t.Fatalf("resolve DOTPACK_SPONSIO_BINARY: %v", err)
-		}
-		if _, err := os.Stat(abs); err != nil {
-			t.Fatalf("DOTPACK_SPONSIO_BINARY=%s: %v", abs, err)
-		}
-		return abs
-	}
-	if path, err := exec.LookPath("sponsio"); err == nil {
-		return path
-	}
-	candidate := filepath.Join("..", "..", ".venv", "bin", "sponsio")
-	if _, err := os.Stat(candidate); err == nil {
-		abs, absErr := filepath.Abs(candidate)
-		if absErr != nil {
-			t.Fatalf("resolve %s: %v", candidate, absErr)
-		}
-		return abs
-	}
-	t.Skip("no Sponsio binary found on PATH or at ../../.venv/bin/sponsio")
-	return ""
 }
 
 func TestInstallCodexTriggersPostInstallLifecycleWhenFlagIsSet(t *testing.T) {

@@ -19,8 +19,9 @@ Use the repository's public documentation as the source of truth:
   `.agents` packages.
 - Preserve dotpack's filesystem-first behavior: adapters produce plans,
   orchestrator code applies plans, and manifest records define ownership.
-- Keep lifecycle hooks optional. Sponsio integration is recommended hardening
-  for teams that use it, not a default requirement for public users.
+- Keep lifecycle hooks optional and external-tool-neutral. Ella Rock retired
+  Sponsio on 2026-07-30; do not restore it as a bundled lifecycle task,
+  example, validation dependency, or runtime integration.
 
 ## Ella Rock Learning System
 

@@ -18,9 +18,9 @@ such as Claude Code, Gemini CLI, Antigravity CLI, Codex CLI, and the
 
 ## Lifecycle Policy
 
-Post-install lifecycle hooks are optional. Public examples and tests should not
-assume Sponsio or any other external lifecycle tool is installed unless they
-explicitly pass `--run-lifecycle` and set up that dependency.
+Post-install lifecycle hooks are optional. Public examples and tests must not
+assume an external lifecycle tool is installed. Ella Rock retired Sponsio on
+2026-07-30, so it must not be restored as a bundled task or dependency.
 
 ## Development Expectations
 

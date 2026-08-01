@@ -285,23 +285,9 @@ baselines suppress specific reviewed findings, while
 
 ## Optional Lifecycle Verification
 
-By default, `install` and `install-all` only materialize host files. They do
-not run post-install lifecycle hooks.
-
-Teams that use Sponsio can opt into the bundled post-install verification task.
-(Sponsio is an Ella Rock Software tool and is not yet publicly available; this
-integration is a reference example of dotpack's optional lifecycle mechanism and
-is never required.)
-
-```sh
-dotpack install "$CATALOG/hooks/bash-guard.hook.json" --kind hook --agent agents-cli --scope project --run-lifecycle
-dotpack install-all --from "$CATALOG" --target "$TARGET" --agent agents-cli --scope project --run-lifecycle
-```
-
-When `--run-lifecycle` is set, dotpack expects `sponsio` to be installed on
-`PATH` or provided through `DOTPACK_SPONSIO_BINARY`. The lifecycle task
-installs Sponsio host wiring in observe mode and fails closed if verification
-fails.
+By default, `install` and `install-all` only materialize host files. The
+`--run-lifecycle` extension point remains available, but the public
+distribution ships no bundled external lifecycle task.
 
 ## Paths And Environment
 
@@ -318,7 +304,6 @@ fails.
 | `DOTPACK_HERMES_HOME` | Overrides the Hermes user home, default `~/.hermes`. |
 | `DOTPACK_DOTPACK_HOME` | Overrides dotpack state, default `~/.dotpack`. |
 | `DOTPACK_DOTPACK_HOME/skillspector` | Default root for the pinned SkillSpector runtime, cached run artifacts, and runtime metadata. |
-| `DOTPACK_SPONSIO_BINARY` | Overrides the Sponsio binary used by optional lifecycle verification. |
 
 ## Documentation
 
