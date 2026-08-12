@@ -240,3 +240,79 @@ func TestLoad_CachesPerKind(t *testing.T) {
 		t.Errorf("Load is not caching: got distinct *Schema pointers")
 	}
 }
+
+// TestLossyExtensions_CorporateDocumentationFields_NotLossy pins the
+// pass-through concepts added for the ellarock-config corporate skill
+// packages. Every field below is documentation: no surveyed host parses
+// it, so installing a skill that carries it must not require
+// --allow-lossy on any host. Before these entries existed, all 18 fields
+// fell through to "unknown field" and made 8 of 90 skills permanently
+// un-installable to claude-code without acknowledging data loss.
+func TestLossyExtensions_CorporateDocumentationFields_NotLossy(t *testing.T) {
+	fields := []string{
+		// artifact_provenance_documentation
+		"id", "artifact-type", "owner/surface", "purpose", "registered-in", "tests",
+		// artifact_dataflow_documentation
+		"inputs", "outputs", "state-read", "state-written", "failure-mode",
+		// authorial_trigger_hints
+		"triggers", "patterns",
+		// authorial_environment_notes
+		"permissions", "requires", "compatibility", "host-compatibility",
+		// skill_config_schema_version
+		"config-version",
+	}
+	// Checked on every adapter, not just claude-code: these are
+	// pass-through everywhere, so no host may report them as lossy.
+	hosts := []string{"claude-code", "gemini-cli", "antigravity-cli", "codex", "opencode", "hermes"}
+
+	for _, host := range hosts {
+		for _, field := range fields {
+			got, err := schema.LossyExtensions(resource.KindSkill, host,
+				map[string]any{field: "documentation value"})
+			if err != nil {
+				t.Fatalf("LossyExtensions(%s, %s): %v", host, field, err)
+			}
+			if len(got) != 0 {
+				t.Errorf("field %q on host %s: expected pass-through, got lossy %+v",
+					field, host, got)
+			}
+		}
+	}
+}
+
+// TestLossyExtensions_UnknownFieldStillLossy is the control for the test
+// above. Adding pass-through concepts must not degrade the ADR-0012 §Why
+// default: a field no schema entry claims is still lossy everywhere.
+// Without this, a change that made LossyExtensions return nothing at all
+// would leave the previous test green.
+func TestLossyExtensions_UnknownFieldStillLossy(t *testing.T) {
+	got, err := schema.LossyExtensions(resource.KindSkill, "claude-code",
+		map[string]any{"not-a-real-field": "x"})
+	if err != nil {
+		t.Fatalf("LossyExtensions: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 lossy reason for an unclaimed field; got %+v", got)
+	}
+	if got[0].CanonicalConcept != "" {
+		t.Errorf("unclaimed field should carry no concept; got %q", got[0].CanonicalConcept)
+	}
+}
+
+// TestLossyExtensions_LoadBearingFieldsStayLossy guards the boundary the
+// new entries sit next to. `permissions` is documentation and passes
+// through; `allowed-tools` is the field Claude Code actually enforces and
+// must stay lossy off-Claude. A future edit that swept load-bearing
+// runtime fields into the pass-through buckets would fail here.
+func TestLossyExtensions_LoadBearingFieldsStayLossy(t *testing.T) {
+	for _, field := range []string{"allowed-tools", "platforms", "required_environment_variables"} {
+		got, err := schema.LossyExtensions(resource.KindSkill, "opencode",
+			map[string]any{field: "x"})
+		if err != nil {
+			t.Fatalf("LossyExtensions(%s): %v", field, err)
+		}
+		if len(got) != 1 {
+			t.Errorf("load-bearing field %q must stay lossy off its host; got %+v", field, got)
+		}
+	}
+}

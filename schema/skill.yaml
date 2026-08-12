@@ -122,6 +122,93 @@ deliberately_excluded:
       `version`: preserve verbatim as pass-through metadata; do not
       treat dropping it as semantically lossy.
 
+  - canonical_concept: artifact_provenance_documentation
+    field_names:
+      - id
+      - artifact-type
+      - owner/surface
+      - purpose
+      - registered-in
+      - tests
+    aliases: []
+    lossy_when_dropped: false       # No host parses; dropping is a no-op.
+    appeared_in: 8/90 (ellarock-config corporate skill packages)
+    reason: |
+      Authoring-side provenance docblock: which artifact this is, who owns
+      it, why it exists, where it is registered, and how to test it. No
+      surveyed host parses any of these — they are read by humans and by
+      repository validation tooling that reads the source tree, not the
+      installed copy. Adapter behaviour: preserve verbatim as pass-through
+      metadata; never flag as lossy. Source-backed packages keep the bytes
+      per ADR-0004 regardless, so the installed SKILL.md still carries the
+      docblock for anyone auditing the host tree.
+
+  - canonical_concept: artifact_dataflow_documentation
+    field_names:
+      - inputs
+      - outputs
+      - state-read
+      - state-written
+      - failure-mode
+    aliases: []
+    lossy_when_dropped: false       # No host parses; dropping is a no-op.
+    appeared_in: 8/90 (ellarock-config corporate skill packages)
+    reason: |
+      Prose description of what the artifact reads, writes, and how it
+      fails. Documentation of intent for reviewers; no host reads it and
+      no host enforces it. Note this is deliberately NOT treated as
+      load-bearing: unlike hermes_skill_required_environment, these fields
+      declare no precondition the host could check, so dropping them
+      removes no runtime guarantee.
+
+  - canonical_concept: authorial_trigger_hints
+    field_names:
+      - triggers
+      - patterns
+    aliases: []
+    lossy_when_dropped: false       # No host parses; dropping is a no-op.
+    appeared_in: 8/90 and 5/90 (ellarock-config corporate skill packages)
+    reason: |
+      Author-side restatement of when the skill should fire, sometimes as
+      regex-shaped strings. Every surveyed host triggers skills from
+      `description` alone (see the description-as-trigger note above), so
+      these are commentary on the trigger, not the trigger itself. Same
+      policy as discovery_keywords. If a host ever adopts native pattern
+      matching, move the field into `aliases` and flip
+      lossy_when_dropped to true.
+
+  - canonical_concept: authorial_environment_notes
+    field_names:
+      - permissions
+      - requires
+      - compatibility
+      - host-compatibility
+    aliases: []
+    lossy_when_dropped: false       # No host parses; dropping is a no-op.
+    appeared_in: 8/90 (ellarock-config corporate skill packages)
+    reason: |
+      Prose notes on the authority the skill expects, the tools it assumes
+      on PATH, and the hosts/platforms it was written for. Distinct from
+      claude_skill_runtime_overrides.allowed-tools and from
+      hermes_skill_platform_filter: those are machine-parsed by a host and
+      change what the host permits or exposes, whereas these are sentences
+      for a human reviewer. `permissions` in particular reads like a
+      security control but is not one — no host enforces it, and the
+      enforcing field on Claude Code is `allowed-tools`. `compatibility`
+      is the field the ecosystem_notes above already flag as authorial
+      intent rather than schema.
+
+  - canonical_concept: skill_config_schema_version
+    field_names: [config-version]
+    aliases: []
+    lossy_when_dropped: false       # No host parses; dropping is a no-op.
+    appeared_in: 1/90 (daily-supervisor)
+    reason: |
+      Version of the skill's own CONFIG.md contract, consumed by the
+      skill's scripts at runtime from the source tree. Not a dotpack or
+      host concept; distinct from skill_version_metadata (`version`),
+      which versions the skill package itself.
+
   - canonical_concept: hermes_skill_platform_filter
     aliases:
       - host: hermes
