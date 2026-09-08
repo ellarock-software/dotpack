@@ -22,6 +22,7 @@ import (
 	"github.com/ellarock-software/dotpack/internal/manifest"
 	"github.com/ellarock-software/dotpack/internal/orchestrator"
 	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/sourceregistry"
 )
 
 type canonicalEntry struct {
@@ -253,6 +254,11 @@ func runSyncBack(cmd *cobra.Command, fromRoot, targetRoot string, force bool) er
 	if err != nil {
 		return err
 	}
+	lock, err := sourceregistry.AcquireLock(d.DotpackHome)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
 	observed, err := scanMaterializedFiles(target)
 	if err != nil {
 		return err
@@ -307,6 +313,11 @@ func runResetMaterialized(cmd *cobra.Command, fromRoot, targetRoot string, inclu
 	if err != nil {
 		return err
 	}
+	lock, err := sourceregistry.AcquireLock(d.DotpackHome)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
 	observed, err := scanMaterializedFiles(target)
 	if err != nil {
 		return err
@@ -340,6 +351,11 @@ func runInstallAll(cmd *cobra.Command, fromRoot, targetRoot, agentName, scopeNam
 	if err != nil {
 		return err
 	}
+	lock, err := sourceregistry.AcquireLock(d.DotpackHome)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
 	layout, err := resolveSourceLayout(fromRoot, layoutOpts, d)
 	if err != nil {
 		return err

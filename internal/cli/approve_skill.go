@@ -13,6 +13,7 @@ import (
 	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/skillgate"
 	"github.com/ellarock-software/dotpack/internal/skillgate/delta"
+	"github.com/ellarock-software/dotpack/internal/sourceregistry"
 )
 
 type approveSkillOptions struct {
@@ -97,6 +98,11 @@ func runApproveSkill(cmd *cobra.Command, source string, opts approveSkillOptions
 	if err != nil {
 		return err
 	}
+	lock, err := sourceregistry.AcquireLock(d.DotpackHome)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
 
 	selection, err := resolveSkillScanSelection(source, opts.layout, opts.skillNames, false, "HEAD", d)
 	if err != nil {
