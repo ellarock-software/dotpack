@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ellarock-software/dotpack/internal/dirs"
+	"github.com/ellarock-software/dotpack/internal/sourceregistry"
 )
 
 func newImportCmd() *cobra.Command {
@@ -78,6 +79,13 @@ func runImport(cmd *cobra.Command, sourceAgent, sourcePath, outDir string, force
 	if err != nil {
 		return err
 	}
+
+	lock, err := sourceregistry.AcquireLock(d.DotpackHome)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
+
 	if err := ensureMandatorySkillScanForSkillRoot(cmd, "import", claudeRoot, filepath.Join(claudeRoot, "skills"), requestedSkillSecurityBypasses(cmd), d); err != nil {
 		return err
 	}

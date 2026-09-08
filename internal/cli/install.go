@@ -18,6 +18,7 @@ import (
 	"github.com/ellarock-software/dotpack/internal/manifest"
 	"github.com/ellarock-software/dotpack/internal/orchestrator"
 	"github.com/ellarock-software/dotpack/internal/resource"
+	"github.com/ellarock-software/dotpack/internal/sourceregistry"
 	"github.com/ellarock-software/dotpack/internal/validator"
 )
 
@@ -166,6 +167,12 @@ func runInstall(cmd *cobra.Command, source, agentName, kindName, scopeName strin
 	if err != nil {
 		return err
 	}
+
+	lock, err := sourceregistry.AcquireLock(d.DotpackHome)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
 
 	kind, err := resolveKind(kindName, source)
 	if err != nil {

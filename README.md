@@ -77,6 +77,19 @@ Install a full canonical tree into a target project:
 dotpack install-all --from "$CATALOG" --target "$TARGET" --agent agents-cli --scope project
 ```
 
+Subscribe to and synchronize repository-backed skills:
+
+```sh
+# Add an upstream repository subscription for user-level Claude Code skills
+dotpack add anthropics/skills --agent claude-code --scope user
+
+# Add from a specific branch or tag and custom skills path
+dotpack add github:owner/repo@v1.2.0 --skills-path custom/skills --agent gemini-cli
+
+# Refresh all subscribed repositories and materialize skill updates
+dotpack update
+```
+
 Install from a repository with a non-canonical layout:
 
 ```sh
@@ -111,6 +124,8 @@ compatible sub-adapters.
 
 | Command | Purpose |
 | --- | --- |
+| `dotpack add <repo>` | Register and subscribe an agent target to skills from a remote or local Git repository; materializes discovered skills after security gating. |
+| `dotpack update` | Refresh all registered repository sources and synchronize skills across configured host targets. |
 | `dotpack install <source-path>` | Install one portable resource into one host or umbrella target; skill installs run the mandatory security gate first. |
 | `dotpack install-all` | Discover and install supported direct resources from a canonical `.agents` tree or explicit source layout; discovered skills pass the mandatory security gate first. |
 | `dotpack scan-skills [source]` | Run static SkillSpector scans against one skill, a canonical `.agents` tree, or a custom skill root. |

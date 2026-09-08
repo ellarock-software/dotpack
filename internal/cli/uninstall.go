@@ -9,6 +9,7 @@ import (
 
 	"github.com/ellarock-software/dotpack/internal/manifest"
 	"github.com/ellarock-software/dotpack/internal/orchestrator"
+	"github.com/ellarock-software/dotpack/internal/sourceregistry"
 )
 
 func newUninstallCmd() *cobra.Command {
@@ -55,6 +56,12 @@ func runUninstall(cmd *cobra.Command, handle, agentName, kindName, targetRoot st
 	if err != nil {
 		return err
 	}
+
+	lock, err := sourceregistry.AcquireLock(d.DotpackHome)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
 
 	id, err := resolveUninstallID(handle, agentName, kindName)
 	if err != nil {

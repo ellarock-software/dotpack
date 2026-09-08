@@ -8,6 +8,7 @@ import (
 	"github.com/ellarock-software/dotpack/internal/dirs"
 	"github.com/ellarock-software/dotpack/internal/manifest"
 	"github.com/ellarock-software/dotpack/internal/orchestrator"
+	"github.com/ellarock-software/dotpack/internal/sourceregistry"
 )
 
 func newReconcileCmd() *cobra.Command {
@@ -72,6 +73,16 @@ func runReconcile(cmd *cobra.Command) error {
 }
 
 func runPrune(cmd *cobra.Command) error {
+	d, err := dirs.FromEnv()
+	if err != nil {
+		return err
+	}
+	lock, err := sourceregistry.AcquireLock(d.DotpackHome)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
+
 	r, err := newManifestReader()
 	if err != nil {
 		return err

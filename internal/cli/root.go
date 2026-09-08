@@ -108,5 +108,7 @@ scan surface directly. Use import to convert a native host tree into
 	root.AddCommand(newResetMaterializedCmd())
 	root.AddCommand(newInstallAllCmd())
 	root.AddCommand(newApproveSkillCmd())
+	root.AddCommand(newAddCmd())
+	root.AddCommand(newUpdateCmd())
 	return root
 }
