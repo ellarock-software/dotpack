@@ -135,6 +135,16 @@ deliberately_excluded:
       conversation_turn_cap canonical_concept with both aliases — see
       ADR-0012 Consequences for the Scenario B deferral.
 
+  - canonical_concept: governance_ownership_metadata
+    field_names:
+      - owner
+      - review_by
+    aliases: []
+    lossy_when_dropped: false
+    reason: |
+      Governance ownership and review TTL metadata read by repository
+      maintenance tooling, not by agent hosts. Pass-through across all hosts.
+
   - body_section_normalisation:
       reason: |
         Survey proposed canonical body sections ("## Approach", "## Workflow",

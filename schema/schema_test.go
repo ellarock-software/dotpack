@@ -139,3 +139,87 @@ func TestHostKeepsExtension_AgentKind_HostSpecificAliasesHonoured(t *testing.T) 
 		t.Error("HostKeepsExtension(gemini-cli, disallowedTools) = true; want false (gemini-cli not in claude_subagent_runtime_overrides aliases)")
 	}
 }
+
+func TestHostKeepsExtension_GovernanceMetadata(t *testing.T) {
+	for _, tt := range []struct {
+		kind    resource.Kind
+		concept string
+	}{
+		{resource.KindSkill, "governance_ownership_metadata"},
+		{resource.KindRule, "artifact_introduction_metadata"},
+		{resource.KindAgent, "governance_ownership_metadata"},
+		{resource.KindCommand, "governance_ownership_metadata"},
+	} {
+		t.Run(string(tt.kind), func(t *testing.T) {
+			s, err := schema.Load(tt.kind)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			for _, field := range []string{"owner", "review_by"} {
+				c := s.LookupExtension(field)
+				if c == nil {
+					t.Fatalf("LookupExtension(%q) = nil; want %s", field, tt.concept)
+				}
+				if c.CanonicalConcept != tt.concept || c.LossyWhenDropped == nil || *c.LossyWhenDropped || len(c.Aliases) != 0 {
+					t.Errorf("%s concept = %+v; want %s with explicit non-lossy metadata and no host aliases", field, c, tt.concept)
+				}
+				bound := false
+				for _, name := range c.FieldNames {
+					if name == field {
+						bound = true
+					}
+				}
+				if !bound {
+					t.Errorf("%q must be bound via field_names", field)
+				}
+			}
+			for _, host := range []string{"claude-code", "codex", "gemini-cli", "antigravity-cli", "opencode", "hermes"} {
+				t.Run(host, func(t *testing.T) {
+					for _, field := range []string{"owner", "review_by"} {
+						if !s.HostKeepsExtension(host, field) {
+							t.Errorf("HostKeepsExtension(%s, %s) = false; want true", host, field)
+						}
+					}
+					for _, field := range []string{"unknown-owner-field", "unknown-review-field", tt.concept} {
+						if s.HostKeepsExtension(host, field) {
+							t.Errorf("HostKeepsExtension(%s, %s) = true; want false for unbound key", host, field)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestHostKeepsExtension_RuntimeFieldsRemainHostSpecific(t *testing.T) {
+	for _, tt := range []struct {
+		kind  resource.Kind
+		field string
+	}{
+		{resource.KindSkill, "allowed-tools"},
+		{resource.KindAgent, "disallowedTools"},
+		{resource.KindCommand, "disable-model-invocation"},
+	} {
+		s, err := schema.Load(tt.kind)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		for _, target := range []struct {
+			host string
+			want bool
+		}{
+			{"claude-code", true},
+			{"codex", false},
+			{"gemini-cli", false},
+			{"antigravity-cli", false},
+			{"opencode", false},
+			{"hermes", false},
+		} {
+			t.Run(string(tt.kind)+"/"+target.host, func(t *testing.T) {
+				if got := s.HostKeepsExtension(target.host, tt.field); got != target.want {
+					t.Errorf("HostKeepsExtension(%s, %s) = %v; want %v", target.host, tt.field, got, target.want)
+				}
+			})
+		}
+	}
+}

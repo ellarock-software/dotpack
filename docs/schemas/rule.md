@@ -25,5 +25,5 @@
 
 ### Concept: `artifact_introduction_metadata`
 
-**Field Names:** `artifact-type`, `owner`, `owner/surface`, `purpose`, `triggers`, `inputs`, `outputs`, `state-read`, `state-write`, `state-written`, `registered-in`, `tests`, `failure-mode`, `host-compatibility`, `title`, `description`, `keywords`, `patterns`, `agent`, `context`
+**Field Names:** `artifact-type`, `owner`, `owner/surface`, `purpose`, `triggers`, `inputs`, `outputs`, `state-read`, `state-write`, `state-written`, `registered-in`, `tests`, `failure-mode`, `host-compatibility`, `title`, `description`, `keywords`, `patterns`, `agent`, `context`, `review_by`
 

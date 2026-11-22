@@ -87,6 +87,13 @@ conversation_turn_cap canonical_concept with both aliases — see
 | `gemini-cli` | `timeout_mins` |
 | `antigravity-cli` | `timeout_mins` |
 
+### Concept: `governance_ownership_metadata`
+
+Governance ownership and review TTL metadata read by repository
+maintenance tooling, not by agent hosts. Pass-through across all hosts.
+
+**Field Names:** `owner`, `review_by`
+
 ### Body Section Normalisation
 
 Survey proposed canonical body sections ("## Approach", "## Workflow",
