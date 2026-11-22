@@ -147,3 +147,48 @@ func packageHash(pkgAbs string, files []string, p Policy) HashInfo {
 	info.Digest = hex.EncodeToString(h.Sum(nil))
 	return info
 }
+
+// fullPackageDigest covers every walked regular file, without runtime or
+// .gitignore exclusions. A partial/unreadable tree must never earn a cache hit.
+// Like packageHash, paths and file digests are slash-normalised and framed
+// with lengths, in walk order.
+func fullPackageDigest(pkgAbs string, walked []string) (string, bool) {
+	if len(walked) == 0 {
+		return "", false
+	}
+	h := sha256.New()
+	for _, abs := range walked {
+		rel, err := filepath.Rel(pkgAbs, abs)
+		if err != nil {
+			return "", false
+		}
+		// Recheck the file type so a replaced symlink cannot earn a cache
+		// entry by hashing a target outside the walked tree.
+		info, err := os.Lstat(abs)
+		if err != nil || !info.Mode().IsRegular() {
+			return "", false
+		}
+		digest, ok := regularFileDigest(abs)
+		if !ok {
+			return "", false
+		}
+		relSlash := filepath.ToSlash(rel)
+		fmt.Fprintf(h, "%d:%s%d:%s", len(relSlash), relSlash, len(digest), digest)
+	}
+	return hex.EncodeToString(h.Sum(nil)), true
+}
+
+// regularFileDigest follows scanner symlinks to the resolved regular file.
+// Missing, unreadable, or non-regular files disable caching, not scanning.
+func regularFileDigest(path string) (string, bool) {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:]), true
+}
