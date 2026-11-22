@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/ellarock-software/dotpack/internal/dirs"
@@ -130,8 +132,27 @@ func (g *Gate) Run(ctx context.Context, req skillgate.Request) (skillgate.Verdic
 		artifact.Bypassed = append(artifact.Bypassed, b.Name)
 	}
 
-	for _, target := range req.Selection.Targets {
-		result := g.inspect(ctx, target, policyRoot, runtimeInfo)
+	results := make([]PackageResult, len(req.Selection.Targets))
+	workers := min(len(req.Selection.Targets), max(1, min(8, runtime.GOMAXPROCS(0))))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for idx := range jobs {
+				results[idx] = g.inspect(ctx, req.Selection.Targets[idx], policyRoot, runtimeInfo)
+			}
+		})
+	}
+	for idx := range req.Selection.Targets {
+		jobs <- idx
+	}
+	close(jobs)
+	wg.Wait()
+
+	// Workers own distinct result slots. Machine-local writes and output
+	// assembly happen only here, in selection order, after every read ends.
+	for i := 0; i < len(results); i++ {
+		result := results[i]
 		result.PolicyRootUntrusted = !req.PolicyRootTrusted
 		artifact.Results = append(artifact.Results, result)
 
@@ -146,7 +167,7 @@ func (g *Gate) Run(ctx context.Context, req skillgate.Request) (skillgate.Verdic
 			artifact.Pass = false
 			verdict.Pass = false
 			verdict.Blocked = append(verdict.Blocked, skillgate.Blocked{
-				Skill:  target.Name,
+				Skill:  result.Skill,
 				Reason: result.Reason,
 				Detail: blockedDetail(result),
 			})
@@ -274,7 +295,14 @@ func (g *Gate) inspect(ctx context.Context, target skillgate.Target, policyRoot 
 	}
 
 	// 4. Detector.
-	det := scanDetector(ctx, rt.ScannerBin, pkgAbs, skillscanner.DefaultScanTimeout)
+	var det detectorResult
+	if len(walked.Links) == 0 {
+		det = g.cachedDetector(ctx, rt, pkgAbs, walked.Files)
+	} else {
+		// A permitted internal link can change the detector's view without
+		// changing any regular file. Such packages always scan live.
+		det = scanDetector(ctx, rt.ScannerBin, pkgAbs, skillscanner.DefaultScanTimeout)
+	}
 	if det.Err != "" {
 		return withBase(result, DecisionBlocked, det.Err)
 	}
