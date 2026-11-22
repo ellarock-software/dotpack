@@ -130,7 +130,7 @@ func TestDetectorCacheSharesFindingsAcrossCheckoutPaths(t *testing.T) {
 }
 
 func TestDetectorCacheInvalidation(t *testing.T) {
-	for _, change := range []string{"skill byte", "excluded logs file", "detector version", "scanner content", "policy version"} {
+	for _, change := range []string{"skill byte", ".gitignore only", "excluded logs file", "detector version", "scanner content", "policy version"} {
 		t.Run(change, func(t *testing.T) {
 			g, _ := gateFor(t)
 			rt := cacheRuntime(t)
@@ -146,6 +146,8 @@ func TestDetectorCacheInvalidation(t *testing.T) {
 			switch change {
 			case "skill byte":
 				cacheWrite(t, filepath.Join(pkg, "SKILL.md"), "Body\n")
+			case ".gitignore only":
+				cacheWrite(t, filepath.Join(pkg, ".gitignore"), "# runtime files\nlogs/\n")
 			case "excluded logs file":
 				cacheWrite(t, filepath.Join(pkg, "logs/new.log"), "payload\n")
 			case "detector version":
@@ -166,6 +168,74 @@ func TestDetectorCacheInvalidation(t *testing.T) {
 			}
 			if change == "excluded logs file" && first.Evaluation.ContentSHA256 != second.Evaluation.ContentSHA256 {
 				t.Fatal("fixture did not exercise the runtime hash exclusion")
+			}
+			if change == ".gitignore only" && (first.Evaluation.Hash.RuntimeFilesSkipped != 1 || second.Evaluation.Hash.RuntimeFilesSkipped != 1) {
+				t.Fatal("fixture did not preserve the runtime hash exclusion")
+			}
+		})
+	}
+}
+
+func TestDetectorCacheNeverStoresInputsChangedDuringScan(t *testing.T) {
+	for _, change := range []string{"file content", "added file", "removed file", "added symlink", "scanner content", "removed scanner"} {
+		t.Run(change, func(t *testing.T) {
+			g, _ := gateFor(t)
+			rt := cacheRuntime(t)
+			const malicious = "malicious payload\n"
+			pkg := tmpSkill(t, map[string]string{"SKILL.md": "body\n", "payload.txt": malicious})
+			payload := filepath.Join(pkg, "payload.txt")
+			extra := filepath.Join(pkg, "extra")
+			root := t.TempDir()
+			target := skillgate.Target{Name: "demo", SkillDir: pkg}
+			seedCacheBaseline(t, root, target.Name, pkg, nil)
+			firstScan := true
+			calls := countedDetector(t, func(string) string {
+				if !firstScan {
+					return `{"findings":[{"rule_id":"PAYLOAD","severity":"CRITICAL","file_path":"payload.txt","title":"Malicious payload"}]}`
+				}
+				firstScan = false
+				switch change {
+				case "file content":
+					cacheWrite(t, payload, "benign content\n")
+				case "added file":
+					cacheWrite(t, extra, "new content\n")
+				case "removed file":
+					if err := os.Remove(payload); err != nil {
+						t.Fatal(err)
+					}
+				case "added symlink":
+					if err := os.Symlink("SKILL.md", extra); err != nil {
+						t.Fatal(err)
+					}
+				case "scanner content":
+					cacheWrite(t, rt.ScannerBin, "scanner version two")
+				case "removed scanner":
+					if err := os.Remove(rt.ScannerBin); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return cleanReport
+			})
+			if got := g.Inspect(context.Background(), target, root, rt); got.Decision != DecisionApproved {
+				t.Fatalf("live scan result changed: %+v", got)
+			}
+			entries, err := os.ReadDir(filepath.Join(g.dirs.DotpackHome, "skillgate", "detector-cache"))
+			if err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			if len(entries) != 0 {
+				t.Fatal("inputs changed during scan created a cache entry")
+			}
+			// Restore the original inputs: their cache key must not have
+			// acquired the clean report from the scan of changed inputs.
+			cacheWrite(t, payload, malicious)
+			cacheWrite(t, rt.ScannerBin, "scanner version one")
+			if err := os.Remove(extra); err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			got := New(g.dirs).Inspect(context.Background(), target, root, rt)
+			if calls.Load() != 2 || got.Decision != DecisionBlocked || len(got.Evaluation.Blocking) != 1 || got.Evaluation.Blocking[0].Severity != "CRITICAL" {
+				t.Fatalf("restored inputs reused a poisoned report: calls = %d, result = %+v", calls.Load(), got)
 			}
 		})
 	}

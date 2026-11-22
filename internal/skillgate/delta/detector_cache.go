@@ -57,7 +57,15 @@ func (g *Gate) cachedDetector(ctx context.Context, rt skillscanner.Runtime, pkgA
 		f.Why = normalisePath(f.Why, pkgAbs)
 		f.Snippet = normalisePath(f.Snippet, pkgAbs)
 	}
-	writeDetectorCache(path, detectorCacheEntry{SchemaVersion: detectorCacheVersion, Findings: det.Findings})
+	// Only persist observations while the package and scanner still match
+	// the inputs used for the cache key. Re-walk to catch added files or links.
+	afterWalk, err := walkPackage(pkgAbs)
+	afterDigest, afterOK := fullPackageDigest(pkgAbs, afterWalk.Files)
+	if err == nil && len(afterWalk.Links) == 0 && afterOK && afterDigest == fullTreeDigest {
+		if scannerAfter, sOK := regularFileDigest(rt.ScannerBin); sOK && scannerAfter == scannerDigest {
+			writeDetectorCache(path, detectorCacheEntry{SchemaVersion: detectorCacheVersion, Findings: det.Findings})
+		}
+	}
 	return det
 }
 
