@@ -50,6 +50,13 @@ rather than block.
 | `claude-code` | `argument-hint` |
 | `claude-code` | `disable-model-invocation` |
 
+### Concept: `governance_ownership_metadata`
+
+Governance ownership and review TTL metadata read by repository
+maintenance tooling, not by agent hosts. Pass-through across all hosts.
+
+**Field Names:** `owner`, `review_by`
+
 ### Body Section Normalisation
 
 Survey clusters.md noted recurring body sections in wshobson

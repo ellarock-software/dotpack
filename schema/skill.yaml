@@ -73,6 +73,16 @@ deliberately_excluded:
   # Entries without either binding cannot be matched by the lossy
   # check at all — the field surfaces as "unknown" → lossy by default.
 
+  - canonical_concept: governance_ownership_metadata
+    field_names:
+      - owner
+      - review_by
+    aliases: []
+    lossy_when_dropped: false
+    reason: |
+      Governance ownership and review TTL metadata read by repository
+      maintenance tooling, not by agent hosts. Pass-through across all hosts.
+
   - canonical_concept: discovery_keywords
     field_names: [keywords]
     aliases: []

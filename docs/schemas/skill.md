@@ -26,6 +26,13 @@
 
 ## Deliberately Excluded Concepts
 
+### Concept: `governance_ownership_metadata`
+
+Governance ownership and review TTL metadata read by repository
+maintenance tooling, not by agent hosts. Pass-through across all hosts.
+
+**Field Names:** `owner`, `review_by`
+
 ### Concept: `discovery_keywords`
 
 Author convention for skill discoverability (tag-like). No surveyed

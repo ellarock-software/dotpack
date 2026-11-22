@@ -73,6 +73,7 @@ deliberately_excluded:
       - patterns
       - agent
       - context
+      - review_by
     lossy_when_dropped: false
     notes: |
       These fields are schema-known pass-through metadata. If a future

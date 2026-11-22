@@ -1,6 +1,7 @@
 package schema_test
 
 import (
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -314,5 +315,90 @@ func TestLossyExtensions_LoadBearingFieldsStayLossy(t *testing.T) {
 		if len(got) != 1 {
 			t.Errorf("load-bearing field %q must stay lossy off its host; got %+v", field, got)
 		}
+	}
+}
+
+// TestLossyExtensions_GovernanceMetadata covers each binding independently and
+// mixed with an unknown field, so accepting all extensions cannot pass.
+func TestLossyExtensions_GovernanceMetadata(t *testing.T) {
+	for _, kind := range []resource.Kind{resource.KindSkill, resource.KindRule, resource.KindAgent, resource.KindCommand} {
+		for _, host := range []string{"claude-code", "codex", "gemini-cli", "antigravity-cli", "opencode", "hermes"} {
+			t.Run(string(kind)+"/"+host, func(t *testing.T) {
+				for _, tt := range []struct {
+					name       string
+					extensions map[string]any
+					wantFields []string
+				}{
+					{name: "owner", extensions: map[string]any{"owner": "maintainers"}},
+					{name: "review_by", extensions: map[string]any{"review_by": "2027-01-15"}},
+					{name: "both", extensions: map[string]any{"owner": "reviewers", "review_by": "2027-02-20"}},
+					{
+						name:       "unknown_with_governance",
+						extensions: map[string]any{"owner": "maintainers", "review_by": "2027-01-15", "unknown-governance-field": "unclaimed"},
+						wantFields: []string{"unknown-governance-field"},
+					},
+					{
+						name:       "two_unknowns",
+						extensions: map[string]any{"unknown-review-field": "unclaimed", "unknown-owner-field": "unclaimed"},
+						wantFields: []string{"unknown-owner-field", "unknown-review-field"},
+					},
+				} {
+					t.Run(tt.name, func(t *testing.T) {
+						got, err := schema.LossyExtensions(kind, host, tt.extensions)
+						if err != nil {
+							t.Fatalf("LossyExtensions: %v", err)
+						}
+						if len(got) != len(tt.wantFields) {
+							t.Fatalf("got lossy reasons %+v; want fields %v", got, tt.wantFields)
+						}
+						for i, field := range tt.wantFields {
+							if got[i].FieldPath != field || got[i].CanonicalConcept != "" || len(got[i].SupportedHosts) != 0 {
+								t.Errorf("reason %d = %+v; want unknown field %q with no concept or hosts", i, got[i], field)
+							}
+						}
+					})
+				}
+			})
+		}
+	}
+}
+
+func TestLossyExtensions_GovernanceDoesNotMaskRuntimeFields(t *testing.T) {
+	for _, tt := range []struct {
+		kind    resource.Kind
+		field   string
+		concept string
+	}{
+		{resource.KindSkill, "allowed-tools", "claude_skill_runtime_overrides"},
+		{resource.KindAgent, "disallowedTools", "claude_subagent_runtime_overrides"},
+		{resource.KindCommand, "disable-model-invocation", "claude_command_runtime_overrides"},
+	} {
+		for _, host := range []string{"codex", "gemini-cli", "antigravity-cli", "opencode", "hermes"} {
+			t.Run(string(tt.kind)+"/"+host, func(t *testing.T) {
+				got, err := schema.LossyExtensions(tt.kind, host, map[string]any{
+					"owner": "maintainers", "review_by": "2027-01-15", tt.field: "runtime value",
+				})
+				if err != nil {
+					t.Fatalf("LossyExtensions: %v", err)
+				}
+				if len(got) != 1 {
+					t.Fatalf("got lossy reasons %+v; want only %q", got, tt.field)
+				}
+				if got[0].FieldPath != tt.field || got[0].CanonicalConcept != tt.concept ||
+					len(got[0].SupportedHosts) != 1 || got[0].SupportedHosts[0] != "claude-code" {
+					t.Errorf("reason = %+v; want %q (%s) supported only on claude-code", got[0], tt.field, tt.concept)
+				}
+			})
+		}
+	}
+}
+
+func TestLossyExtensions_UnknownKindReportsLoadError(t *testing.T) {
+	got, err := schema.LossyExtensions(resource.Kind("unknown-kind"), "codex", map[string]any{"owner": "maintainers"})
+	if err == nil || !strings.Contains(err.Error(), `schema: load "unknown-kind"`) {
+		t.Fatalf("got error %v; want unknown-kind schema load failure", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("got reasons %+v; want none when schema loading fails", got)
 	}
 }
