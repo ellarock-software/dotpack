@@ -1,5 +1,7 @@
 # AGENTS.md - dotpack
 
+Cross-repo corporate skills, hooks, and guidance live in sibling `../ellarock-home/AGENTS.md` (`git clone https://github.com/ellarock-software/ellarock-home.git` if missing).
+
 `dotpack` is a Go CLI that validates canonical `.agents` resources and translates them into host-native files for Claude Code, Codex CLI, Gemini CLI, Antigravity CLI, OpenCode, and `agents-cli`.
 
 ## Core Behavior
