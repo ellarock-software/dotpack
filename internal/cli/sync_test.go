@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -244,6 +246,118 @@ func TestResetMaterialized_RemovesTrackedAndIncludedUntrackedOutputs(t *testing.
 	records := readManifestRecords(t, dotpackHome)
 	if len(records) != 0 {
 		t.Fatalf("reset should remove manifest records; got %+v", records)
+	}
+}
+
+func TestIsUnsupportedError(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"opencode rule", errors.New(`opencode: kind "rule" not yet supported`), true},
+		{"hermes scope", errors.New(`hermes: scope "project" not supported for this kind`), true},
+		{"unknown kind", errors.New(`kind "foo" not supported`), true},
+		{"hook", errors.New(`kind "hook" not yet supported`), true},
+		{"uppercase unsupported", errors.New(`kind "hook" NOT YET SUPPORTED`), true},
+		{"nil", nil, false},
+		{"symlink", errors.New("skill s is a symlink; symlinks are not supported"), false},
+		{"uppercase symlink", errors.New("skill s is a SYMLINK; symlinks are not yet supported"), false},
+		{"write failure", errors.New("write failed"), false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isUnsupportedError(tt.err); got != tt.want {
+				t.Errorf("isUnsupportedError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInstallAllSkipsUnsupportedKindsCleanlyOnOpenCode(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "daily-skill", "original\n")
+	mustWriteTestFile(t, filepath.Join(agentsRoot, "mcp-servers", "daily.mcp.json"), `{"mcpServers":{"daily":{"command":"npx","args":["daily-server"]}}}`+"\n")
+	mustWriteTestFile(t, filepath.Join(agentsRoot, "rules", "daily-rule.md"), "---\nname: daily-rule\n---\nrule body\n")
+	mustWriteTestFile(t, filepath.Join(agentsRoot, "hooks", "daily-hook.hook.json"), `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/true"}]}]}}`+"\n")
+
+	targetRoot := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+
+	// TestMain stubs mandatorySkillScan so this exercises translation without provisioning a scanner.
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{"install-all", "--from", agentsRoot, "--target", targetRoot, "--agent", "opencode", "--scope", "project"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install-all: %v\n%s", err, stdout.String())
+	}
+	for _, want := range []string{
+		"install-all complete: installed=2 skipped=2",
+		"skipped " + filepath.Join(agentsRoot, "rules", "daily-rule.md") + " (rule unsupported on opencode)",
+		"skipped " + filepath.Join(agentsRoot, "hooks", "daily-hook.hook.json") + " (hook unsupported on opencode)",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	skill, err := os.ReadFile(filepath.Join(targetRoot, ".opencode", "skills", "daily-skill", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read installed skill: %v", err)
+	}
+	if !strings.Contains(string(skill), "original\n") {
+		t.Errorf("installed skill missing body: %s", skill)
+	}
+	raw, err := os.ReadFile(filepath.Join(targetRoot, "opencode.json"))
+	if err != nil {
+		t.Fatalf("read installed MCP config: %v", err)
+	}
+	var config struct {
+		MCP map[string]struct {
+			Type    string   `json:"type"`
+			Command []string `json:"command"`
+		} `json:"mcp"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatalf("parse installed MCP config: %v", err)
+	}
+	server := config.MCP["daily"]
+	if server.Type != "local" || strings.Join(server.Command, " ") != "npx daily-server" {
+		t.Errorf("unexpected installed MCP server: %+v", server)
+	}
+}
+
+func TestInstallAllFailsClosedOnSymlink(t *testing.T) {
+	_, agentsRoot := writeCanonicalSkill(t, "daily-skill", "original\n")
+	skillDir := filepath.Join(agentsRoot, "skills", "daily-skill")
+	outside := filepath.Join(t.TempDir(), "guide.md")
+	mustWriteTestFile(t, outside, "support content\n")
+	if err := os.MkdirAll(filepath.Join(skillDir, "references"), 0o755); err != nil {
+		t.Fatalf("mkdir support directory: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(skillDir, "references", "guide.md")); err != nil {
+		t.Fatalf("create support file symlink: %v", err)
+	}
+
+	targetRoot := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("DOTPACK_PROJECT_HOME", targetRoot)
+	t.Setenv("DOTPACK_DOTPACK_HOME", t.TempDir())
+	var stdout bytes.Buffer
+	cmd := NewRootCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(io_DiscardWriter())
+	cmd.SetArgs([]string{"install-all", "--from", agentsRoot, "--target", targetRoot, "--agent", "opencode", "--scope", "project"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "symlink") {
+		t.Fatalf("expected fatal symlink error, got %v\n%s", err, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "skipped ") || strings.Contains(stdout.String(), "install-all complete:") {
+		t.Errorf("symlink failure must not be skipped or reported as complete:\n%s", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(targetRoot, ".opencode", "skills", "daily-skill", "SKILL.md")); !os.IsNotExist(err) {
+		t.Errorf("skill must not be installed after symlink refusal; stat=%v", err)
 	}
 }
 

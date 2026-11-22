@@ -144,8 +144,8 @@ func TestPlansInstallCanonicalAndDiscoveryErrorBranches(t *testing.T) {
 		t.Fatalf("plansForEntry umbrella writer error err=%v unsupported=%v; want non-unsupported error", err, unsupported)
 	}
 	unknownKind := canonicalEntry{Kind: resource.Kind("unknown"), Path: "/tmp/u", Resource: syncFakeResource{kind: resource.Kind("unknown")}}
-	if _, unsupported, err := plansForEntry(unknownKind, "claude-code", adapter.ScopeUser, d); err == nil || unsupported {
-		t.Fatalf("plansForEntry unknown single adapter err=%v unsupported=%v; want normal error", err, unsupported)
+	if _, unsupported, err := plansForEntry(unknownKind, "claude-code", adapter.ScopeUser, d); err != nil || !unsupported {
+		t.Fatalf("plansForEntry unknown single adapter err=%v unsupported=%v; want unsupported kind", err, unsupported)
 	}
 
 	store := manifestStoreForTest(t, d.DotpackHome)

@@ -956,7 +956,14 @@ func plansForEntry(entry canonicalEntry, agentName string, scope adapter.Scope, 
 }
 
 func isUnsupportedError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "not supported")
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "symlink") {
+		return false
+	}
+	return strings.Contains(msg, "not yet supported") || strings.Contains(msg, "not supported")
 }
 
 func scanMaterializedFiles(targetRoot string) ([]orchestrator.FileObservation, error) {
